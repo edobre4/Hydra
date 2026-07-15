@@ -1,0 +1,11 @@
+[Hydra AI Server] Running on port 7077 — concurrent mode
+[Req 1] Started (active: 1)
+[Req 1] Done in 17.4s (active: 0)
+[Req 2] Started (active: 1)
+[Req 2] Done in 31.9s (active: 0)
+[Req 3] Started (active: 1)
+[Req 3] Done in 26.4s (active: 0)
+[Req 4] Started (active: 1)
+[Req 4] Done in 23.7s (active: 0)
+[Req 5] Started (active: 1)
+[Req 5] Done in 22.3s (active: 0)
