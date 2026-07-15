@@ -3,8 +3,8 @@
 // @version      2.0
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
-// @updateURL    https://raw.githubusercontent.com/dylbecke/hydra-userscript/main/Hydra.meta.js
-// @downloadURL  https://raw.githubusercontent.com/dylbecke/hydra-userscript/main/Hydra.user.js
+// @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js
+// @downloadURL  https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ob*
