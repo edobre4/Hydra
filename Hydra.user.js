@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.0
+// @version      2.1
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js
@@ -17068,7 +17068,7 @@ if (k === 'eta') {
         aiInit();
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
-            var CURRENT_VERSION = '2.0';
+            var CURRENT_VERSION = '2.1';
             var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js';
             var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js';
             GM_xmlhttpRequest({
