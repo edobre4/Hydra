@@ -33,16 +33,1508 @@
     ];
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SECTION 2: DATA LAYER (API wrappers — swap for fetch() in webapp)
+    // INBOUND (ported 1:1 from Hydra) — Stage 2a: foundation (constants, state,
+    // trace helpers, auth/fetch layer). Code transplanted verbatim from Hydra.user.js.
+    // ═══════════════════════════════════════════════════════════════════════════
+    var DEFAULT_NODE = 'ORD9';
+    var IB_ALL_STATUSES = new Set(['UNLOADING_IN_PROGRESS', 'READY_FOR_UNLOAD', 'UNLOADING_PAUSED', 'LOAD_ARRIVED', 'IN_TRANSIT', 'SCHEDULED', 'COMPLETED']);
+
+    // Auth/token state
+    var csrfToken = null, tokenFetchedAt = null, isLoading = false;
+    var sspToken = null, sspTokenFetchedAt = 0;  // separate anti-csrf token for SSP POST endpoints
+
+    // Trace helpers (verbatim from Hydra)
+    var _hydraTraceActive = {};
+    var _hydraTraceId = 0;
+    function hydraTraceStart(label, meta) {
+        var id = ++_hydraTraceId;
+        var startMs = performance.now();
+        _hydraTraceActive[id] = { label: label, startMs: startMs };
+        console.log('[Hydra TRACE ' + id + '] START ' + label + (meta ? ' ' + JSON.stringify(meta) : ''));
+        _hydraTraceActive[id].stallTimer = setTimeout(function() {
+            if (_hydraTraceActive[id]) console.warn('[Hydra TRACE ' + id + '] STALL ' + label + ' still running after 30s');
+        }, 30000);
+        return id;
+    }
+    function hydraTraceEnd(id, meta) {
+        var entry = _hydraTraceActive[id];
+        if (!entry) { console.warn('[Hydra TRACE ' + id + '] END called but no active entry'); return; }
+        var dur = (performance.now() - entry.startMs).toFixed(0);
+        if (entry.stallTimer) clearTimeout(entry.stallTimer);
+        console.log('[Hydra TRACE ' + id + '] END   ' + entry.label + ' (' + dur + 'ms)' + (meta ? ' ' + JSON.stringify(meta) : ''));
+        delete _hydraTraceActive[id];
+    }
+    function hydraTraceFail(id, err) {
+        var entry = _hydraTraceActive[id];
+        if (!entry) return;
+        var dur = (performance.now() - entry.startMs).toFixed(0);
+        if (entry.stallTimer) clearTimeout(entry.stallTimer);
+        console.error('[Hydra TRACE ' + id + '] FAIL  ' + entry.label + ' (' + dur + 'ms)', err);
+        delete _hydraTraceActive[id];
+    }
+
+    // Status line writer — targets the inbound header status element (guarded)
+    function setStatus(msg) {
+        var el = document.getElementById('he-ib-status');
+        if (el) el.textContent = msg;
+    }
+
+    // Generic Vista fetch (CSRF token in header for POSTs). Verbatim from Hydra.
+    function gmFetch(url, method, body) {
+        method = method || 'GET';
+        var _trId = hydraTraceStart('gmFetch ' + method + ' ' + url.slice(0, 100));
+        var _timedOut = false;
+        return new Promise(function(resolve, reject) {
+            var _headers = body
+                ? { 'anti-csrftoken-a2z': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' }
+                : {};
+            GM_xmlhttpRequest({
+                method: method, url: url,
+                headers: _headers,
+                data: body || null, withCredentials: true,
+                onload: function(r) {
+                    if (_timedOut) return;
+                    if (r.status !== 200) {
+                        var safeBody = (r && r.responseText && typeof r.responseText === 'string') ? r.responseText.slice(0, 500) : '(no response body)';
+                        hydraTraceFail(_trId, 'HTTP ' + r.status);
+                        console.error('[Hydra] HTTP ' + r.status + ' on ' + url + '\n' + safeBody);
+                        reject('HTTP ' + r.status);
+                        return;
+                    }
+                    hydraTraceEnd(_trId, { status: r.status, bytes: r.responseText ? r.responseText.length : 0 });
+                    try { resolve(JSON.parse(r.responseText)); } catch (e) { reject('JSON parse error'); }
+                },
+                onerror: function(e) { if (!_timedOut) { hydraTraceFail(_trId, 'net-err'); reject(e); } },
+            });
+            setTimeout(function() {
+                if (_hydraTraceActive[_trId]) {
+                    _timedOut = true;
+                    hydraTraceFail(_trId, 'client-timeout-60s');
+                    reject('client-timeout-60s');
+                }
+            }, 60000);
+        });
+    }
+
+    // SSP endpoints require their OWN anti-csrf token. Verbatim from Hydra.
+    function fetchSspToken(force) {
+        if (!force && sspToken && (Date.now() - sspTokenFetchedAt) < 900000) {
+            return Promise.resolve(sspToken);
+        }
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: 'https://trans-logistics.amazon.com/ssp/dock/hrz/ob', withCredentials: true,
+                onload: function(r) {
+                    var html = r.responseText || '';
+                    var m = html.match(/name=['"]anti-csrftoken-a2z['"]\s+value=['"]([^'"]*)['"]/);
+                    if (!m) m = html.match(/value=['"]([^'"]*)['"]\s+name=['"]anti-csrftoken-a2z['"]/);
+                    var tok = m ? m[1] : null;
+                    if (!tok || tok.length < 5) {
+                        console.error('[Hydra] SSP token not found in /ssp/dock/hrz/ob (len=' + html.length + ')');
+                        reject('SSP token not found'); return;
+                    }
+                    sspToken = tok;
+                    sspTokenFetchedAt = Date.now();
+                    console.log('[Hydra] sspToken set, length=' + sspToken.length);
+                    resolve(sspToken);
+                },
+                onerror: function() { reject('SSP token fetch error'); },
+                ontimeout: function() { reject('SSP token fetch timeout'); }
+            });
+        });
+    }
+
+    // POST to an SSP endpoint using the SSP-specific token. Verbatim from Hydra.
+    function gmFetchSsp(url, body) {
+        return fetchSspToken(false).then(function(tok) {
+            return new Promise(function(resolve, reject) {
+                GM_xmlhttpRequest({
+                    method: 'POST', url: url,
+                    headers: { 'anti-csrftoken-a2z': tok, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+                    data: body || null, withCredentials: true,
+                    onload: function(r) {
+                        if (r.status !== 200) {
+                            console.error('[Hydra] SSP POST HTTP ' + r.status + ' on ' + url);
+                            reject('HTTP ' + r.status); return;
+                        }
+                        try { resolve(JSON.parse(r.responseText)); }
+                        catch (e) { reject('SSP JSON parse error'); }
+                    },
+                    onerror: function() { reject('SSP POST error'); },
+                    ontimeout: function() { reject('SSP POST timeout'); }
+                });
+            });
+        });
+    }
+
+    // Vista CSRF token scrape. Verbatim from Hydra.
+    function fetchToken() {
+        var _tokTrace = hydraTraceStart('fetchToken');
+        var _tokTimedOut = false;
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: 'https://trans-logistics.amazon.com/sortcenter/vista', withCredentials: true,
+                onload: function(r) {
+                    if (_tokTimedOut) return;
+                    var bodyLen = r.responseText ? r.responseText.length : 0;
+                    var html = r.responseText || '';
+                    var m = html.match(/name=['"]anti-csrftoken-a2z['"]\s+value=['"]([^'"]*)['"]/);
+                    if (!m) m = html.match(/value=['"]([^'"]*)['"]\s+name=['"]anti-csrftoken-a2z['"]/);
+                    var tokenFound = m ? m[1] : null;
+                    if (!tokenFound) {
+                        hydraTraceFail(_tokTrace, { reason: 'token-not-in-html', status: r.status, bodyLen: bodyLen, snippet: html.slice(0, 200) });
+                        console.error('[Hydra] CSRF token regex did not match SSP HTML. Page length=' + bodyLen);
+                        reject('Token not found'); return;
+                    }
+                    if (tokenFound.length < 5) {
+                        hydraTraceFail(_tokTrace, { reason: 'token-too-short', status: r.status, bodyLen: bodyLen, tokenLen: tokenFound.length });
+                        console.error('[Hydra] SSP returned empty CSRF token. Try reloading the page or running mwinit.');
+                        reject('Token empty (SSP degraded)'); return;
+                    }
+                    csrfToken = tokenFound;
+                    tokenFetchedAt = Date.now();
+                    hydraTraceEnd(_tokTrace, { status: r.status, bodyLen: bodyLen, tokenLen: csrfToken.length, tokenPreview: csrfToken.slice(0, 12) });
+                    console.log('[Hydra] csrfToken set, length=' + csrfToken.length);
+                    window.__hydraCsrfToken = csrfToken;
+                    resolve(csrfToken);
+                },
+                onerror: function(e) { if (!_tokTimedOut) { hydraTraceFail(_tokTrace, 'net-err'); reject(e); } },
+            });
+            setTimeout(function() {
+                if (_hydraTraceActive[_tokTrace]) {
+                    _tokTimedOut = true;
+                    hydraTraceFail(_tokTrace, 'client-timeout-60s');
+                    reject('client-timeout-60s');
+                }
+            }, 60000);
+        });
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END INBOUND Stage 2a
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // CSRF token for SSP/WATT calls
-    var csrfToken = null;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INBOUND Stage 2b — data pipeline (load IDs, counts, summarizers, ETAs,
+    // row build). Transplanted verbatim from Hydra; optional OB-route / yard-TDR
+    // enrichers are typeof-guarded pending their own sub-stages.
+    // ═══════════════════════════════════════════════════════════════════════════
+    var SEARCH_WINDOW = 12;
+    var BATCH_SIZE = 50;
+    var ETA_CONCURRENCY = 1;
+    var ETA_INTERCALL_GAP_MS = 0;
+    var ETA_SAT_WINDOW_MS = 6 * 60 * 60 * 1000;
+    var tzOverride = null; // set by settings later; null = browser TZ
 
-    function fetchToken() {
-        // TODO: fetch CSRF token from trans-logistics
-        return Promise.resolve();
+    var IB_COLS = [
+        { key: 'equip', label: '', type: 'str' },
+        { key: 'vrid', label: 'VRID', type: 'str' },
+        { key: 'route', label: 'Route', type: 'str' },
+        { key: 'status', label: 'Status', type: 'str' },
+        { key: 'location', label: 'Door', type: 'str' },
+        { key: 'progress', label: 'Progress', type: 'num' },
+        { key: 'total', label: 'Total', type: 'num' },
+        { key: 'sortable', label: 'Sortable', type: 'num' },
+        { key: 'crossdock', label: 'Cross Dock', type: 'num' },
+        { key: 'cpt', label: 'CPT Pkgs', type: 'num' },
+        { key: 'nextCpt', label: 'Next CPT', type: 'num' },
+        { key: 'extraSmall', label: 'Extra Small', type: 'num' },
+        { key: 'small', label: 'Small', type: 'num' },
+        { key: 'medium', label: 'Medium', type: 'num' },
+        { key: 'large', label: 'Large', type: 'num' },
+        { key: 'extraLarge', label: 'Extra Large', type: 'num' },
+        { key: 'noncon', label: 'Non-Con', type: 'num' },
+        { key: 'ncCpt', label: 'NC CPT', type: 'num' },
+        { key: 'containers', label: 'Containers', type: 'num' },
+        { key: 'fluid', label: 'Fluid', type: 'num' },
+        { key: 'containerized', label: 'Containerized', type: 'num' },
+        { key: 'projFinish', label: 'Proj Finish', type: 'str' },
+        { key: 'sat', label: 'SAT', type: 'str' },
+        { key: 'aat', label: 'AAT', type: 'str' },
+        { key: 'eta', label: 'ETA', type: 'str' },
+    ];
+    var IB_DEFAULT_VISIBLE = new Set([
+        'equip','vrid','route','status','location','progress','total','sortable',
+        'crossdock','cpt','noncon','containers','fluid','containerized','sat','aat'
+    ]);
+    var IB_ALWAYS_VISIBLE = new Set(['equip','vrid']);
+    var IB_COPYABLE_COLS = [
+        {key:'total', label:'Total'}, {key:'sortable', label:'Sortable'}, {key:'crossdock', label:'Cross Dock'},
+        {key:'cpt', label:'CPT Pkgs'}, {key:'extraSmall', label:'Extra Small'}, {key:'small', label:'Small'},
+        {key:'medium', label:'Medium'}, {key:'large', label:'Large'}, {key:'extraLarge', label:'Extra Large'},
+        {key:'noncon', label:'Non-Con'}, {key:'ncCpt', label:'NC CPT'}, {key:'containers', label:'Containers'},
+        {key:'fluid', label:'Fluid'}, {key:'containerized', label:'Containerized'}
+    ];
+
+    var ibTableData = [], ibActiveTab = 'ondock';
+    var ibTrailerFilter = 'all';
+    var ibVisibleCols = new Set(IB_DEFAULT_VISIBLE), ibColOrder = IB_COLS.map(function(c) { return c.key; });
+
+    function encodeToken(t) { return t.replace(/=/g, '%3D').replace(/\//g, '%2F').replace(/\+/g, '%2B'); }
+    function getEffectiveTzOffset() {
+        if (tzOverride !== null && !isNaN(tzOverride)) return tzOverride;
+        return -new Date().getTimezoneOffset() / 60;
     }
+    function fmtDate(d) {
+        return ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('0' + d.getDate()).slice(-2) + '/' + d.getFullYear() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+    function msToLocal(ms) {
+        if (!ms) return '\u2014';
+        var tzOff = getEffectiveTzOffset();
+        var d = new Date(Number(ms) + tzOff * 3600000);
+        return ('0' + (d.getUTCMonth() + 1)).slice(-2) + '/' + ('0' + d.getUTCDate()).slice(-2) + ' ' + ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2);
+    }
+    function parseCptMs(str) {
+        if (!str || !str.trim()) return null;
+        var tzOff = getEffectiveTzOffset();
+        var m = str.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+        if (m) {
+            var ms = Date.UTC(+m[3], +m[1]-1, +m[2], +m[4], +m[5], 0) - tzOff * 3600000;
+            return isNaN(ms) ? null : ms;
+        }
+        var MONTHS = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+        var m2 = str.trim().match(/^(\d{1,2})-(\w{3})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
+        if (m2) {
+            var mo = MONTHS[m2[2]];
+            if (mo === undefined) return null;
+            var ms2 = Date.UTC(2000 + +m2[3], mo, +m2[1], +m2[4], +m2[5], 0) - tzOff * 3600000;
+            return isNaN(ms2) ? null : ms2;
+        }
+        return null;
+    }
+
+    // Step 1: get load IDs from Vista getInboundLoadsIds
+    function ibGetLoadIdsAt(nodeId, offsetHours) {
+        var searchMs = Date.now() + offsetHours * 3600000;
+        var jsonObj = JSON.stringify({
+            nodeId: nodeId,
+            searchTime: searchMs,
+            entity: 'getInboundLoadIds',
+            cpts: [],
+            processingTime: searchMs,
+            testmode: false,
+            sortPlanDuration: SEARCH_WINDOW * 60,
+            metricsData: false,
+        });
+        var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+        return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getInboundLoadsIds', 'POST', body).then(function(data) {
+            var map = (data && data.ret &&
+                       data.ret.getInboundLoadIdsOutput &&
+                       data.ret.getInboundLoadIdsOutput.timeBasedLoadIdsMap) || {};
+            return Object.values(map).reduce(function(a, v) { return a.concat(v); }, []);
+        });
+    }
+
+    function classifyLoadByRoute(load) {
+        var r = load && load.inboundRoute;
+        if (!r || typeof r !== 'string') return 'unknown';
+        return r.toUpperCase().indexOf('CART') !== -1 ? 'xd' : 'sortable';
+    }
+    function applyTrailerFilter(loads) {
+        if (ibTrailerFilter === 'all') return loads;
+        return loads.filter(function(l) {
+            var c = classifyLoadByRoute(l);
+            if (c === 'unknown') return true;
+            return c === ibTrailerFilter;
+        });
+    }
+
+    // Step 2a: package counts (box_type, crossdock, CPT)
+    function ibGetPackageCounts(nodeId, loadIdObjs) {
+        if (!loadIdObjs.length) return Promise.resolve([]);
+        var out = [], searchMs = Date.now();
+        var chains = [];
+        for (var i = 0; i < loadIdObjs.length; i += BATCH_SIZE) {
+            (function(batch) {
+                chains.push(function() {
+                    var jsonObj = JSON.stringify({
+                        nodeId: nodeId,
+                        searchTime: searchMs,
+                        entity: 'getInboundCounts',
+                        testmode: false,
+                        sortPlanDuration: 0,
+                        segmentToMeasureTypeList: { segmentId: 'HIGH_LEVEL_LOGICAL_COUNT', measureType: 'COUNT' },
+                        containerTypeFilter: ['PACKAGE'],
+                        loadIdList: batch,
+                        additionalPropertyNameList: ['box_type', 'is_part_of_crossdock'],
+                        box_type: ['EXTRA_SMALL', 'SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE', 'NC', 'NC_PLUS', 'HEAVY_BULKY', 'HEAVY_BULKY_PLUS'],
+                    });
+                    var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+                    return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getInboundCounts', 'POST', body)
+                        .then(function(d) {
+                            var rows = (d && d.ret && d.ret.getInboundCountsOutput && d.ret.getInboundCountsOutput.loadLevelDetailList) || [];
+                            out = out.concat(rows);
+                        })
+                        .catch(function(e) { console.error('[Hydra] ibGetPackageCounts batch error:', e); });
+                });
+            })(loadIdObjs.slice(i, i + BATCH_SIZE));
+        }
+        return chains.reduce(function(p, fn) { return p.then(fn); }, Promise.resolve()).then(function() { return out; });
+    }
+
+    // Step 2b: container counts (fluid / containerized)
+    function ibGetContainerCounts(nodeId, loadIdObjs) {
+        if (!loadIdObjs.length) return Promise.resolve([]);
+        var out = [], searchMs = Date.now();
+        var chains = [];
+        for (var i = 0; i < loadIdObjs.length; i += BATCH_SIZE) {
+            (function(batch) {
+                chains.push(function() {
+                    var jsonObj = JSON.stringify({
+                        nodeId: nodeId,
+                        searchTime: searchMs,
+                        entity: 'getInboundCounts',
+                        loadIdList: batch,
+                        segmentToMeasureTypeList: { measureType: 'COUNT' },
+                        containerTypeFilter: ['PALLET', 'GAYLORD', 'BAG', 'CART', 'PACKAGE'],
+                        additionalPropertyNameList: ['is_enclosed'],
+                        basePropertyNameList: ['container_type', 'sort_center_id'],
+                    });
+                    var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+                    return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getInboundCounts', 'POST', body)
+                        .then(function(d) {
+                            var rows = (d && d.ret && d.ret.getInboundCountsOutput && d.ret.getInboundCountsOutput.loadLevelDetailList) || [];
+                            out = out.concat(rows);
+                        })
+                        .catch(function(e) { console.error('[Hydra] ibGetContainerCounts batch error:', e); });
+                });
+            })(loadIdObjs.slice(i, i + BATCH_SIZE));
+        }
+        return chains.reduce(function(p, fn) { return p.then(fn); }, Promise.resolve()).then(function() { return out; });
+    }
+
+    // Step 3a: summarise package detail into counts
+    function ibSummarizePackages(detail, cptStart, cptEnd) {
+        var total = 0, remaining = 0, crossdock = 0, nc = 0, cptCount = 0, ncCpt = 0;
+        var xs = 0, sm = 0, md = 0, lg = 0, xl = 0, ncOnly = 0, ncPlus = 0;
+        var hasCpt = cptStart !== null || cptEnd !== null;
+        var segs = [
+            detail.processedCounts,
+            detail.unmanifestedLoadedCount,
+            detail.preFacilityCounts,
+            detail.unmanifestedSlamCount,
+            detail.unmanifestedPreSlamCount,
+        ];
+        segs.forEach(function(seg, idx) {
+            if (!seg) return;
+            (Array.isArray(seg) ? seg : [seg]).forEach(function(c) {
+                if (!c || !c.flowUnitsMap) return;
+                var qty = Number(c.flowUnitsMap.COUNT) || 0;
+                var pm = c.propertyMap || {};
+                total += qty;
+                if (idx >= 1) {
+                    remaining += qty;
+                    if (pm.is_part_of_crossdock === true || pm.is_part_of_crossdock === 'true') crossdock += qty;
+                    var isNC = pm.box_type === 'NC' || pm.box_type === 'NC_PLUS';
+                    if (isNC) nc += qty;
+                    if (pm.box_type === 'NC') ncOnly += qty;
+                    else if (pm.box_type === 'NC_PLUS') ncPlus += qty;
+                    if (hasCpt && pm.cpt) {
+                        var p = Number(pm.cpt);
+                        if ((cptStart === null || p >= cptStart) && (cptEnd === null || p <= cptEnd)) {
+                            cptCount += qty;
+                            if (isNC) ncCpt += qty;
+                        }
+                    }
+                    if (pm.box_type === 'EXTRA_SMALL')  xs += qty;
+                    else if (pm.box_type === 'SMALL')   sm += qty;
+                    else if (pm.box_type === 'MEDIUM')  md += qty;
+                    else if (pm.box_type === 'LARGE')   lg += qty;
+                    else if (pm.box_type === 'EXTRA_LARGE') xl += qty;
+                }
+            });
+        });
+        return { total: total, remaining: remaining, crossdock: crossdock, nc: nc, cptCount: cptCount, ncCpt: ncCpt,
+                 extraSmall: xs, small: sm, medium: md, large: lg, extraLarge: xl, ncOnly: ncOnly, ncPlus: ncPlus };
+    }
+
+    // Step 3b: summarise container detail
+    function ibSummarizeContainers(detail) {
+        var containers = 0, fluid = 0, containerized = 0;
+        var segs = [
+            detail.unmanifestedLoadedCount,
+            detail.preFacilityCounts,
+            detail.unmanifestedSlamCount,
+            detail.unmanifestedPreSlamCount,
+        ];
+        segs.forEach(function(seg) {
+            if (!seg) return;
+            (Array.isArray(seg) ? seg : [seg]).forEach(function(c) {
+                if (!c || !c.flowUnitsMap) return;
+                var qty = Number(c.flowUnitsMap.COUNT) || 0;
+                var ct  = c.propertyMap && c.propertyMap.container_type;
+                var enc = c.propertyMap && c.propertyMap.is_enclosed;
+                if (ct === 'GAYLORD' || ct === 'PALLET' || ct === 'CART' || ct === 'BAG') containers += qty;
+                if (ct === 'PACKAGE') { if (enc === false || enc === 'false') fluid += qty; else containerized += qty; }
+            });
+        });
+        return { containers: containers, fluid: fluid, containerized: containerized };
+    }
+
+    function fetchSingleETA(vrid, nodeId) {
+        return new Promise(function(resolve) {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: 'https://trans-logistics.amazon.com/fmc/api/v2/execution/load/' + vrid,
+                withCredentials: true,
+                onload: function(r) {
+                    if (r.status !== 200) { resolve({ vrid: vrid, eta: null }); return; }
+                    try {
+                        var data = JSON.parse(r.responseText);
+                        if (!data || !data.timeline) { resolve({ vrid: vrid, eta: null }); return; }
+                        var destStop = null;
+                        for (var j = 0; j < data.timeline.length; j++) {
+                            var ev = data.timeline[j];
+                            if (ev.eventType === 'STOP' && ev.stepType === 'FUTURE') {
+                                if (ev.title && ev.title.toUpperCase() === nodeId.toUpperCase()) { destStop = ev; break; }
+                                if (!destStop) destStop = ev;
+                            }
+                        }
+                        if (!destStop || !destStop.statusRollUps) { resolve({ vrid: vrid, eta: null }); return; }
+                        for (var k = 0; k < destStop.statusRollUps.length; k++) {
+                            var ru = destStop.statusRollUps[k];
+                            if (ru.localizableDescription && ru.localizableDescription.translationKey === 'fmc_estimated_arrival') {
+                                var ms = ru.timeAndFacilityTimeZone && ru.timeAndFacilityTimeZone.utcMillis;
+                                resolve({ vrid: vrid, eta: ms || null });
+                                return;
+                            }
+                        }
+                        resolve({ vrid: vrid, eta: null });
+                    } catch(e) { resolve({ vrid: vrid, eta: null }); }
+                },
+                onerror: function() { resolve({ vrid: vrid, eta: null }); }
+            });
+        });
+    }
+
+    function fetchETAs(nodeId, loads) {
+        if (!ibVisibleCols.has('eta')) return Promise.resolve({});
+        var nowMs = Date.now();
+        var windowEndMs = nowMs + ETA_SAT_WINDOW_MS;
+        var scheduled = loads.filter(function(l) {
+            if (l.status !== 'SCHEDULED' || !l.displayId) return false;
+            if (!l.sat) return false;
+            return l.sat <= windowEndMs;
+        });
+        if (!scheduled.length) return Promise.resolve({});
+        var tStart = Date.now();
+        setStatus('Fetching ETAs (' + scheduled.length + ' scheduled, sequential)...');
+        var results = new Array(scheduled.length);
+        var nextIdx = 0;
+        var completed = 0;
+        return new Promise(function(done) {
+            function worker() {
+                if (nextIdx >= scheduled.length) {
+                    if (completed === scheduled.length) finish();
+                    return;
+                }
+                var myIdx = nextIdx++;
+                var load = scheduled[myIdx];
+                fetchSingleETA(load.displayId, nodeId).then(function(r) {
+                    results[myIdx] = r;
+                    completed++;
+                    if (completed % 25 === 0 || completed === scheduled.length) {
+                        setStatus('Fetching ETAs (' + completed + '/' + scheduled.length + ')...');
+                    }
+                    setTimeout(worker, ETA_INTERCALL_GAP_MS);
+                });
+            }
+            function finish() {
+                var etaMap = {};
+                results.forEach(function(r) { if (r && r.eta) etaMap[r.vrid] = r.eta; });
+                done(etaMap);
+            }
+            var startN = Math.min(ETA_CONCURRENCY, scheduled.length);
+            for (var i = 0; i < startN; i++) worker();
+        });
+    }
+
+    // OB Routes enrichment (guarded: OB lane fetch ported in a later sub-stage)
+    function enrichRowsWithObRoutes(rows) {
+        if (!ibVisibleCols.has('obRoutes')) return Promise.resolve(rows);
+        if (typeof fetchLaneContainerDataForVrid !== 'function') return Promise.resolve(rows);
+        if (!rows || !rows.length) return Promise.resolve(rows);
+        var targets = rows.filter(function(r){ return r && r.loadId && (r.crossdock || 0) > 0; });
+        if (!targets.length) return Promise.resolve(rows);
+        setStatus('Loading OB route breakdown (' + targets.length + ' XD VRIDs)...');
+        var CONCURRENCY = 5;
+        var idx = 0, active = 0;
+        return new Promise(function(resolve) {
+            function next() {
+                if (idx >= targets.length && active === 0) { resolve(rows); return; }
+                while (active < CONCURRENCY && idx < targets.length) {
+                    var r = targets[idx++];
+                    active++;
+                    fetchLaneContainerDataForVrid(r.loadId, r.status)
+                        .then(function(captured){ return function(laneData) {
+                            var counts = {};
+                            (laneData || []).forEach(function(ln){
+                                var dest = ln.dest || '';
+                                if (!dest) return;
+                                counts[dest] = (counts[dest] || 0) + (Number(ln.total) || 0);
+                            });
+                            captured.obRouteCounts = counts;
+                        };}(r))
+                        .catch(function(captured){ return function(err) {
+                            console.warn('[Hydra] OB route fetch failed for', captured.vrid, err);
+                            captured.obRouteCounts = {};
+                        };}(r))
+                        .then(function(){ active--; next(); });
+                }
+            }
+            next();
+        });
+    }
+
+    // CPT+ enrichment (guarded: OB lane fetch ported in a later sub-stage)
+    function enrichRowsWithCptPlus(rows) {
+        if (!ibVisibleCols.has('cptPlus')) return Promise.resolve(rows);
+        if (typeof fetchLaneDataForVrid !== 'function') return Promise.resolve(rows);
+        if (!rows || !rows.length) return Promise.resolve(rows);
+        var selRoutes = (typeof getSelectedObRoutes === 'function') ? getSelectedObRoutes() : [];
+        function destSelected(dest) {
+            if (!dest) return false;
+            if (!selRoutes.length) return true;
+            if (typeof routeMatchesList === 'function') return routeMatchesList(dest, selRoutes);
+            return selRoutes.indexOf(dest) !== -1;
+        }
+        var targets = rows.filter(function(r){ return r && r.loadId; });
+        if (!targets.length) return Promise.resolve(rows);
+        setStatus('Loading CPT+ (OB-route) breakdown (' + targets.length + ' VRIDs)...');
+        var CONCURRENCY = 5;
+        var idx = 0, active = 0;
+        return new Promise(function(resolve) {
+            function next() {
+                if (idx >= targets.length && active === 0) { resolve(rows); return; }
+                while (active < CONCURRENCY && idx < targets.length) {
+                    var r = targets[idx++];
+                    active++;
+                    fetchLaneDataForVrid(r.loadId, r.status)
+                        .then(function(captured){ return function(laneData) {
+                            var sum = 0;
+                            (laneData || []).forEach(function(ln){
+                                if (destSelected(ln.dest)) sum += (Number(ln.cptRemaining) || 0);
+                            });
+                            captured.cptPlus = sum;
+                        };}(r))
+                        .catch(function(captured){ return function(err) {
+                            console.warn('[Hydra] CPT+ fetch failed for', captured.vrid, err);
+                            captured.cptPlus = 0;
+                        };}(r))
+                        .then(function(){ active--; next(); });
+                }
+            }
+            next();
+        });
+    }
+
+    function applyIbEtas(etaMap, targetRows) {
+        var _arr = Array.isArray(targetRows) ? targetRows : ibTableData;
+        if (!Array.isArray(_arr)) return;
+        etaMap = etaMap || {};
+        _arr.forEach(function(r) {
+            if (r.status !== 'SCHEDULED' || !r.vrid) return;
+            var etaMsVal = 0;
+            if (r.total > 0 && etaMap[r.vrid]) {
+                etaMsVal = Number(etaMap[r.vrid]) || 0;
+                if (etaMsVal && (etaMsVal - Date.now()) < -30 * 60 * 1000) etaMsVal = 0;
+            }
+            r.etaMs = etaMsVal;
+            r.eta = etaMsVal ? '' : '\u2014';
+            r.displayStatus = etaMsVal ? 'MANIFESTED' : (r.status || '\u2014');
+        });
+    }
+
+    // Main IB fetch + build. Transplanted from Hydra; yard/TDR enricher guarded.
+    function fetchAndBuildIB(onPatch, deferEta) {
+        var node       = (document.getElementById('he-ib-node-input') ? (document.getElementById('he-ib-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        var startDays  = parseInt(document.getElementById('he-ib-start-input') ? document.getElementById('he-ib-start-input').value : '0') || 0;
+        var endDays    = parseInt(document.getElementById('he-ib-end-input') ? document.getElementById('he-ib-end-input').value : '0') || 0;
+        var cptStartMs = parseCptMs(document.getElementById('he-ib-cpt-start-input') ? document.getElementById('he-ib-cpt-start-input').value : '');
+        var cptEndMs   = parseCptMs(document.getElementById('he-ib-cpt-end-input') ? document.getElementById('he-ib-cpt-end-input').value : '');
+
+        var startHrs = startDays * 24;
+        var endHrs   = endDays   * 24;
+
+        var offsets = {};
+        offsets[0] = true;
+        for (var h = startHrs; h <= 0; h += 24)  offsets[h] = true;
+        for (var h2 = 0; h2 <= endHrs; h2 += 24) offsets[h2] = true;
+        var offsetArr = Object.keys(offsets).map(Number);
+
+        setStatus('Loading trailer IDs...');
+
+        var loadMap = {};
+        var chain = offsetArr.reduce(function(p, offset) {
+            return p.then(function() {
+                return ibGetLoadIdsAt(node, offset).then(function(loads) {
+                    loads.forEach(function(l) { if (!loadMap[l.loadId]) loadMap[l.loadId] = l; });
+                }).catch(function(e) {
+                    console.error('[Hydra] ibGetLoadIdsAt offset=' + offset + ' failed:', e);
+                });
+            });
+        }, Promise.resolve());
+
+        return chain.then(function() {
+            var loads = Object.values(loadMap).filter(function(l) { return IB_ALL_STATUSES.has(l.status); });
+            if (!loads.length) return [];
+            loads = applyTrailerFilter(loads);
+            if (!loads.length) return [];
+
+            setStatus('Loading counts (' + loads.length + ' trailers)...');
+
+            var loadIdObjs = loads.map(function(l) {
+                return { loadId: l.loadId, isRolledOver: l.isRolledOver || false, sat: l.sat, status: l.status, displayId: l.displayId, aat: l.aat };
+            });
+            var pkgP = ibGetPackageCounts(node, loadIdObjs);
+            var ctnP = ibGetContainerCounts(node, loadIdObjs);
+            var hasScheduled = loads.some(function(l) { return l.status === 'SCHEDULED'; });
+            var paP;
+            if (typeof sesameEnabled !== 'undefined' && sesameEnabled && ibVisibleCols.has('location') && hasScheduled && typeof fetchSesamePreAssignments === 'function') {
+                paP = fetchSesamePreAssignments(node).then(function(x){ return x || {}; }, function(){ return {}; });
+            } else {
+                paP = Promise.resolve({});
+            }
+            return Promise.all([pkgP, ctnP, paP]).then(function(results) {
+                var pkgMap = {}, ctnMap = {}, paMap = results[2] || {};
+                if (typeof sesamePaDoorInfo !== 'undefined') sesamePaDoorInfo = {};
+                results[0].forEach(function(e) { pkgMap[e.loadId] = ibSummarizePackages(e, cptStartMs, cptEndMs); });
+                var nextCptMap = {};
+                var _nextWin = (function() {
+                    if (typeof selectedCptIds === 'undefined' || typeof cptWindows === 'undefined') return null;
+                    if (!selectedCptIds.length || !cptWindows.length) return null;
+                    var selIdx = cptWindows.reduce(function(max, w, i) { return selectedCptIds.indexOf(w.id) !== -1 ? Math.max(max, i) : max; }, -1);
+                    var nextW = cptWindows[selIdx + 1];
+                    if (!nextW) return null;
+                    var today = new Date(); today.setHours(nextW.startH, nextW.startM, 0, 0);
+                    var end = new Date(); end.setHours(nextW.endH, nextW.endM, 0, 0);
+                    if (nextW.endPlusDay) end.setDate(end.getDate() + 1);
+                    if (nextW.startPlusDay) today.setDate(today.getDate() + 1);
+                    return { start: today.getTime(), end: end.getTime() };
+                })();
+                if (_nextWin) results[0].forEach(function(e) { nextCptMap[e.loadId] = ibSummarizePackages(e, _nextWin.start, _nextWin.end).cptCount; });
+                results[1].forEach(function(e) { ctnMap[e.loadId] = ibSummarizeContainers(e); });
+
+                return loads.map(function(l) {
+                    var pkg = pkgMap[l.loadId] || { total: 0, remaining: 0, crossdock: 0, nc: 0, cptCount: 0, ncCpt: 0, extraSmall: 0, small: 0, medium: 0, large: 0, extraLarge: 0, ncOnly: 0, ncPlus: 0 };
+                    pkg.nextCptCount = nextCptMap[l.loadId] || 0;
+                    var ctn = ctnMap[l.loadId] || { containers: 0, fluid: 0, containerized: 0 };
+
+                    var rd = (l.location && l.location.locationId != null) ? String(l.location.locationId) : '';
+                    var ds = rd.toUpperCase().indexOf('DD') === 0 ? rd.slice(2) : rd;
+                    var door = ds === '' ? '\u2014' : (isNaN(ds) ? ds : Number(ds));
+                    var paDoorNum = null;
+                    if (l.status === 'SCHEDULED' && l.displayId && paMap[l.displayId]) {
+                        paDoorNum = paMap[l.displayId];
+                        door = String(paDoorNum);
+                    }
+
+                    var rr = (l.inboundRoute && typeof l.inboundRoute === 'string') ? l.inboundRoute : '';
+                    var route = rr ? (rr.toUpperCase().indexOf('CART') !== -1 ? rr.trim() : (rr.indexOf('->') !== -1 ? rr.split('->')[0].trim() : rr.trim())) : '\u2014';
+
+                    if (paDoorNum != null && typeof sesamePaDoorInfo !== 'undefined') {
+                        sesamePaDoorInfo[String(paDoorNum)] = { vrid: l.displayId || '', route: route };
+                    }
+
+                    var sortable = Math.max(0, pkg.remaining - pkg.crossdock);
+
+                    var etaMsVal = 0;
+                    var row = {
+                        vrid:          l.displayId || '\u2014',
+                        loadId:        l.loadId,
+                        status:        l.status || '\u2014',
+                        displayStatus: l.status || '\u2014',
+                        location:      String(door),
+                        equipType:     l.equipmentType || '',
+                        route:         route,
+                        total:         pkg.total,
+                        remaining:     pkg.remaining,
+                        sortable:      sortable,
+                        crossdock:     pkg.crossdock,
+                        cpt:           pkg.cptCount,
+                        nextCpt:       pkg.nextCptCount || 0,
+                        noncon:        pkg.nc,
+                        ncCpt:         pkg.ncCpt,
+                        extraSmall:    pkg.extraSmall,
+                        small:         pkg.small,
+                        medium:        pkg.medium,
+                        large:         pkg.large,
+                        extraLarge:    pkg.extraLarge,
+                        ncOnly:        pkg.ncOnly || 0,
+                        ncPlus:        pkg.ncPlus || 0,
+                        containers:    ctn.containers,
+                        fluid:         ctn.fluid,
+                        containerized: ctn.containerized,
+                        sat:           l.sat  ? msToLocal(l.sat)  : '\u2014',
+                        aat:           l.aat  ? msToLocal(l.aat)  : '\u2014',
+                        eta:           '\u2014',
+                        satMs:         l.sat  || 0,
+                        aatMs:         l.aat  || 0,
+                        etaMs:         etaMsVal,
+                        fluidPct:      0,
+                        containerizedPct: 0,
+                        isPA:          paDoorNum != null,
+                        paDoorNum:     paDoorNum,
+                    };
+                    if (row.total > 0) {
+                        row.fluidPct         = Math.round((row.fluid         / row.total) * 100);
+                        row.containerizedPct = Math.round((row.containerized / row.total) * 100);
+                    }
+                    return row;
+                });
+            }).then(function(rows) {
+                function _patch() { if (typeof onPatch === 'function') { try { onPatch(); } catch(e){ console.warn('[Hydra] onPatch:', e); } } }
+                function _yardTdr(targetRows) {
+                    if (typeof fetchYardStateIfNeeded === 'function' && typeof enrichRowsWithTdrStatus === 'function') {
+                        return fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(targetRows); });
+                    }
+                    return Promise.resolve(targetRows);
+                }
+                if (deferEta) {
+                    var _etaPD = fetchETAs(node, loads).then(function(etaMap) { applyIbEtas(etaMap || {}, rows); }, function(){});
+                    var _obrPD = enrichRowsWithObRoutes(rows).then(function(){ return enrichRowsWithCptPlus(rows); }).then(null, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus:', e); });
+                    var _yrdPD = _yardTdr(rows).then(null, function(e){ console.warn('[Hydra] yard/TDR:', e); });
+                    return Promise.all([_etaPD, _obrPD, _yrdPD]).then(function(){ return rows; });
+                }
+                fetchETAs(node, loads).then(function(etaMap) {
+                    applyIbEtas(etaMap || {}); _patch();
+                    var _n = Array.isArray(ibTableData) ? ibTableData.length : 0;
+                    setStatus('\u2714 ' + _n + ' inbound loads (ETAs loaded) \u2014 ' + new Date().toLocaleTimeString());
+                }, function(){});
+                enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus:', e); });
+                _yardTdr(rows).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] yard/TDR:', e); });
+                return rows;
+            });
+        });
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END INBOUND Stage 2b
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INBOUND Stage 2c — CPT system, tab/sort/filter state, cell/route/progress
+    // helpers. Transplanted from Hydra; input IDs adapted to he-ib-*, OB/PS
+    // re-render calls reduced to the IB path.
+    // ═══════════════════════════════════════════════════════════════════════════
+    var IB_STORAGE = { cptWindows: 'he_cpt_windows_v1' };
+
+    var IB_TABS = [
+        { id: 'all',       label: 'All',        statuses: null },
+        { id: 'arrived',   label: 'Arrived',    statuses: new Set(['UNLOADING_IN_PROGRESS', 'READY_FOR_UNLOAD', 'UNLOADING_PAUSED', 'LOAD_ARRIVED', 'IN_TRANSIT', 'COMPLETED']) },
+        { id: 'ondock',    label: 'At Dock',    statuses: new Set(['UNLOADING_IN_PROGRESS', 'READY_FOR_UNLOAD', 'UNLOADING_PAUSED']) },
+        { id: 'yard',      label: 'Yard',       statuses: new Set(['LOAD_ARRIVED', 'IN_TRANSIT']) },
+        { id: 'scheduled', label: 'Scheduled',  filter: function(r) { return r.displayStatus === 'SCHEDULED'; } },
+        { id: 'manifested',label: 'Manifested', filter: function(r) { return r.displayStatus === 'MANIFESTED'; } },
+        { id: 'completed', label: 'Completed',  statuses: new Set(['COMPLETED']) },
+    ];
+
+    var DEFAULT_CPT_WINDOWS = [
+        { id: 'day', label: 'DAY', startH: 12, startM: 0, endH: 15, endM: 0, bgColor: '#5c1a3a', textColor: '#ffb0d0' },
+        { id: 'twi', label: 'TWI', startH: 17, startM: 0, endH: 21, endM: 0, bgColor: '#1a4731', textColor: '#a5d6a7' },
+        { id: 'nit', label: 'NIT', startH: 23, startM: 0, endH: 3,  endM: 0, bgColor: '#1a2a4a', textColor: '#90caf9' },
+        { id: 'mor', label: 'MOR', startH: 5,  startM: 0, endH: 9,  endM: 0, bgColor: '#7f2000', textColor: '#ffcc80' },
+    ];
+    var cptWindows = DEFAULT_CPT_WINDOWS.map(function(w) { return Object.assign({}, w); });
+    var selectedCptIds = [];
+    var cptSlaHours = 4, cptSlaEnabled = true;
+
+    var ibTabSort = { all: {key:'cpt',dir:-1}, arrived: {key:'cpt',dir:-1}, ondock: {key:'cpt',dir:-1}, yard: {key:'cpt',dir:-1}, scheduled: {key:'sat',dir:1}, manifested: {key:'eta',dir:1}, completed: {key:'aat',dir:-1} };
+    function getIbSort() { return ibTabSort[ibActiveTab] || (ibTabSort[ibActiveTab] = {key:'cpt',dir:-1}); }
+    var ibFilterText = '', ibFilterXD = false, ibFilterSortable = false;
+
+    function getIBFiltered(tabId) {
+        var tab = IB_TABS.find(function(t) { return t.id === tabId; });
+        var rows = ibTableData.filter(function(r) {
+            if (tab && tab.statuses && !tab.statuses.has(r.status)) return false;
+            if (tab && tab.filter && !tab.filter(r)) return false;
+            return true;
+        });
+        if (ibFilterXD)       rows = rows.filter(function(r) { return r.route.toUpperCase().indexOf('CART') !== -1; });
+        if (ibFilterSortable) rows = rows.filter(function(r) { return r.route.toUpperCase().indexOf('CART') === -1; });
+        if (ibFilterText) {
+            var txt = ibFilterText.toLowerCase();
+            rows = rows.filter(function(r) {
+                var door          = r.location != null ? String(r.location).toLowerCase() : '';
+                var displayStatus = (r.displayStatus || r.status || '').toLowerCase();
+                return String(r.vrid).toLowerCase().indexOf(txt)  !== -1 ||
+                       String(r.route).toLowerCase().indexOf(txt) !== -1 ||
+                       displayStatus.indexOf(txt) !== -1 ||
+                       door.indexOf(txt)          !== -1;
+            });
+        }
+        return rows;
+    }
+
+    function cptToMinutes(cptStr) {
+        if (!cptStr || cptStr === '\u2014') return null;
+        var m = cptStr.trim().match(/(\d{1,2}):(\d{2})\s*$/);
+        if (!m) return null;
+        return Number(m[1]) * 60 + Number(m[2]);
+    }
+    function isCptInWindow(cptStr) {
+        var startEl = document.getElementById('he-ib-cpt-start-input');
+        var endEl   = document.getElementById('he-ib-cpt-end-input');
+        var startVal = startEl ? startEl.value.trim() : '';
+        var endVal   = endEl   ? endEl.value.trim()   : '';
+        if (!startVal && !endVal) return true;
+        var cptMs = parseCptMs(cptStr);
+        if (cptMs === null) return false;
+        var startMs = parseCptMs(startVal);
+        var endMs   = parseCptMs(endVal);
+        if (startMs !== null && cptMs < startMs) return false;
+        if (endMs   !== null && cptMs > endMs)   return false;
+        return true;
+    }
+    function routeMatchesList(route, list) {
+        if (!route || !list || !list.length) return false;
+        var r = route.toUpperCase();
+        return list.some(function(p) { return r.indexOf(p.toUpperCase()) !== -1; });
+    }
+    function cptWindowColor(cptStr) {
+        var t = cptToMinutes(cptStr);
+        if (t === null) return null;
+        for (var i = 0; i < cptWindows.length; i++) {
+            var w = cptWindows[i];
+            var s = w.startH * 60 + (w.startM || 0);
+            var e = w.endH   * 60 + (w.endM   || 0);
+            var inWindow = (e <= s) ? (t >= s || t <= e) : (t >= s && t <= e);
+            if (inWindow) {
+                return { bg: w.bgColor || 'var(--h-bg4, #1a2535)', text: w.textColor || 'var(--h-text, #e8eaf0)' };
+            }
+        }
+        return null;
+    }
+    function routePill(route, cpt) {
+        var c = cptWindowColor(cpt);
+        if (!c) return route || '\u2014';
+        return '<span style="background:' + c.bg + ';color:' + c.text + ';padding:2px 8px;border-radius:3px;font-weight:600;font-size:11px;border:1px solid var(--h-prog-border, rgba(255,255,255,0.08))">' + (route || '\u2014') + '</span>';
+    }
+    function cptCellHtml(v, noHeat) {
+        v = v || 0;
+        if (noHeat) return '<td style="padding:3px 10px">' + v + '</td>';
+        var bg, color = '#fff', fw = ';font-weight:700', extra = '';
+        if (v >= 200) { bg = '#b71c1c'; extra = ';box-shadow:inset 0 0 8px rgba(0,0,0,.4)'; }
+        else if (v >= 100) { bg = '#c62828'; }
+        else if (v >= 40) { bg = '#e65100'; }
+        else if (v >= 10) { bg = '#f57f17'; color = '#111'; }
+        else { bg = '#1b5e20'; fw = ''; }
+        return '<td style="background:' + bg + ';color:' + color + fw + extra + ';border-radius:3px;padding:3px 10px">' + v + '</td>';
+    }
+    function ncCptCellHtml(v, noHeat) {
+        v = v || 0;
+        if (noHeat) return '<td style="padding:3px 10px">' + v + '</td>';
+        var bg, color = '#fff', fw = ';font-weight:700', extra = '';
+        if      (v >= 200) { bg = '#b71c1c'; extra = ';box-shadow:inset 0 0 8px rgba(0,0,0,.4)'; }
+        else if (v >= 100) { bg = '#c62828'; }
+        else if (v >= 40)  { bg = '#e65100'; }
+        else if (v >= 10)  { bg = '#f57f17'; color = '#111'; }
+        else               { bg = '#1b5e20'; fw = ''; }
+        return '<td style="background:' + bg + ';color:' + color + fw + extra + ';border-radius:3px;padding:3px 10px">' + v + '</td>';
+    }
+    function ppcColorStyle(containerized, containers) {
+        var c = Number(containers) || 0;
+        if (c <= 0) return '';
+        var ppc = (Number(containerized) || 0) / c;
+        var _ppcLight = document.documentElement.classList.contains('hydra-light');
+        var color, fw = 'font-weight:700';
+        if (ppc < 50) { color = _ppcLight ? '#d32f2f' : '#ef5350'; }
+        else if (ppc < 60) { color = _ppcLight ? '#e64a19' : '#ff7043'; }
+        else if (ppc < 70) { color = _ppcLight ? '#ef6c00' : '#ffa726'; }
+        else if (ppc < 80) { color = _ppcLight ? '#f9a825' : '#ffee58'; }
+        else { color = _ppcLight ? '#2e7d32' : '#66bb6a'; }
+        return 'color:' + color + ';' + fw;
+    }
+    function progressBarHtml(total, remaining) {
+        var pct = (total > 0) ? Math.max(0, Math.min(100, Math.round(((total - remaining) / total) * 100))) : 0;
+        var cls = pct < 10 ? 'prog-0' : pct < 25 ? 'prog-1' : pct < 50 ? 'prog-2' : pct < 75 ? 'prog-3' : 'prog-4';
+        return '<td class="col-progress"><div class="prog-wrap"><div class="prog-bar ' + cls + '" style="width:' + pct + '%"></div><span class="prog-label">' + pct + '%</span></div></td>';
+    }
+
+    function saveCptWindows() { try { localStorage.setItem(IB_STORAGE.cptWindows, JSON.stringify(cptWindows)); } catch (e) {} }
+    function loadCptWindows() {
+        try {
+            var raw = localStorage.getItem(IB_STORAGE.cptWindows);
+            if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr) && arr.length > 0) cptWindows = arr; }
+        } catch (e) {}
+    }
+    function getActiveCptPreset(h) {
+        for (var i = 0; i < cptWindows.length; i++) {
+            var w = cptWindows[i];
+            if (w.endH < w.startH) { if (h >= w.startH || h < w.endH) return w.id; }
+            else { if (h >= w.startH && h < w.endH) return w.id; }
+        }
+        return cptWindows.length > 0 ? cptWindows[0].id : null;
+    }
+    function getCptPresetDates(id) {
+        var win = cptWindows.find(function(w) { return w.id === id; });
+        if (!win) return { start: '', end: '' };
+        var tzOff = getEffectiveTzOffset();
+        var nowUtc = Date.now();
+        var nowInTz = new Date(nowUtc + tzOff * 3600000);
+        var yyyyTz = nowInTz.getUTCFullYear();
+        var mmTz   = nowInTz.getUTCMonth();
+        var ddTz   = nowInTz.getUTCDate();
+        var hTz    = nowInTz.getUTCHours();
+        var minTz  = nowInTz.getUTCMinutes();
+        var startMs = Date.UTC(yyyyTz, mmTz, ddTz, win.startH, win.startM || 0, 0) - tzOff * 3600000;
+        var endMs   = Date.UTC(yyyyTz, mmTz, ddTz, win.endH,   win.endM   || 0, 0) - tzOff * 3600000;
+        if (win.startPlusDay) startMs += 86400000;
+        if (win.endPlusDay)   endMs   += 86400000;
+        if (!win.startPlusDay && !win.endPlusDay) {
+            var isOvernight = win.endH < win.startH || (win.endH === win.startH && (win.endM || 0) < (win.startM || 0));
+            if (isOvernight) {
+                var pastEnd = (hTz < win.endH) || (hTz === win.endH && minTz < (win.endM || 0));
+                if (pastEnd) startMs -= 86400000;
+                else         endMs   += 86400000;
+            }
+        }
+        function toDisplayStr(ms) {
+            var d = new Date(ms + tzOff * 3600000);
+            return ('0'+(d.getUTCMonth()+1)).slice(-2)+'/'+('0'+d.getUTCDate()).slice(-2)+'/'+d.getUTCFullYear()+' '+('0'+d.getUTCHours()).slice(-2)+':'+('0'+d.getUTCMinutes()).slice(-2);
+        }
+        return { start: toDisplayStr(startMs), end: toDisplayStr(endMs) };
+    }
+    function applyCptPreset(id) {
+        var startEl = document.getElementById('he-ib-cpt-start-input');
+        var endEl   = document.getElementById('he-ib-cpt-end-input');
+        if (id === 'any') {
+            if (startEl) startEl.value = '';
+            if (endEl)   endEl.value   = '';
+        } else {
+            var d = getCptPresetDates(id);
+            if (startEl) startEl.value = d.start;
+            if (endEl)   endEl.value   = d.end;
+        }
+        if (typeof renderIBTabs === 'function') renderIBTabs();
+        if (typeof renderIBTable === 'function') renderIBTable();
+    }
+    function buildCptOptions() {
+        var activePresetId = getActiveCptPreset(new Date().getHours());
+        var opts = '<option value="any">\u2014 Any \u2014</option>';
+        opts += cptWindows.map(function(w) {
+            var timeStr = ('0' + w.startH).slice(-2) + ':' + ('0' + (w.startM || 0)).slice(-2) +
+                          '-' + ('0' + w.endH).slice(-2) + ':' + ('0' + (w.endM || 0)).slice(-2);
+            var selected = w.id === activePresetId ? ' selected' : '';
+            return '<option value="' + w.id + '"' + selected + '>' + w.label + '  ' + timeStr + '</option>';
+        }).join('');
+        return opts;
+    }
+    loadCptWindows();
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END INBOUND Stage 2c
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INBOUND Stage 2d — header controls, tabs, refresh orchestration.
+    // Mounts into #he-ib-view. Table render (renderIBTable) lands in 2e.
+    // ═══════════════════════════════════════════════════════════════════════════
+    var ibViewBuilt = false;
+    var ibSelectedIds = new Set();
+    // Drag-select state (module-level, matches Hydra)
+    var dragAnchor = null, dragCurrent = null, isDragging = false, autoScrollTimer = null;
+
+    // Prune selected VRIDs no longer present after a refresh (verbatim from Hydra)
+    function reconcileIbSelection() {
+        if (!ibSelectedIds || ibSelectedIds.size === 0) return false;
+        if (!Array.isArray(ibTableData)) return false;
+        var present = new Set();
+        ibTableData.forEach(function(r) { if (r && r.vrid != null) present.add(r.vrid); });
+        var changed = false;
+        Array.from(ibSelectedIds).forEach(function(v) {
+            if (!present.has(v)) { ibSelectedIds.delete(v); changed = true; }
+        });
+        return changed;
+    }
+
+    function renderInboundView() {
+        var host = document.getElementById('he-ib-view');
+        if (!host) return;
+        if (ibViewBuilt) return; // build once; refresh re-renders table only
+        ibViewBuilt = true;
+
+        var hour = new Date().getHours();
+        var activePresetId = getActiveCptPreset(hour);
+        var dates = getCptPresetDates(activePresetId);
+        var inp = 'background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);padding:3px 7px;font-size:12px;outline:none';
+
+        host.innerHTML =
+            '<div id="he-ib-header" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--he-border);border-left:3px solid #cc1040;background:var(--he-panel);flex-wrap:wrap;flex-shrink:0">' +
+                '<label style="color:var(--he-muted);font-size:11px">Site</label>' +
+                '<input id="he-ib-node-input" style="' + inp + ';width:58px;text-transform:uppercase" value="' + (engineSettings.siteCode || DEFAULT_NODE) + '">' +
+                '<input type="hidden" id="he-ib-start-input" value="0"><input type="hidden" id="he-ib-end-input" value="0">' +
+                '<span style="width:1px;height:22px;background:var(--he-border)"></span>' +
+                '<label style="color:var(--he-muted);font-size:11px">CPT</label>' +
+                '<select id="he-ib-cpt-preset" style="' + inp + ';cursor:pointer;font-weight:700">' + buildCptOptions() + '</select>' +
+                '<input id="he-ib-cpt-start-input" type="text" style="' + inp + ';width:132px" value="' + dates.start + '" placeholder="MM/DD/YYYY HH:MM">' +
+                '<input id="he-ib-cpt-end-input" type="text" style="' + inp + ';width:132px" value="' + dates.end + '" placeholder="MM/DD/YYYY HH:MM">' +
+                '<span style="width:1px;height:22px;background:var(--he-border)"></span>' +
+                '<button id="he-ib-refresh-btn" style="border:none;border-radius:4px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#cc1040,#a00830);color:#fff">Refresh</button>' +
+                '<span id="he-ib-status" style="font-size:11px;color:var(--he-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;margin-left:auto;padding-right:4px"></span>' +
+            '</div>' +
+            '<div id="he-ib-search-bar" style="display:flex;align-items:center;gap:8px;padding:6px 14px;border-bottom:1px solid var(--he-border);background:var(--he-panel);flex-shrink:0;flex-wrap:wrap">' +
+                '<input id="he-ib-search" type="text" placeholder="Search VRID, route, door, status..." style="' + inp + ';width:240px">' +
+                '<button id="he-ib-search-clear" style="background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-muted);padding:4px 9px;font-size:12px;cursor:pointer">\u2715</button>' +
+                '<span id="he-ib-search-count" style="font-size:11px;color:var(--he-muted)"></span>' +
+                '<span style="width:1px;height:20px;background:var(--he-border);margin:0 4px"></span>' +
+                '<button class="he-ib-tfilter" data-tf="all" style="border-radius:4px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">All</button>' +
+                '<button class="he-ib-tfilter" data-tf="sortable" style="border-radius:4px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">Sortable</button>' +
+                '<button class="he-ib-tfilter" data-tf="xd" style="border-radius:4px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">XD</button>' +
+            '</div>' +
+            '<div id="he-ib-tabs" style="display:flex;align-items:center;flex-wrap:wrap;border-bottom:2px solid #cc1040;background:var(--he-panel);flex-shrink:0"></div>' +
+            '<div id="he-ib-selbar" style="display:none;align-items:center;gap:14px;padding:5px 14px;border-bottom:1px solid #5c1030;background:var(--he-panel);font-size:12px;flex-shrink:0">' +
+                '<span id="he-ib-sel-info" style="flex:1;min-width:0;color:var(--he-muted)"></span>' +
+                '<button id="he-ib-export-plan" style="background:linear-gradient(135deg,#cc1040,#a00830);color:#fff;border:none;border-radius:4px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer">Export To Plan</button>' +
+                '<button id="he-ib-sel-clear" style="background:none;border:none;color:var(--he-muted);cursor:pointer;font-size:12px">Clear</button>' +
+            '</div>' +
+            '<div id="he-ib-table-wrap" style="overflow:auto;flex:1;min-height:0;user-select:none;font-size:12px;position:relative"></div>';
+
+        // Wire controls
+        var cptSel = document.getElementById('he-ib-cpt-preset');
+        if (cptSel) cptSel.addEventListener('change', function() { applyCptPreset(cptSel.value); });
+        document.getElementById('he-ib-refresh-btn').addEventListener('click', function() { doIbRefresh(); });
+        document.getElementById('he-ib-export-plan').addEventListener('click', function() { exportSelectedToPlan(); });
+        document.getElementById('he-ib-sel-clear').addEventListener('click', function() { ibSelectedIds.clear(); updateIbSelBar(); renderIBTable(); });
+
+        // Search input
+        var searchEl = document.getElementById('he-ib-search');
+        if (searchEl) searchEl.addEventListener('input', function() {
+            ibFilterText = searchEl.value.trim();
+            renderIBTabs();
+            renderIBTable();
+        });
+        var searchClear = document.getElementById('he-ib-search-clear');
+        if (searchClear) searchClear.addEventListener('click', function() {
+            ibFilterText = '';
+            if (searchEl) searchEl.value = '';
+            renderIBTabs();
+            renderIBTable();
+        });
+        // Trailer filter buttons (All / Sortable / XD) — exclusive
+        document.querySelectorAll('.he-ib-tfilter').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                ibTrailerFilter = btn.getAttribute('data-tf');
+                ibFilterXD = (ibTrailerFilter === 'xd');
+                ibFilterSortable = (ibTrailerFilter === 'sortable');
+                updateTfilterButtons();
+                renderIBTabs();
+                renderIBTable();
+            });
+        });
+        updateTfilterButtons();
+
+        renderIBTabs();
+        if (typeof renderIBTable === 'function') renderIBTable();
+    }
+
+    function updateTfilterButtons() {
+        document.querySelectorAll('.he-ib-tfilter').forEach(function(btn) {
+            var active = btn.getAttribute('data-tf') === ibTrailerFilter;
+            btn.style.background = active ? '#3d1020' : 'var(--he-bg)';
+            btn.style.color = active ? '#ff4070' : 'var(--he-muted)';
+            btn.style.border = '1px solid ' + (active ? '#cc1040' : 'var(--he-border)');
+        });
+    }
+
+    function updateIbSelBar() {
+        reconcileIbSelection();
+        var bar = document.getElementById('he-ib-selbar');
+        var info = document.getElementById('he-ib-sel-info');
+        if (!bar) return;
+        if (ibSelectedIds.size === 0) { bar.style.display = 'none'; return; }
+        bar.style.display = 'flex';
+        var sel = (ibTableData || []).filter(function(r) { return ibSelectedIds.has(r.vrid); });
+        // Sum each visible numeric column across selected rows (identical to Hydra)
+        var visibleCols = ibColOrder.filter(function(k) { return ibVisibleCols.has(k); })
+            .map(function(k) { return IB_COLS.find(function(c) { return c.key === k; }); }).filter(Boolean);
+        var parts = [];
+        visibleCols.forEach(function(c) {
+            if (c.type !== 'num' || c.key === 'progress') return;
+            var sum = sel.reduce(function(s, r) { return s + (Number(r[c.key]) || 0); }, 0);
+            parts.push(c.label + ': <strong style="color:#ff9900">' + sum.toLocaleString() + '</strong>');
+        });
+        if (info) info.innerHTML = '<strong style="color:#ff9900">' + ibSelectedIds.size + '</strong> trailer' + (ibSelectedIds.size !== 1 ? 's' : '') +
+            ' selected &nbsp;|&nbsp; ' + parts.join(' &nbsp; ');
+    }
+
+    // Sum selected trailers' package sizes and write into the Plan Volume Mix.
+    function exportSelectedToPlan() {
+        if (ibSelectedIds.size === 0) return;
+        var sums = { extraSmall:0, small:0, medium:0, large:0, extraLarge:0, nonCon:0, nonConPlus:0 };
+        (ibTableData || []).forEach(function(r) {
+            if (!ibSelectedIds.has(r.vrid)) return;
+            sums.extraSmall += r.extraSmall || 0;
+            sums.small      += r.small || 0;
+            sums.medium     += r.medium || 0;
+            sums.large      += r.large || 0;
+            sums.extraLarge += r.extraLarge || 0;
+            sums.nonCon     += r.ncOnly || 0;
+            sums.nonConPlus += r.ncPlus || 0;
+        });
+        var total = sums.extraSmall + sums.small + sums.medium + sums.large + sums.extraLarge + sums.nonCon + sums.nonConPlus;
+        if (!engineSettings.planVars) engineSettings.planVars = {};
+        // Store exact package counts per size (renderPlanVarsPanel prefers these)
+        engineSettings.planVars.volumeMixPackages = sums;
+        engineSettings.planVars.sortVolumeGoal = String(total);
+        // Sync packageBreakdown percentages to the exported mix
+        if (!engineSettings.packageBreakdown) engineSettings.packageBreakdown = {};
+        var pctKeys = { extraSmall:'extraSmall', small:'small', medium:'medium', large:'large', extraLarge:'extraLarge', nonCon:'nonCon', nonConPlus:'nonConPlus' };
+        Object.keys(pctKeys).forEach(function(k) {
+            engineSettings.packageBreakdown[k] = total > 0 ? ((sums[k] / total) * 100).toFixed(2) : '0';
+        });
+        saveSettings();
+        // Switch to Engine → Plan so the result is visible
+        var engTab = document.querySelector('.he-view-tab.eng-tab');
+        if (engTab) engTab.click();
+        var planTabBtn = document.querySelector('.he-tab[data-tab="plan"]');
+        if (planTabBtn) planTabBtn.click();
+        if (typeof renderPlanVarsPanel === 'function') renderPlanVarsPanel();
+        if (typeof renderPlanTable === 'function') renderPlanTable();
+        setStatus('\u2714 Exported ' + total.toLocaleString() + ' pkgs from ' + ibSelectedIds.size + ' trailers to Plan');
+    }
+
+    function doIbRefresh() {
+        var btn = document.getElementById('he-ib-refresh-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+        setStatus('Authenticating\u2026');
+        fetchToken().then(function() {
+            return fetchAndBuildIB(function() {
+                if (typeof renderIBTable === 'function') renderIBTable();
+                renderIBTabs();
+            }, false);
+        }).then(function(data) {
+            ibTableData = data || [];
+            reconcileIbSelection();
+            renderIBTabs();
+            if (typeof renderIBTable === 'function') renderIBTable();
+            setStatus('\u2714 ' + ibTableData.length + ' inbound loads \u2014 ' + new Date().toLocaleTimeString());
+        }).catch(function(e) {
+            console.error('[Hydra Engine] IB refresh failed:', e);
+            setStatus('\u2717 ' + (e && e.message ? e.message : e));
+        }).then(function() {
+            if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+        });
+    }
+
+    function renderIBTabs() {
+        var wrap = document.getElementById('he-ib-tabs');
+        if (!wrap) return;
+        wrap.innerHTML = IB_TABS.map(function(t) {
+            var rows = (t.isChart) ? [] : getIBFiltered(t.id);
+            var active = ibActiveTab === t.id;
+            var countHtml = t.isChart ? '' : '<span style="margin-left:5px;background:' + (active ? '#3d1020' : 'var(--he-border2)') + ';color:' + (active ? '#ff4070' : 'var(--he-muted)') + ';border:1px solid ' + (active ? '#ff4070' : 'transparent') + ';border-radius:8px;padding:0 6px;font-size:10px;font-weight:700">' + rows.length + '</span>';
+            return '<div class="he-ib-tab" data-tab="' + t.id + '" style="padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;color:' + (active ? '#ff4070' : 'var(--he-muted)') + ';border-bottom:3px solid ' + (active ? '#ff2855' : 'transparent') + ';margin-bottom:-2px;user-select:none">' + t.label + countHtml + '</div>';
+        }).join('');
+        wrap.querySelectorAll('.he-ib-tab').forEach(function(el) {
+            el.addEventListener('click', function() {
+                ibActiveTab = el.getAttribute('data-tab');
+                renderIBTabs();
+                if (typeof renderIBTable === 'function') renderIBTable();
+            });
+        });
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END INBOUND Stage 2d
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INBOUND Stage 2e — IB table render. Faithful to Hydra for the in-scope
+    // default columns; excluded branches (dock-door/YMS/obRoutes/projFinish)
+    // omitted. Styled to match Hydra's dark red-accented IB table.
+    // ═══════════════════════════════════════════════════════════════════════════
+    var ROUTE_LABELS = {
+        'route-blue': 'Small box - fluid',
+        'route-green': 'Small box - containerized',
+        'route-orange': 'Big box - fluid',
+        'route-yellow': 'Big box - containerized',
+    };
+    var ROUTE_PILL = {
+        'route-yellow': { bg: '#f5c518', color: '#000' },
+        'route-green':  { bg: '#4caf50', color: '#000' },
+        'route-orange': { bg: '#ff9800', color: '#000' },
+        'route-blue':   { bg: '#1565c0', color: '#fff' }
+    };
+    var SVG_53FT_SRC = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 24"><rect x="18" y="3" width="44" height="15" rx="1" fill="white" stroke="#999" stroke-width="1"/><line x1="18" y1="8" x2="62" y2="8" stroke="#ddd" stroke-width="0.5"/><line x1="18" y1="13" x2="62" y2="13" stroke="#ddd" stroke-width="0.5"/><rect x="3" y="7" width="16" height="11" rx="2" fill="#cc2200"/><rect x="7" y="3" width="11" height="6" rx="1" fill="#cc2200"/><rect x="8" y="4" width="7" height="4" rx="0.5" fill="#88ccff" opacity="0.9"/><rect x="16" y="13" width="3" height="2" fill="#666"/><circle cx="26" cy="20" r="3" fill="#333"/><circle cx="26" cy="20" r="1.2" fill="#666"/><circle cx="34" cy="20" r="3" fill="#333"/><circle cx="34" cy="20" r="1.2" fill="#666"/><circle cx="50" cy="20" r="3" fill="#333"/><circle cx="50" cy="20" r="1.2" fill="#666"/><circle cx="58" cy="20" r="3" fill="#333"/><circle cx="58" cy="20" r="1.2" fill="#666"/><circle cx="8" cy="20" r="3" fill="#333"/><circle cx="8" cy="20" r="1.2" fill="#666"/></svg>';
+    var SVG_BOX_SRC = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 24"><rect x="10" y="4" width="28" height="14" rx="1" fill="white" stroke="#999" stroke-width="1"/><rect x="2" y="8" width="10" height="10" rx="2" fill="#cc2200"/><rect x="3" y="9" width="5" height="5" rx="0.5" fill="#88ccff" opacity="0.9"/><circle cx="8" cy="20" r="3" fill="#333"/><circle cx="8" cy="20" r="1.2" fill="#666"/><circle cx="28" cy="20" r="3" fill="#333"/><circle cx="28" cy="20" r="1.2" fill="#666"/><circle cx="35" cy="20" r="3" fill="#333"/><circle cx="35" cy="20" r="1.2" fill="#666"/></svg>';
+    var SVG_53FT = 'data:image/svg+xml;base64,' + btoa(SVG_53FT_SRC);
+    var SVG_BOX = 'data:image/svg+xml;base64,' + btoa(SVG_BOX_SRC);
+    var EQUIP_MAP = {
+        'FIFTY_THREE_FOOT_TRUCK': { src: SVG_53FT, label: '53ft Trailer', isSvg: true, w: 40, h: 15 },
+        'TWENTY_SIX_FOOT_BOX_TRUCK': { src: SVG_BOX, label: '26ft Box', isSvg: true, w: 28, h: 15 },
+        'INTERMODAL': { src: '\uD83D\uDEA2', label: 'Intermodal', isSvg: false },
+        'INTERMODAL_CONTAINER': { src: '\uD83D\uDEA2', label: 'Intermodal', isSvg: false },
+        'SPRINTER': { src: '\uD83D\uDE8C', label: 'Sprinter', isSvg: false },
+        'STRAIGHT_TRUCK': { src: '\uD83D\uDE9A', label: 'Straight Truck', isSvg: false }
+    };
+    function equipCell(t) {
+        if (!t) return { html: '?', label: 'Unknown' };
+        var k = t.toUpperCase().trim(), i = EQUIP_MAP[k];
+        if (!i) return { html: '?', label: t };
+        if (i.isSvg) return { html: '<img src="' + i.src + '" style="width:' + i.w + 'px;height:' + i.h + 'px;vertical-align:middle;">', label: i.label };
+        return { html: i.src, label: i.label };
+    }
+    function routeColorClass(r) {
+        var isCtn = r.fluid < 50 && r.containerized > 50;
+        if (isCtn) return r.noncon > 50 ? 'route-yellow' : 'route-green';
+        if (r.total > 0) return r.noncon > 50 ? 'route-orange' : 'route-blue';
+        return '';
+    }
+    function formatEtaCountdown(etaMs) {
+        if (!etaMs || typeof etaMs !== 'number') return '\u2014';
+        var diffMin = Math.round((etaMs - Date.now()) / 60000);
+        var past = diffMin < 0;
+        var abs = Math.abs(diffMin);
+        var sign = past ? '-' : '';
+        var countdown = (abs < 60) ? (sign + abs + 'm') : (sign + Math.floor(abs / 60) + 'h ' + (abs % 60) + 'm');
+        var tzOff = getEffectiveTzOffset();
+        var arrD = new Date(etaMs + tzOff * 3600000);
+        var arrTime = '(' + ('0' + arrD.getUTCHours()).slice(-2) + ':' + ('0' + arrD.getUTCMinutes()).slice(-2) + ')';
+        return countdown + ' ' + arrTime;
+    }
+    function computeSlaThresholdMs() {
+        if (!cptSlaEnabled) return null;
+        var _slaH = (typeof cptSlaHours === 'number' && cptSlaHours > 0) ? cptSlaHours : 4;
+        var _lastEnd = null;
+        if (selectedCptIds && selectedCptIds.length) {
+            selectedCptIds.forEach(function(id){
+                var _d = getCptPresetDates(id);
+                var _ems = parseCptMs(_d.end);
+                if (_ems !== null && (_lastEnd === null || _ems > _lastEnd)) _lastEnd = _ems;
+            });
+        }
+        if (_lastEnd === null) {
+            var _endEl = document.getElementById('he-ib-cpt-end-input');
+            if (_endEl && _endEl.value) _lastEnd = parseCptMs(_endEl.value);
+        }
+        if (_lastEnd === null) return null;
+        return _lastEnd - _slaH * 3600000;
+    }
+
+    var IB_BADGE_COLORS = {
+        'UNLOADING_IN_PROGRESS': ['#1a4731','#2e9e4f'], 'READY_FOR_UNLOAD': ['#1a3a5c','#2f7fc8'],
+        'UNLOADING_PAUSED': ['#3d2a00','#c87f0a'], 'LOAD_ARRIVED': ['#3d2a00','#cc7a00'],
+        'IN_TRANSIT': ['#2a1a3d','#8e44ad'], 'SCHEDULED': ['#1a2a1a','#2e9e4f'],
+        'MANIFESTED': ['#2a1a3d','#8e44ad'], 'COMPLETED': ['#1a1a2a','#3f51b5']
+    };
+    function ibBadge(ds, status) {
+        var c = IB_BADGE_COLORS[ds] || IB_BADGE_COLORS[status] || ['#2a2a2a','#bbb'];
+        return '<span style="display:inline-block;background:' + c[0] + ';color:' + c[1] + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.08);white-space:nowrap">' + String(ds).replace(/_/g,' ') + '</span>';
+    }
+
+    function ibNumFmt(v) { return (v || 0).toLocaleString(); }
+
+    function renderIBTable() {
+        var wrap = document.getElementById('he-ib-table-wrap');
+        if (!wrap) return;
+
+        if (!Array.isArray(ibTableData) || ibTableData.length === 0) {
+            wrap.innerHTML = '<div style="padding:40px;text-align:center;color:var(--he-muted);font-size:13px">Click <strong style="color:#ff4070">Refresh</strong> to load Inbound.</div>';
+            return;
+        }
+        if (ibActiveTab === 'volavail') {
+            wrap.innerHTML = '<div style="padding:40px;text-align:center;color:var(--he-muted);font-size:13px">Volume Available chart \u2014 ported in the next sub-stage.</div>';
+            return;
+        }
+
+        var data = getIBFiltered(ibActiveTab);
+        var _sortState = getIbSort();
+        var _sortKey = _sortState.key, _sortDir = _sortState.dir;
+        data.sort(function(a, b) {
+            var av = a[_sortKey], bv = b[_sortKey];
+            if (_sortKey === 'sat') { av = a.satMs; bv = b.satMs; }
+            if (_sortKey === 'aat') { av = a.aatMs; bv = b.aatMs; }
+            if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
+            if (_sortKey === 'progress') {
+                av = a.total > 0 ? (a.total - a.remaining) / a.total : 0;
+                bv = b.total > 0 ? (b.total - b.remaining) / b.total : 0;
+            }
+            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * _sortDir;
+            return String(av || '').localeCompare(String(bv || '')) * _sortDir;
+        });
+
+        var visArr = ibColOrder.filter(function(k) { return ibVisibleCols.has(k); });
+        var thStyle = 'position:sticky;top:0;z-index:10;background:#3a3a3a;color:#ff2855;padding:7px 12px;text-align:center;border-bottom:2px solid #cc1040;white-space:nowrap;font-weight:700;cursor:pointer';
+        var headHtml = '<tr>' + visArr.map(function(k) {
+            var c = IB_COLS.find(function(col) { return col.key === k; });
+            var arrow = _sortKey === k ? (_sortDir === 1 ? ' \u25B2' : ' \u25BC') : '';
+            return '<th data-key="' + k + '" style="' + thStyle + '">' + (c ? c.label : k) + arrow + '</th>';
+        }).join('') + '</tr>';
+
+        var totals = { total: 0, sortable: 0, crossdock: 0, cpt: 0, noncon: 0, ncCpt: 0, nextCpt: 0, containers: 0, fluid: 0, containerized: 0 };
+        data.forEach(function(r) {
+            totals.total += r.total || 0; totals.sortable += r.sortable || 0; totals.crossdock += r.crossdock || 0;
+            totals.cpt += r.cpt || 0; totals.noncon += r.noncon || 0; totals.ncCpt += r.ncCpt || 0; totals.nextCpt += r.nextCpt || 0;
+            totals.containers += r.containers || 0; totals.fluid += r.fluid || 0; totals.containerized += r.containerized || 0;
+        });
+        totals.fluidPct = totals.total > 0 ? Math.round((totals.fluid / totals.total) * 100) : 0;
+        totals.containerizedPct = totals.total > 0 ? Math.round((totals.containerized / totals.total) * 100) : 0;
+        var totCell = 'padding:5px 10px;font-weight:700;background:#242424;color:#ddd;border-bottom:1px solid #444';
+        var totalsHtml = '<tr>' + visArr.map(function(k) {
+            var v = '';
+            if (k === 'equip') v = data.length;
+            else if (k === 'vrid') v = 'TOTAL';
+            else if (k === 'fluidPct') v = totals.fluidPct + '%';
+            else if (k === 'containerizedPct') v = totals.containerizedPct + '%';
+            else if (totals[k] !== undefined) v = ibNumFmt(totals[k]);
+            return '<td style="' + totCell + (typeof v === 'number' || /^\d/.test(String(v)) ? ';text-align:right' : '') + '">' + v + '</td>';
+        }).join('') + '</tr>';
+
+        var _slaThresholdMs = computeSlaThresholdMs();
+        var tdBase = 'padding:4px 10px;border-bottom:1px solid #2a2a2a;white-space:nowrap';
+        var rowsHtml = data.map(function(r) {
+            var noHeat = (_slaThresholdMs !== null && r.aatMs && r.aatMs > _slaThresholdMs);
+            var cells = visArr.map(function(k) {
+                if (k === 'equip') { var eq = equipCell(r.equipType); return '<td style="' + tdBase + ';text-align:center" title="' + eq.label + '">' + eq.html + '</td>'; }
+                if (k === 'vrid') return '<td style="' + tdBase + '"><span class="he-ib-copy" data-copy="' + r.vrid + '" style="color:#4fc3f7;font-weight:600;cursor:pointer" title="Click to copy">' + r.vrid + '</span></td>';
+                if (k === 'route') {
+                    var rc = routeColorClass(r);
+                    var pill = ROUTE_PILL[rc];
+                    var routeTxt = r.route || '\u2014';
+                    if (!pill) return '<td style="' + tdBase + '">' + routeTxt + '</td>';
+                    return '<td style="' + tdBase + '"><span title="' + (ROUTE_LABELS[rc] || '') + '" style="background:' + pill.bg + ';color:' + pill.color + ';border-radius:4px;padding:1px 7px;font-weight:700;border:1px solid rgba(255,255,255,0.08)">' + routeTxt + '</span></td>';
+                }
+                if (k === 'status') { var ds = r.displayStatus || r.status; return '<td style="' + tdBase + '">' + ibBadge(ds, r.status) + '</td>'; }
+                if (k === 'progress') {
+                    var pct = (r.total > 0) ? Math.max(0, Math.min(100, Math.round(((r.total - r.remaining) / r.total) * 100))) : 0;
+                    var pc = pct < 10 ? '#c0392b' : pct < 25 ? '#d35400' : pct < 50 ? '#e67e22' : pct < 75 ? '#f1c40f' : '#27ae60';
+                    return '<td style="' + tdBase + ';min-width:90px"><div style="position:relative;background:#2a3a4e;border:1px solid rgba(255,255,255,0.08);border-radius:3px;height:16px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + pc + '"></div><span style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)">' + pct + '%</span></div></td>';
+                }
+                if (k === 'cpt') return cptCellHtml(r.cpt, noHeat);
+                if (k === 'ncCpt') return ncCptCellHtml(r.ncCpt, noHeat);
+                if (k === 'fluidPct') return '<td style="' + tdBase + ';text-align:right">' + r.fluidPct + '%</td>';
+                if (k === 'containerizedPct') return '<td style="' + tdBase + ';text-align:right">' + r.containerizedPct + '%</td>';
+                if (k === 'containerized') {
+                    var _ppc = ppcColorStyle(r.containerized, r.containers);
+                    return '<td style="' + tdBase + ';text-align:right;' + _ppc + '">' + ibNumFmt(r.containerized) + '</td>';
+                }
+                if (k === 'eta') {
+                    if (!r.etaMs) return '<td style="' + tdBase + '">\u2014</td>';
+                    var etaColor = r.etaMs < Date.now() ? '#ef5350' : 'var(--he-text)';
+                    return '<td style="' + tdBase + ';color:' + etaColor + '">' + formatEtaCountdown(r.etaMs) + '</td>';
+                }
+                if (k === 'sat' || k === 'aat') return '<td style="' + tdBase + '">' + (r[k] || '\u2014') + '</td>';
+                if (k === 'location' || k === 'route' || k === 'vrid') return '<td style="' + tdBase + '">' + (r[k] != null ? r[k] : '\u2014') + '</td>';
+                // numeric default
+                var val = r[k];
+                if (typeof val === 'number') return '<td style="' + tdBase + ';text-align:right">' + (val === 0 ? '<span style="color:#3a4a5a">0</span>' : ibNumFmt(val)) + '</td>';
+                return '<td style="' + tdBase + '">' + (val != null ? val : '\u2014') + '</td>';
+            }).join('');
+            return '<tr class="he-ib-row' + (ibSelectedIds.has(r.vrid) ? ' selected' : '') + '" data-vrid="' + r.vrid + '" style="cursor:pointer">' + cells + '</tr>';
+        }).join('');
+
+        wrap.innerHTML = '<table style="width:max-content;border-collapse:collapse;font-size:12px"><thead>' + headHtml + '</thead><tbody>' + totalsHtml + rowsHtml + '</tbody></table>';
+
+        var countEl = document.getElementById('he-ib-search-count');
+        if (countEl) countEl.textContent = (ibFilterText || ibFilterXD || ibFilterSortable) ? (data.length + ' shown') : '';
+
+        // Header sort
+        wrap.querySelectorAll('th[data-key]').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var k = th.getAttribute('data-key');
+                var s = getIbSort();
+                if (s.key === k) s.dir = -s.dir; else { s.key = k; s.dir = -1; }
+                renderIBTable();
+            });
+        });
+        // Copy VRID
+        wrap.querySelectorAll('.he-ib-copy').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var v = el.getAttribute('data-copy');
+                try { navigator.clipboard.writeText(v); } catch(_) {}
+                var old = el.textContent; el.textContent = 'Copied!';
+                setTimeout(function(){ el.textContent = old; }, 900);
+            });
+        });
+        // Row selection — drag-select with auto-scroll, shift-range, click-toggle (identical to Hydra)
+        var wrapEl = wrap;
+        if (wrapEl && wrapEl._cleanupDrag) { wrapEl._cleanupDrag(); wrapEl._cleanupDrag = null; }
+        var dataRows = Array.from(wrapEl.querySelectorAll('tr.he-ib-row'));
+        var lastClickIdx = null;
+        var dragLastX = 0, dragLastY = 0;
+
+        dataRows.forEach(function(row, idx) {
+            row.addEventListener('mousedown', function(e) {
+                if (e.target.tagName === 'A' || (e.target.classList && e.target.classList.contains('he-ib-copy')) || e.button !== 0) return;
+                e.preventDefault();
+                dragAnchor = idx; dragCurrent = idx; isDragging = false;
+            });
+        });
+
+        var ibStopAutoScroll = function() {
+            if (autoScrollTimer) { clearInterval(autoScrollTimer); autoScrollTimer = null; }
+        };
+        var ibDoAutoScroll = function(direction) {
+            if (autoScrollTimer) return;
+            autoScrollTimer = setInterval(function() {
+                if (dragAnchor === null) { clearInterval(autoScrollTimer); autoScrollTimer = null; return; }
+                wrapEl.scrollTop += direction * 18;
+                var target = document.elementFromPoint(dragLastX, dragLastY);
+                if (!target) return;
+                var targetRow = target.closest ? target.closest('tr.he-ib-row') : null;
+                var tidx = targetRow ? dataRows.indexOf(targetRow) : -1;
+                if (tidx !== -1 && tidx !== dragCurrent) { isDragging = true; dragCurrent = tidx; }
+                var lo = Math.min(dragAnchor, dragCurrent), hi = Math.max(dragAnchor, dragCurrent);
+                dataRows.forEach(function(r, i) { r.classList.toggle('drag-preview', i >= lo && i <= hi); });
+            }, 40);
+        };
+        var ibOnMouseMove = function(e) {
+            if (dragAnchor === null) return;
+            dragLastX = e.clientX; dragLastY = e.clientY;
+            var wrapRect = wrapEl.getBoundingClientRect();
+            var edgeZone = 40;
+            if (e.clientY > wrapRect.bottom - edgeZone) { ibDoAutoScroll(1); }
+            else if (e.clientY < wrapRect.top + edgeZone) { ibDoAutoScroll(-1); }
+            else { ibStopAutoScroll(); }
+            var target = document.elementFromPoint(e.clientX, e.clientY);
+            if (!target) return;
+            var targetRow = target.closest ? target.closest('tr.he-ib-row') : null;
+            if (!targetRow) return;
+            var tidx = dataRows.indexOf(targetRow);
+            if (tidx === -1 || tidx === dragCurrent) return;
+            isDragging = true; dragCurrent = tidx;
+            var lo = Math.min(dragAnchor, dragCurrent), hi = Math.max(dragAnchor, dragCurrent);
+            dataRows.forEach(function(r, i) { r.classList.toggle('drag-preview', i >= lo && i <= hi); });
+        };
+        var ibOnMouseUp = function(e) {
+            ibStopAutoScroll();
+            if (dragAnchor === null) return;
+            var lo = Math.min(dragAnchor, dragCurrent), hi = Math.max(dragAnchor, dragCurrent);
+            if (!isDragging) {
+                var row = dataRows[dragAnchor], vrid = row ? row.dataset.vrid : null;
+                if (vrid && e.target.tagName !== 'A' && !(e.target.classList && e.target.classList.contains('he-ib-copy'))) {
+                    if (e.shiftKey && lastClickIdx !== null) {
+                        var slo = Math.min(lastClickIdx, dragAnchor), shi = Math.max(lastClickIdx, dragAnchor);
+                        for (var i = slo; i <= shi; i++) { ibSelectedIds.add(dataRows[i].dataset.vrid); dataRows[i].classList.add('selected'); }
+                    } else {
+                        if (ibSelectedIds.has(vrid)) { ibSelectedIds.delete(vrid); row.classList.remove('selected'); }
+                        else { ibSelectedIds.add(vrid); row.classList.add('selected'); }
+                        lastClickIdx = dragAnchor;
+                    }
+                }
+            } else {
+                if (!e.shiftKey) { ibSelectedIds.clear(); dataRows.forEach(function(r) { r.classList.remove('selected'); }); }
+                for (var j = lo; j <= hi; j++) { ibSelectedIds.add(dataRows[j].dataset.vrid); dataRows[j].classList.add('selected'); }
+                lastClickIdx = hi;
+            }
+            dataRows.forEach(function(r) { r.classList.remove('drag-preview'); });
+            dragAnchor = null; dragCurrent = null; isDragging = false;
+            updateIbSelBar();
+        };
+        document.addEventListener('mousemove', ibOnMouseMove);
+        document.addEventListener('mouseup', ibOnMouseUp);
+        wrapEl._cleanupDrag = function() {
+            ibStopAutoScroll();
+            document.removeEventListener('mousemove', ibOnMouseMove);
+            document.removeEventListener('mouseup', ibOnMouseUp);
+        };
+        updateIbSelBar();
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // END INBOUND Stage 2e
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SECTION 2: DATA LAYER (API wrappers — swap for fetch() in webapp)
+    // ═══════════════════════════════════════════════════════════════════════════
 
     function fetchIBData(node) {
         // TODO: pull inbound trailer data from SSP
@@ -453,6 +1945,23 @@
 
     function createPanel() {
 
+    function applyTheme() {
+        var theme = GM_getValue('he-theme', 'light');
+        document.documentElement.classList.remove('he-theme-light', 'he-theme-dark');
+        document.documentElement.classList.add(theme === 'dark' ? 'he-theme-dark' : 'he-theme-light');
+        var btn = document.getElementById('he-theme-toggle');
+        if (btn) {
+            btn.textContent = (theme === 'dark') ? '☾' : '☀';
+            btn.title = (theme === 'dark') ? 'Switch to light mode' : 'Switch to dark mode';
+        }
+    }
+
+    function toggleTheme() {
+        var theme = GM_getValue('he-theme', 'light');
+        GM_setValue('he-theme', theme === 'dark' ? 'light' : 'dark');
+        applyTheme();
+    }
+
     function savePanelGeometry() {
         var panel = document.getElementById('hydra-engine-panel');
         if (!panel) return;
@@ -474,11 +1983,34 @@
         // Inject CSS for FAB and panel
         var style = document.createElement('style');
         style.textContent =
+            // Theme variables — light (default) and dark
+            'html.he-theme-light{--he-bg:#ffffff;--he-panel:#f6f8fa;--he-text:#1a1a1a;--he-muted:#57606a;--he-border:#d0d7de;--he-border2:#e5e8ec}' +
+            'html.he-theme-dark{--he-bg:#0d1117;--he-panel:#161b22;--he-text:#e6edf3;--he-muted:#8b949e;--he-border:#30363d;--he-border2:#21262d}' +
+            // Fallback if no theme class is present yet (treat as light)
+            'html:not(.he-theme-light):not(.he-theme-dark){--he-bg:#ffffff;--he-panel:#f6f8fa;--he-text:#1a1a1a;--he-muted:#57606a;--he-border:#d0d7de;--he-border2:#e5e8ec}' +
             '#he-fab{position:fixed;top:6px;right:18px;z-index:99999;background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:2px solid transparent;border-radius:8px;padding:0;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);display:inline-flex;align-items:center;justify-content:center;transition:all .2s;line-height:0}' +
             '#he-fab:hover{transform:scale(1.06);box-shadow:0 4px 18px rgba(0,0,0,.6),0 0 18px rgba(255,48,48,0.6),0 0 18px rgba(32,200,240,0.55);filter:brightness(1.08)}' +
-            '#hydra-engine-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:80vh;min-width:400px;min-height:300px;z-index:99990;background:#0d1117;display:none;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e6edf3;box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px rgba(48,54,61,.8);border-radius:10px;overflow:visible}' +
-            '#hydra-engine-panel.open{display:flex}';
+            '#hydra-engine-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:80vh;min-width:400px;min-height:300px;z-index:99990;background:var(--he-bg);display:none;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--he-text);box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px rgba(48,54,61,.8);border-radius:10px;overflow:visible}' +
+            '#hydra-engine-panel.open{display:flex}' +
+            // View switcher (Hydra-style Inbound | Engine) — crimson→purple→navy gradient
+            '#he-view-switcher{display:flex;position:relative;flex-shrink:0;border-radius:10px 10px 0 0;overflow:visible;background:linear-gradient(90deg,#d01818 0%,#c01830 10%,#a81845 20%,#8e1a60 30%,#7a1880 38%,#8020a0 44%,#9020b0 48%,#a020b8 50%,#9028c0 52%,#8030c8 56%,#6040d0 62%,#4050d8 70%,#2868d8 80%,#1890e0 90%,#10b8ee 100%)}' +
+            '.he-view-tab{flex:1;padding:9px 27px;font-size:15px;font-weight:700;text-align:center;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;user-select:none;color:#fff;background:transparent;display:flex;align-items:center;gap:11px;text-shadow:0 1px 3px rgba(0,0,0,0.7);letter-spacing:0.5px}' +
+            '.he-view-tab.ib-tab{justify-content:flex-start;padding-left:20px}' +
+            '.he-view-tab.eng-tab{justify-content:flex-end;padding-right:20px}' +
+            '.he-view-tab:hover{filter:brightness(1.15)}' +
+            '.he-view-tab.ib-tab:hover{background:rgba(180,20,30,0.22)}' +
+            '.he-view-tab.eng-tab:hover{background:rgba(32,212,240,0.15)}' +
+            '.he-view-tab.ib-tab.active{border-bottom-color:#ff2855;background:rgba(255,40,85,0.25)}' +
+            '.he-view-tab.eng-tab.active{border-bottom-color:#20d4f0;background:rgba(32,212,240,0.20)}' +
+            '#he-logo-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:3px solid transparent;border-radius:8px;padding:0;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);line-height:0;z-index:2;cursor:grab}' +
+            '#he-logo-center img{height:43px;width:auto;display:block;filter:drop-shadow(0 0 8px rgba(255,255,255,0.5));border-radius:5px}' +
+            '#hydra-engine-panel.ib-view{box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px #cc1040}' +
+            '#hydra-engine-panel.eng-view{box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px #0a6e8a}' +
+            '#he-ib-table-wrap tr.he-ib-row.selected>td{background:rgba(255,40,85,0.18) !important}' +
+            '#he-ib-table-wrap tr.he-ib-row.drag-preview>td{background:rgba(255,40,85,0.30) !important}' +
+            '#he-ib-table-wrap tr.he-ib-row:hover>td{background:rgba(255,255,255,0.04)}';
         document.head.appendChild(style);
+        applyTheme();
 
         // FAB button (top-right, same style as Hydra)
         var fab = document.createElement('div');
@@ -492,46 +2024,56 @@
         var panel = document.createElement('div');
         panel.id = 'hydra-engine-panel';
         panel.innerHTML =
-            // Header - gradient bar with HYDRA logo in bordered pill (same as #hydra-fab in main Hydra)
-            '<div style="height:19px;background:linear-gradient(90deg,#d01818 0%,#c01830 10%,#a81845 20%,#8e1a60 30%,#7a1880 38%,#8020a0 44%,#9020b0 48%,#a020b8 50%,#9028c0 52%,#8030c8 56%,#6040d0 62%,#4050d8 70%,#2868d8 80%,#1890e0 90%,#10b8ee 100%);cursor:move;position:relative;border-radius:10px 10px 0 0;flex-shrink:0" id="he-header">' +
-                '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:3px solid transparent;border-radius:8px;padding:0;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);line-height:0;z-index:1">' +
-                    '<img src="' + GOLD_DRAGON_ICON + '" alt="Hydra" style="height:43px;width:auto;display:block;padding:0;filter:drop-shadow(0 0 8px rgba(255,255,255,0.5));border-radius:5px">' +
-                '</div>' +
-                '<button id="he-close" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px 8px;opacity:0.8" title="Close">✕</button>' +
+            // View switcher — Inbound (red) | Engine (blue), draggable centered dragon logo
+            '<div id="he-view-switcher">' +
+                '<div class="he-view-tab ib-tab" data-eview="IB"><span>Inbound</span></div>' +
+                '<div id="he-logo-center" title="Hydra Engine"><img src="' + GOLD_DRAGON_ICON + '" alt="Hydra"></div>' +
+                '<div class="he-view-tab eng-tab active" data-eview="ENG"><span>Engine</span></div>' +
+                '<button id="he-theme-toggle" style="position:absolute;right:52px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:15px;cursor:pointer;padding:4px 8px;opacity:0.85;z-index:3" title="Toggle light/dark">☀</button>' +
+                '<button id="he-close" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px;opacity:0.85;z-index:3" title="Close">✕</button>' +
             '</div>' +
+            // Inbound view (1:1 Hydra inbound — ported in stage 2)
+            '<div id="he-ib-view" style="flex:1;overflow:hidden;display:none;flex-direction:column">' +
+                '<div style="color:var(--he-muted);text-align:center;padding:40px;font-size:13px">Inbound view — porting from Hydra…</div>' +
+            '</div>' +
+            // Engine view (existing Build/Plan/Execute/Report)
+            '<div id="he-eng-view" style="flex:1;overflow:hidden;display:flex;flex-direction:column">' +
             // Tab bar
-            '<div style="display:flex;background:#161b22;border-bottom:1px solid #30363d">' +
-                '<button class="he-tab active" data-tab="build" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid #a020b8;color:#e6edf3;font-size:13px;font-weight:600;cursor:pointer">Build</button>' +
-                '<button class="he-tab" data-tab="plan" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid transparent;color:#8b949e;font-size:13px;font-weight:600;cursor:pointer">Plan</button>' +
-                '<button class="he-tab" data-tab="execute" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid transparent;color:#8b949e;font-size:13px;font-weight:600;cursor:pointer">Execute</button>' +
-                '<button class="he-tab" data-tab="report" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid transparent;color:#8b949e;font-size:13px;font-weight:600;cursor:pointer">Report</button>' +
+            '<div style="display:flex;background:var(--he-panel);border-bottom:1px solid var(--he-border)">' +
+                '<button class="he-tab active" data-tab="build" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid #a020b8;color:var(--he-text);font-size:13px;font-weight:600;cursor:pointer">Build</button>' +
+                '<button class="he-tab" data-tab="plan" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid transparent;color:var(--he-muted);font-size:13px;font-weight:600;cursor:pointer">Plan</button>' +
+                '<button class="he-tab" data-tab="execute" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid transparent;color:var(--he-muted);font-size:13px;font-weight:600;cursor:pointer">Execute</button>' +
+                '<button class="he-tab" data-tab="report" style="flex:1;padding:10px 0;background:none;border:none;border-bottom:2px solid transparent;color:var(--he-muted);font-size:13px;font-weight:600;cursor:pointer">Report</button>' +
             '</div>' +
             // Tab content
             '<div id="he-tab-build" class="he-tab-content" style="flex:1;overflow:hidden;display:flex">' +
                 // Left panel - Settings list
-                '<div style="width:200px;min-width:200px;border-right:1px solid #30363d;overflow-y:auto;padding:12px 0">' +
-                    '<div style="padding:4px 16px;font-size:10px;text-transform:uppercase;color:#8b949e;letter-spacing:1px;margin-bottom:4px">Settings</div>' +
-                    '<div class="he-setting-item" data-setting="site-code" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent;display:flex;justify-content:space-between;align-items:center">Site Code <span id="he-site-display" style="font-size:10px;color:#8b949e;font-weight:600">' + (engineSettings.siteCode || '—') + '</span></div>' +
-                    '<div class="he-setting-item" data-setting="presets" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">Presets</div>' +
-                    '<div class="he-setting-item" data-setting="sort-times" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">Sort Times</div>' +
-                    '<div class="he-setting-item" data-setting="plan-mode" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">Plan Mode</div>' +
-                    '<div class="he-setting-item" data-setting="mhe-type-list" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">MHE Type List</div>' +
-                    '<div class="he-setting-item" data-setting="mhe-type-attrs" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">MHE Type Attributes</div>' +
-                    '<div class="he-setting-item" data-setting="volume-mix" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">Volume Mix</div>' +
-                    '<div class="he-setting-item" data-setting="engineer-rates" style="padding:8px 16px;font-size:12px;color:#e6edf3;cursor:pointer;border-left:3px solid transparent">Engineer Rates</div>' +
+                '<div style="width:200px;min-width:200px;border-right:1px solid var(--he-border);overflow-y:auto;padding:12px 0">' +
+                    '<div style="padding:4px 16px;font-size:10px;text-transform:uppercase;color:var(--he-muted);letter-spacing:1px;margin-bottom:4px">Settings</div>' +
+                    '<div class="he-setting-item" data-setting="site-code" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent;display:flex;justify-content:space-between;align-items:center">Site Code <span id="he-site-display" style="font-size:10px;color:var(--he-muted);font-weight:600">' + (engineSettings.siteCode || '—') + '</span></div>' +
+                    '<div class="he-setting-item" data-setting="presets" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Presets</div>' +
+                    '<div class="he-setting-item" data-setting="sort-times" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Sort Times</div>' +
+                    '<div class="he-setting-item" data-setting="plan-mode" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Plan Mode</div>' +
+                    '<div class="he-setting-item" data-setting="mhe-type-list" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">MHE Type List</div>' +
+                    '<div class="he-setting-item" data-setting="mhe-type-attrs" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">MHE Type Attributes</div>' +
+                    '<div class="he-setting-item" data-setting="volume-mix" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Volume Mix</div>' +
+                    '<div class="he-setting-item" data-setting="engineer-rates" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Engineer Rates</div>' +
                 '</div>' +
                 // Right panel - Groups / Roles
                 '<div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column">' +
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-                        '<span style="font-size:12px;font-weight:600;color:#e6edf3">Groups / Roles</span>' +
-                        '<button id="he-add-group" style="padding:4px 10px;background:#1f6feb;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer">+ Add Group</button>' +
+                        '<span style="font-size:12px;font-weight:600;color:var(--he-text)">Groups / Roles</span>' +
+                        '<div style="display:flex;gap:6px">' +
+                            '<button id="he-check-graph" style="padding:4px 10px;background:#0d9488;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer">Check Graph</button>' +
+                            '<button id="he-add-group" style="padding:4px 10px;background:#1f6feb;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer">+ Add Group</button>' +
+                        '</div>' +
                     '</div>' +
                     '<div id="he-groups-list" style="flex:1;overflow-y:auto"></div>' +
                 '</div>' +
             '</div>' +
             '<div id="he-tab-plan" class="he-tab-content" style="flex:1;overflow:hidden;display:none">' +
                 // Left panel - Sort Details & KPIs
-                '<div style="width:340px;min-width:340px;border-right:1px solid #30363d;overflow-y:auto;padding:12px">' +
+                '<div style="width:340px;min-width:340px;border-right:1px solid var(--he-border);overflow-y:auto;padding:12px">' +
                     '<div id="he-plan-vars-panel"></div>' +
                 '</div>' +
                 // Right panel - Bottoms Up Planner table
@@ -544,7 +2086,8 @@
             '</div>' +
             '<div id="he-tab-report" class="he-tab-content" style="flex:1;overflow-y:auto;padding:20px;display:none">' +
                 '<div style="color:#555;text-align:center;width:100%;padding:40px">Report tab content</div>' +
-            '</div>';
+            '</div>' +
+            '</div>'; // close #he-eng-view
         document.body.appendChild(panel);
         restorePanelGeometry();
 
@@ -557,13 +2100,59 @@
         document.getElementById('he-close').addEventListener('click', function() {
             panel.classList.remove('open');
         });
+        var themeToggleBtn = document.getElementById('he-theme-toggle');
+        if (themeToggleBtn) themeToggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleTheme();
+        });
+        applyTheme();
 
-        // Draggable header
+        // View switcher: Inbound (red) | Engine (blue)
+        panel.classList.add('eng-view'); // default to Engine view
+        function switchEngineView(view) {
+            var ib = document.getElementById('he-ib-view');
+            var eng = document.getElementById('he-eng-view');
+            if (view === 'IB') {
+                panel.classList.remove('eng-view'); panel.classList.add('ib-view');
+                if (ib) ib.style.display = 'flex';
+                if (eng) eng.style.display = 'none';
+            } else {
+                panel.classList.remove('ib-view'); panel.classList.add('eng-view');
+                if (ib) ib.style.display = 'none';
+                if (eng) eng.style.display = 'flex';
+            }
+            document.querySelectorAll('.he-view-tab').forEach(function(t) {
+                t.classList.toggle('active', t.getAttribute('data-eview') === view);
+            });
+            GM_setValue('he-active-view', view);
+            if (view === 'IB' && typeof renderInboundView === 'function') renderInboundView();
+        }
+        document.querySelectorAll('.he-view-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() { switchEngineView(tab.getAttribute('data-eview')); });
+        });
+        // Restore last active view (default Engine)
+        switchEngineView(GM_getValue('he-active-view', 'ENG'));
+
+        // Ctrl/Cmd+A: select all inbound rows (identical to Hydra)
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'a' && panel.classList.contains('open') && panel.classList.contains('ib-view')) {
+                var _ae = e.target || document.activeElement;
+                if (_ae && (_ae.tagName === 'INPUT' || _ae.tagName === 'TEXTAREA' || _ae.tagName === 'SELECT' || _ae.isContentEditable)) return;
+                e.preventDefault();
+                var rows = Array.from(document.querySelectorAll('#he-ib-table-wrap tr.he-ib-row'));
+                if (!rows.length) return;
+                ibSelectedIds.clear();
+                rows.forEach(function(row) { ibSelectedIds.add(row.dataset.vrid); row.classList.add('selected'); });
+                updateIbSelBar();
+            }
+        });
+
+        // Draggable header (via the view switcher / logo; tabs and buttons still clickable)
         (function() {
-            var header = document.getElementById('he-header');
+            var header = document.getElementById('he-view-switcher');
             var isDragging = false, startX, startY, startLeft, startTop;
             header.addEventListener('mousedown', function(e) {
-                if (e.target.id === 'he-close') return;
+                if (e.target.closest('.he-view-tab') || e.target.id === 'he-close' || e.target.id === 'he-theme-toggle') return;
                 isDragging = true;
                 var rect = panel.getBoundingClientRect();
                 startX = e.clientX; startY = e.clientY;
@@ -587,7 +2176,7 @@
         (function() {
             var handle = document.createElement('div');
             handle.style.cssText = 'position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:nwse-resize;z-index:2';
-            handle.innerHTML = '<svg width="16" height="16" style="opacity:0.4"><path d="M14 16L16 14M10 16L16 10M6 16L16 6" stroke="#8b949e" stroke-width="1.5"/></svg>';
+            handle.innerHTML = '<svg width="16" height="16" style="opacity:0.4"><path d="M14 16L16 14M10 16L16 10M6 16L16 6" stroke="var(--he-muted)" stroke-width="1.5"/></svg>';
             panel.style.position = 'fixed';
             panel.appendChild(handle);
             var isResizing = false, startX, startY, startW, startH;
@@ -612,6 +2201,204 @@
         initEventHandlers();
     }
 
+    // ---- Graph definition helpers (source/output flow model) ----
+    function newFlowId() {
+        return 'flow_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    }
+
+    // Ensure a role object has the graph fields (source/output) for backward compat
+    function ensureRoleGraphFields(role) {
+        if (typeof role !== 'object' || role === null) return role;
+        if (!role.source) role.source = { type: '', flowId: '', split: '' };
+        if (!role.output) role.output = { flowId: newFlowId(), label: '' };
+        else if (!role.output.flowId) role.output.flowId = newFlowId();
+        return role;
+    }
+
+    // Return all published output flows across every group/role.
+    // Each node auto-publishes one flow (label defaults to role name).
+    function getPublishedFlows(excludeGi, excludeRi) {
+        var flows = [];
+        if (!engineSettings.groups) return flows;
+        engineSettings.groups.forEach(function(g, gi) {
+            if (!g.roles) return;
+            g.roles.forEach(function(r, ri) {
+                if (typeof r !== 'object') return;
+                if (gi === excludeGi && ri === excludeRi) return; // a node can't source from itself
+                if (!r.connected) return; // only connected nodes publish flows
+                ensureRoleGraphFields(r);
+                flows.push({
+                    flowId: r.output.flowId,
+                    label: r.output.label || r.name || '(unnamed role)',
+                    groupName: g.name || 'Unnamed Group',
+                    gi: gi, ri: ri
+                });
+            });
+        });
+        return flows;
+    }
+
+    // Compile groups/roles into a graph: nodes, flows, edges, sources.
+    function compileGraph() {
+        var nodes = [];
+        var flows = [];
+        var edges = [];
+        var sources = [];
+        var flowById = {};
+
+        (engineSettings.groups || []).forEach(function(g, gi) {
+            (g.roles || []).forEach(function(r, ri) {
+                if (typeof r !== 'object') return;
+                if (!r.connected) return; // disconnected nodes don't affect flow, not in the graph
+                ensureRoleGraphFields(r);
+                var nodeId = r.output.flowId; // stable 1:1 identity
+                var node = {
+                    id: nodeId,
+                    gi: gi, ri: ri,
+                    name: r.name || '(unnamed role)',
+                    group: g.name || 'Unnamed Group',
+                    rate: parseFloat(r.rate) || 0,
+                    formula: r.formula || '',
+                    station: r.station || '',
+                    aiRules: r.aiRules || '',
+                    source: r.source || { type: '', flowId: '', split: '' },
+                    output: r.output
+                };
+                nodes.push(node);
+                var flow = { flowId: r.output.flowId, label: r.output.label || node.name, producer: nodeId };
+                flows.push(flow);
+                flowById[flow.flowId] = flow;
+                if (r.source && r.source.type === 'inbound') sources.push(nodeId);
+            });
+        });
+
+        // Build edges: consumer.source.flowId -> consumer node
+        nodes.forEach(function(n) {
+            if (n.source && n.source.type === 'flow' && n.source.flowId) {
+                var split = (n.source.split === '' || n.source.split === undefined) ? 100 : parseFloat(n.source.split);
+                edges.push({
+                    fromNodeId: flowById[n.source.flowId] ? flowById[n.source.flowId].producer : null,
+                    toNodeId: n.id,
+                    flowId: n.source.flowId,
+                    split: isNaN(split) ? 100 : split
+                });
+            }
+        });
+
+        return { nodes: nodes, flows: flows, edges: edges, sources: sources, flowById: flowById };
+    }
+
+    // Validate a compiled graph. Returns { errors: [], warnings: [] }.
+    function validateGraph(graph) {
+        var errors = [];
+        var warnings = [];
+        var g = graph || compileGraph();
+
+        if (g.nodes.length === 0) { warnings.push('No nodes defined yet.'); return { errors: errors, warnings: warnings }; }
+
+        // 1. Every flow-source references an existing flow
+        g.nodes.forEach(function(n) {
+            if (n.source && n.source.type === 'flow') {
+                if (!n.source.flowId) errors.push('"' + n.name + '" has source type Flow but no flow selected.');
+                else if (!g.flowById[n.source.flowId]) errors.push('"' + n.name + '" references a flow that no longer exists.');
+            }
+            if (!n.source || !n.source.type) warnings.push('"' + n.name + '" has no source set.');
+        });
+
+        // 2. Splits per flow sum to <= 100%
+        var splitByFlow = {};
+        g.edges.forEach(function(e) {
+            splitByFlow[e.flowId] = (splitByFlow[e.flowId] || 0) + (e.split || 0);
+        });
+        Object.keys(splitByFlow).forEach(function(fid) {
+            if (splitByFlow[fid] > 100.001) {
+                var label = g.flowById[fid] ? g.flowById[fid].label : fid;
+                errors.push('Flow "' + label + '" is over-allocated: consumers take ' + splitByFlow[fid].toFixed(1) + '% (max 100%).');
+            }
+        });
+
+        // 3. Orphan check: a node that is neither inbound-sourced, flow-sourced, nor consumed by anyone
+        var consumedFlowIds = {};
+        g.edges.forEach(function(e) { consumedFlowIds[e.flowId] = true; });
+        g.nodes.forEach(function(n) {
+            var hasSource = n.source && n.source.type;
+            var isConsumed = consumedFlowIds[n.output.flowId];
+            if (!hasSource && !isConsumed) warnings.push('"' + n.name + '" is orphaned (no source and nothing consumes its output).');
+        });
+
+        // 4. Cycle detection (DFS over edges fromNodeId -> toNodeId)
+        var adj = {};
+        g.edges.forEach(function(e) {
+            if (!e.fromNodeId) return;
+            (adj[e.fromNodeId] = adj[e.fromNodeId] || []).push(e.toNodeId);
+        });
+        var WHITE = 0, GRAY = 1, BLACK = 2;
+        var color = {};
+        g.nodes.forEach(function(n) { color[n.id] = WHITE; });
+        var nameById = {};
+        g.nodes.forEach(function(n) { nameById[n.id] = n.name; });
+        var cycleFound = false;
+        function dfs(u) {
+            color[u] = GRAY;
+            (adj[u] || []).forEach(function(v) {
+                if (color[v] === GRAY) { cycleFound = true; }
+                else if (color[v] === WHITE) dfs(v);
+            });
+            color[u] = BLACK;
+        }
+        g.nodes.forEach(function(n) { if (color[n.id] === WHITE) dfs(n.id); });
+        if (cycleFound) errors.push('Graph contains a cycle (a node ultimately feeds back into itself). Flow must be acyclic.');
+
+        return { errors: errors, warnings: warnings };
+    }
+
+    function openGraphCheckModal() {
+        collectGroupsFromDOM();
+        var graph = compileGraph();
+        var result = validateGraph(graph);
+        var existing = document.getElementById('he-graph-modal');
+        if (existing) existing.remove();
+
+        var listHtml = function(items, color, icon) {
+            if (!items.length) return '';
+            return items.map(function(t) {
+                return '<div style="display:flex;gap:8px;padding:4px 0;font-size:12px;color:' + color + '"><span>' + icon + '</span><span>' + t + '</span></div>';
+            }).join('');
+        };
+
+        var statusLine;
+        if (result.errors.length) statusLine = '<span style="color:#f85149;font-weight:600">✗ ' + result.errors.length + ' error(s)</span>';
+        else if (result.warnings.length) statusLine = '<span style="color:#e3b341;font-weight:600">⚠ Valid with ' + result.warnings.length + ' warning(s)</span>';
+        else statusLine = '<span style="color:#3fb950;font-weight:600">✓ Graph is valid</span>';
+
+        var modal = document.createElement('div');
+        modal.id = 'he-graph-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
+        modal.innerHTML =
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:460px;max-width:640px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Graph Check</span>' +
+                    '<button id="he-graph-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
+                '</div>' +
+                '<div style="margin-bottom:12px;font-size:13px">' + statusLine + '</div>' +
+                '<div style="display:flex;gap:16px;margin-bottom:12px;font-size:11px;color:var(--he-muted)">' +
+                    '<span>' + graph.nodes.length + ' nodes</span>' +
+                    '<span>' + graph.edges.length + ' edges</span>' +
+                    '<span>' + graph.sources.length + ' inbound source(s)</span>' +
+                '</div>' +
+                (result.errors.length ? '<div style="margin-bottom:8px;font-size:11px;text-transform:uppercase;color:var(--he-muted);letter-spacing:1px">Errors</div>' + listHtml(result.errors, '#f85149', '✗') : '') +
+                (result.warnings.length ? '<div style="margin:10px 0 8px;font-size:11px;text-transform:uppercase;color:var(--he-muted);letter-spacing:1px">Warnings</div>' + listHtml(result.warnings, '#e3b341', '⚠') : '') +
+                (!result.errors.length && !result.warnings.length ? '<div style="color:#3fb950;font-size:12px">Every node is wired, splits are within limits, and the flow is acyclic.</div>' : '') +
+                '<div style="display:flex;justify-content:flex-end;margin-top:16px">' +
+                    '<button id="he-graph-ok" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Close</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(modal);
+        document.getElementById('he-graph-close').addEventListener('click', function() { modal.remove(); });
+        document.getElementById('he-graph-ok').addEventListener('click', function() { modal.remove(); });
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    }
+
     function renderGroups() {
         if (!engineSettings.groups) engineSettings.groups = [];
         var container = document.getElementById('he-groups-list');
@@ -622,11 +2409,11 @@
         }
         var html = '';
         engineSettings.groups.forEach(function(g, gi) {
-            html += '<div style="margin-bottom:10px;border:1px solid ' + (g.color || '#30363d') + ';border-radius:6px;overflow:hidden">';
+            html += '<div style="margin-bottom:10px;border:1px solid ' + (g.color || 'var(--he-border)') + ';border-radius:6px;overflow:hidden">';
             // Group header
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:' + (g.color || '#30363d') + '22">';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:' + (g.color || 'var(--he-border)') + '22">';
             html += '<input type="color" class="he-grp-color" data-gi="' + gi + '" value="' + (g.color || '#6b21a8') + '" style="width:20px;height:20px;border:none;padding:0;cursor:pointer;background:none">';
-            html += '<input type="text" class="he-grp-name" data-gi="' + gi + '" value="' + (g.name || '') + '" placeholder="Group name" style="flex:1;padding:3px 6px;background:transparent;border:none;border-bottom:1px solid #30363d;color:#e6edf3;font-size:12px;font-weight:600">';
+            html += '<input type="text" class="he-grp-name" data-gi="' + gi + '" value="' + (g.name || '') + '" placeholder="Group name" style="flex:1;padding:3px 6px;background:transparent;border:none;border-bottom:1px solid var(--he-border);color:var(--he-text);font-size:12px;font-weight:600">';
             html += '<button class="he-grp-add-role" data-gi="' + gi + '" style="padding:2px 6px;background:#1f6feb;border:none;border-radius:3px;color:#fff;font-size:9px;cursor:pointer">+ Role</button>';
             html += '<button class="he-grp-del" data-gi="' + gi + '" style="padding:2px 6px;background:#da3633;border:none;border-radius:3px;color:#fff;font-size:9px;cursor:pointer">✕</button>';
             html += '</div>';
@@ -643,20 +2430,30 @@
                         if (match) roleRate = match.rate;
                     }
                     var isGE = (engineSettings.planMode === 'golden-eye');
-                    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 10px 4px 30px;border-top:1px solid #21262d">';
-                    html += '<input type="text" class="he-role-name" data-gi="' + gi + '" data-ri="' + ri + '" value="' + roleName + '" placeholder="Role name" style="flex:1;padding:3px 6px;background:#0d1117;border:1px solid #30363d;border-radius:3px;color:#e6edf3;font-size:11px">';
-                    html += '<input type="text" class="he-role-rate" data-gi="' + gi + '" data-ri="' + ri + '" value="' + roleRate + '" placeholder="Eng Rate" style="width:70px;padding:3px 6px;background:#0d1117;border:1px solid #30363d;border-radius:3px;color:#e6edf3;font-size:11px;text-align:center">';
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 10px 4px 30px;border-top:1px solid var(--he-border2)">';
+                    html += '<input type="text" class="he-role-name" data-gi="' + gi + '" data-ri="' + ri + '" value="' + roleName + '" placeholder="Role name" style="flex:1;padding:3px 6px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:3px;color:var(--he-text);font-size:11px">';
+                    html += '<input type="text" class="he-role-rate" data-gi="' + gi + '" data-ri="' + ri + '" value="' + roleRate + '" placeholder="Eng Rate" style="width:70px;padding:3px 6px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:3px;color:var(--he-text);font-size:11px;text-align:center">';
                     if (isGE) {
-                        html += '<button class="he-role-ge" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleGE ? '#eab308' : '#30363d') + ';border-radius:3px;color:' + (roleGE ? '#eab308' : '#8b949e') + ';font-size:9px;cursor:pointer;font-weight:600" title="' + (roleGE || 'No GE roles') + '">GE</button>';
+                        html += '<button class="he-role-ge" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleGE ? '#eab308' : 'var(--he-border)') + ';border-radius:3px;color:' + (roleGE ? '#eab308' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer;font-weight:600" title="' + (roleGE || 'No GE roles') + '">GE</button>';
                     } else {
-                        html += '<button class="he-role-formula" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleFormula ? '#2ea043' : '#30363d') + ';border-radius:3px;color:' + (roleFormula ? '#2ea043' : '#8b949e') + ';font-size:9px;cursor:pointer" title="' + (roleFormula || 'No formula') + '">ƒx</button>';
+                        html += '<button class="he-role-formula" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleFormula ? '#2ea043' : 'var(--he-border)') + ';border-radius:3px;color:' + (roleFormula ? '#2ea043' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer" title="' + (roleFormula || 'No formula') + '">ƒx</button>';
                     }
                     var roleAI = (typeof r === 'object') ? (r.aiRules || '') : '';
                     var roleLocked = (typeof r === 'object') ? (r.locked || false) : false;
-                    html += '<button class="he-role-ai" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleAI ? '#60a5fa' : '#30363d') + ';border-radius:3px;color:' + (roleAI ? '#60a5fa' : '#8b949e') + ';font-size:9px;cursor:pointer" title="' + (roleAI ? 'AI rules set' : 'No AI rules') + '">AI</button>';
+                    html += '<button class="he-role-ai" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleAI ? '#60a5fa' : 'var(--he-border)') + ';border-radius:3px;color:' + (roleAI ? '#60a5fa' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer" title="' + (roleAI ? 'AI rules set' : 'No AI rules') + '">AI</button>';
                     var roleStation = (typeof r === 'object') ? (r.station || '') : '';
-                    html += '<button class="he-role-station" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleStation ? '#f97316' : '#30363d') + ';border-radius:3px;color:' + (roleStation ? '#f97316' : '#8b949e') + ';font-size:9px;cursor:pointer" title="' + (roleStation || 'No station mapping') + '">ST</button>';
-                    html += '<button class="he-role-lock" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleLocked ? '#eab308' : '#30363d') + ';border-radius:3px;color:' + (roleLocked ? '#eab308' : '#8b949e') + ';font-size:9px;cursor:pointer" title="' + (roleLocked ? 'Locked' : 'Dynamic') + '">' + (roleLocked ? '🔒' : '🔓') + '</button>';
+                    html += '<button class="he-role-station" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleStation ? '#f97316' : 'var(--he-border)') + ';border-radius:3px;color:' + (roleStation ? '#f97316' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer" title="' + (roleStation || 'No station mapping') + '">ST</button>';
+                    ensureRoleGraphFields(r);
+                    var isConnected = !!r.connected;
+                    var connTitle = isConnected ? 'Affects flow (in graph) — click to disconnect' : 'Does not affect flow — click to connect to graph';
+                    html += '<button class="he-role-connect" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (isConnected ? '#2dd4bf' : 'var(--he-border)') + ';border-radius:3px;color:' + (isConnected ? '#2dd4bf' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer" title="' + connTitle + '">🔗</button>';
+                    if (isConnected) {
+                        var hasSource = r.source && r.source.type;
+                        var srcTitle = !hasSource ? 'No source set' : (r.source.type === 'inbound' ? 'Source: Inbound data' : 'Source: flow');
+                        html += '<button class="he-role-source" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (hasSource ? '#2dd4bf' : 'var(--he-border)') + ';border-radius:3px;color:' + (hasSource ? '#2dd4bf' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer" title="' + srcTitle + '">SRC</button>';
+                        html += '<button class="he-role-output" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid #a78bfa;border-radius:3px;color:#a78bfa;font-size:9px;cursor:pointer" title="Output flow: ' + (r.output.label || roleName || 'auto') + '">OUT</button>';
+                    }
+                    html += '<button class="he-role-lock" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 6px;background:none;border:1px solid ' + (roleLocked ? '#eab308' : 'var(--he-border)') + ';border-radius:3px;color:' + (roleLocked ? '#eab308' : 'var(--he-muted)') + ';font-size:9px;cursor:pointer" title="' + (roleLocked ? 'Locked' : 'Dynamic') + '">' + (roleLocked ? '🔒' : '🔓') + '</button>';
                     html += '<button class="he-role-del" data-gi="' + gi + '" data-ri="' + ri + '" style="padding:2px 5px;background:none;border:1px solid #da3633;border-radius:3px;color:#da3633;font-size:9px;cursor:pointer">✕</button>';
                     html += '</div>';
                 });
@@ -727,7 +2524,7 @@
                 collectGroupsFromDOM();
                 var gi = parseInt(btn.getAttribute('data-gi'));
                 if (!engineSettings.groups[gi].roles) engineSettings.groups[gi].roles = [];
-                engineSettings.groups[gi].roles.push({ name: '', formula: '', rate: '', geRoles: '', aiRules: '', station: '', locked: true, area: '', variable: '' });
+                engineSettings.groups[gi].roles.push({ name: '', formula: '', rate: '', geRoles: '', aiRules: '', station: '', locked: true, area: '', variable: '', connected: false, source: { type: '', flowId: '', split: '' }, output: { flowId: newFlowId(), label: '' } });
                 saveSettings(); renderGroups();
             });
         });
@@ -764,6 +2561,40 @@
                 var role = engineSettings.groups[gi].roles[ri];
                 if (typeof role !== 'object') role = { name: role || '', formula: '', geRoles: '', aiRules: '', station: '', locked: false };
                 openStationModal(gi, ri, role);
+            });
+        });
+        // Connect-to-graph toggle
+        document.querySelectorAll('.he-role-connect').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                collectGroupsFromDOM();
+                var gi = parseInt(btn.getAttribute('data-gi'));
+                var ri = parseInt(btn.getAttribute('data-ri'));
+                var role = ensureRoleGraphFields(engineSettings.groups[gi].roles[ri]);
+                role.connected = !role.connected;
+                saveSettings(); renderGroups();
+            });
+        });
+        // Source button
+        document.querySelectorAll('.he-role-source').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                collectGroupsFromDOM();
+                var gi = parseInt(btn.getAttribute('data-gi'));
+                var ri = parseInt(btn.getAttribute('data-ri'));
+                var role = ensureRoleGraphFields(engineSettings.groups[gi].roles[ri]);
+                openSourceModal(gi, ri, role);
+            });
+        });
+        // Output button
+        document.querySelectorAll('.he-role-output').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                collectGroupsFromDOM();
+                var gi = parseInt(btn.getAttribute('data-gi'));
+                var ri = parseInt(btn.getAttribute('data-ri'));
+                var role = ensureRoleGraphFields(engineSettings.groups[gi].roles[ri]);
+                openOutputModal(gi, ri, role);
             });
         });
         document.querySelectorAll('.he-role-lock').forEach(function(btn) {
@@ -823,15 +2654,15 @@
         modal.id = 'he-station-modal';
         modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
         modal.innerHTML =
-            '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;min-width:380px;max-width:520px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:380px;max-width:520px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-                    '<span style="font-size:14px;font-weight:600;color:#e6edf3">Station Mapping: ' + (role.name || 'Unnamed') + '</span>' +
-                    '<button id="he-station-close" style="background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer">✕</button>' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Station Mapping: ' + (role.name || 'Unnamed') + '</span>' +
+                    '<button id="he-station-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
                 '</div>' +
-                '<div style="margin-bottom:10px;color:#8b949e;font-size:11px">Enter the station/process segment names that map to this role (comma or space separated):</div>' +
-                '<textarea id="he-station-input" style="width:100%;height:80px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:-apple-system,sans-serif;font-size:12px;resize:vertical" placeholder="e.g. AR Induct, AR Container Build Lane 6/7, AR Waterspider">' + (role.station || '') + '</textarea>' +
+                '<div style="margin-bottom:10px;color:var(--he-muted);font-size:11px">Enter the station/process segment names that map to this role (comma or space separated):</div>' +
+                '<textarea id="he-station-input" style="width:100%;height:80px;padding:10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-family:-apple-system,sans-serif;font-size:12px;resize:vertical" placeholder="e.g. AR Induct, AR Container Build Lane 6/7, AR Waterspider">' + (role.station || '') + '</textarea>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
-                    '<button id="he-station-cancel" style="padding:6px 14px;background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-station-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-station-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
             '</div>';
@@ -852,6 +2683,122 @@
         });
     }
 
+    function openSourceModal(gi, ri, role) {
+        var existing = document.getElementById('he-source-modal');
+        if (existing) existing.remove();
+        ensureRoleGraphFields(role);
+        var src = role.source || { type: '', flowId: '', split: '' };
+        var flows = getPublishedFlows(gi, ri);
+
+        var flowOptions = '<option value="">— select a flow —</option>';
+        flows.forEach(function(f) {
+            var sel = (src.flowId === f.flowId) ? ' selected' : '';
+            flowOptions += '<option value="' + f.flowId + '"' + sel + '>' + f.label + '  (' + f.groupName + ')</option>';
+        });
+
+        var modal = document.createElement('div');
+        modal.id = 'he-source-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
+        modal.innerHTML =
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:400px;max-width:540px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Source: ' + (role.name || 'Unnamed') + '</span>' +
+                    '<button id="he-source-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
+                '</div>' +
+                '<div style="margin-bottom:10px;color:var(--he-muted);font-size:11px">Where does the volume feeding this node come from?</div>' +
+                '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;color:var(--he-text);font-size:12px;cursor:pointer">' +
+                    '<input type="radio" name="he-src-type" value="inbound"' + (src.type === 'inbound' ? ' checked' : '') + '> Inbound data (raw volume entry point)' +
+                '</label>' +
+                '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;color:var(--he-text);font-size:12px;cursor:pointer">' +
+                    '<input type="radio" name="he-src-type" value="flow"' + (src.type === 'flow' ? ' checked' : '') + '> A defined Flow (another node\'s output)' +
+                '</label>' +
+                '<div id="he-src-flow-wrap" style="margin:8px 0 0 24px;' + (src.type === 'flow' ? '' : 'display:none') + '">' +
+                    '<label style="display:block;font-size:11px;color:var(--he-muted);margin-bottom:3px">Flow</label>' +
+                    '<select id="he-src-flow" style="width:100%;padding:6px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px;margin-bottom:10px">' + flowOptions + '</select>' +
+                    '<label style="display:block;font-size:11px;color:var(--he-muted);margin-bottom:3px">Split % of that flow taken by this node</label>' +
+                    '<input id="he-src-split" type="text" value="' + (src.split || '') + '" placeholder="e.g. 75 (leave blank for 100%)" style="width:100%;box-sizing:border-box;padding:6px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px">' +
+                    (flows.length === 0 ? '<div style="color:#e3b341;font-size:11px;margin-top:8px">⚠ No other node outputs published yet. Define outputs on other roles first.</div>' : '') +
+                '</div>' +
+                '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">' +
+                    '<button id="he-source-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-source-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(modal);
+
+        // Toggle flow picker visibility with radio selection
+        modal.querySelectorAll('input[name="he-src-type"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                document.getElementById('he-src-flow-wrap').style.display = (radio.value === 'flow' && radio.checked) ? '' : 'none';
+            });
+        });
+
+        document.getElementById('he-source-close').addEventListener('click', function() { modal.remove(); });
+        document.getElementById('he-source-cancel').addEventListener('click', function() { modal.remove(); });
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.getElementById('he-source-save').addEventListener('click', function() {
+            var checked = modal.querySelector('input[name="he-src-type"]:checked');
+            var type = checked ? checked.value : '';
+            var flowId = (type === 'flow') ? document.getElementById('he-src-flow').value : '';
+            var split = (type === 'flow') ? document.getElementById('he-src-split').value.trim() : '';
+            ensureRoleGraphFields(engineSettings.groups[gi].roles[ri]);
+            engineSettings.groups[gi].roles[ri].source = { type: type, flowId: flowId, split: split };
+            saveSettings();
+            modal.remove();
+            renderGroups();
+        });
+    }
+
+    function openOutputModal(gi, ri, role) {
+        var existing = document.getElementById('he-output-modal');
+        if (existing) existing.remove();
+        ensureRoleGraphFields(role);
+        var out = role.output;
+        // Who consumes this flow?
+        var consumers = [];
+        (engineSettings.groups || []).forEach(function(g) {
+            (g.roles || []).forEach(function(r) {
+                if (typeof r === 'object' && r.source && r.source.type === 'flow' && r.source.flowId === out.flowId) {
+                    consumers.push((r.name || '(unnamed role)') + (r.source.split ? ' @ ' + r.source.split + '%' : ''));
+                }
+            });
+        });
+
+        var modal = document.createElement('div');
+        modal.id = 'he-output-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
+        modal.innerHTML =
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:400px;max-width:540px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Output: ' + (role.name || 'Unnamed') + '</span>' +
+                    '<button id="he-output-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
+                '</div>' +
+                '<div style="margin-bottom:10px;color:var(--he-muted);font-size:11px">This node automatically publishes a flow that other nodes can select as their source. The output rate is defined by this role\'s formula / engineer rate.</div>' +
+                '<label style="display:block;font-size:11px;color:var(--he-muted);margin-bottom:3px">Flow label (defaults to role name)</label>' +
+                '<input id="he-output-label" type="text" value="' + (out.label || '') + '" placeholder="' + (role.name || 'Role name') + '" style="width:100%;box-sizing:border-box;padding:6px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px;margin-bottom:12px">' +
+                '<div style="font-size:11px;color:var(--he-muted);margin-bottom:4px">Consumed by:</div>' +
+                '<div style="background:var(--he-bg);border:1px solid var(--he-border2);border-radius:6px;padding:8px;font-size:11px;color:var(--he-text);min-height:24px">' +
+                    (consumers.length ? consumers.join('<br>') : '<span style="color:#6e7681">Nothing consumes this flow yet</span>') +
+                '</div>' +
+                '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">' +
+                    '<button id="he-output-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-output-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(modal);
+
+        document.getElementById('he-output-close').addEventListener('click', function() { modal.remove(); });
+        document.getElementById('he-output-cancel').addEventListener('click', function() { modal.remove(); });
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.getElementById('he-output-save').addEventListener('click', function() {
+            ensureRoleGraphFields(engineSettings.groups[gi].roles[ri]);
+            engineSettings.groups[gi].roles[ri].output.label = document.getElementById('he-output-label').value.trim();
+            saveSettings();
+            modal.remove();
+            renderGroups();
+        });
+    }
+
     function openAIRulesModal(gi, ri, role) {
         var existing = document.getElementById('he-ai-modal');
         if (existing) existing.remove();
@@ -860,15 +2807,15 @@
         modal.id = 'he-ai-modal';
         modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
         modal.innerHTML =
-            '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;min-width:380px;max-width:520px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:380px;max-width:520px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-                    '<span style="font-size:14px;font-weight:600;color:#e6edf3">AI Rules: ' + (role.name || 'Unnamed') + '</span>' +
-                    '<button id="he-ai-close" style="background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer">✕</button>' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">AI Rules: ' + (role.name || 'Unnamed') + '</span>' +
+                    '<button id="he-ai-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
                 '</div>' +
-                '<div style="margin-bottom:10px;color:#8b949e;font-size:11px">Enter rules for the AI to follow when allocating headcount for this role. One rule per line.</div>' +
-                '<textarea id="he-ai-input" style="width:100%;height:120px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:-apple-system,sans-serif;font-size:12px;resize:vertical" placeholder="e.g.\nMinimum 2 HC at all times\nScale with volume above 5000 TPH\nDo not exceed 8 HC">' + (role.aiRules || '') + '</textarea>' +
+                '<div style="margin-bottom:10px;color:var(--he-muted);font-size:11px">Enter rules for the AI to follow when allocating headcount for this role. One rule per line.</div>' +
+                '<textarea id="he-ai-input" style="width:100%;height:120px;padding:10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-family:-apple-system,sans-serif;font-size:12px;resize:vertical" placeholder="e.g.\nMinimum 2 HC at all times\nScale with volume above 5000 TPH\nDo not exceed 8 HC">' + (role.aiRules || '') + '</textarea>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
-                    '<button id="he-ai-cancel" style="padding:6px 14px;background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-ai-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-ai-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
             '</div>';
@@ -897,15 +2844,15 @@
         modal.id = 'he-ge-modal';
         modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
         modal.innerHTML =
-            '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;min-width:350px;max-width:500px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:350px;max-width:500px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-                    '<span style="font-size:14px;font-weight:600;color:#e6edf3">Golden Eye Roles: ' + (role.name || 'Unnamed') + '</span>' +
-                    '<button id="he-ge-close" style="background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer">✕</button>' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Golden Eye Roles: ' + (role.name || 'Unnamed') + '</span>' +
+                    '<button id="he-ge-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
                 '</div>' +
-                '<div style="margin-bottom:10px;color:#8b949e;font-size:11px">Enter Golden Eye role names, separated by commas or spaces:</div>' +
-                '<textarea id="he-ge-input" style="width:100%;height:80px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:-apple-system,sans-serif;font-size:12px;resize:vertical" placeholder="e.g. Cont. Unload, Shuttle Dump, Jam Breaker">' + (role.geRoles || '') + '</textarea>' +
+                '<div style="margin-bottom:10px;color:var(--he-muted);font-size:11px">Enter Golden Eye role names, separated by commas or spaces:</div>' +
+                '<textarea id="he-ge-input" style="width:100%;height:80px;padding:10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-family:-apple-system,sans-serif;font-size:12px;resize:vertical" placeholder="e.g. Cont. Unload, Shuttle Dump, Jam Breaker">' + (role.geRoles || '') + '</textarea>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
-                    '<button id="he-ge-cancel" style="padding:6px 14px;background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-ge-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-ge-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
             '</div>';
@@ -1057,8 +3004,8 @@
             opts = opts || {};
             var style = 'padding:4px 8px;border:' + gridBorder + ';font-size:11px;';
             style += 'text-align:' + (opts.align || 'left') + ';';
-            style += 'color:' + (opts.color || '#e6edf3') + ';';
-            style += 'background:' + (opts.bg || '#0d1117') + ';';
+            style += 'color:' + (opts.color || 'var(--he-text)') + ';';
+            style += 'background:' + (opts.bg || 'var(--he-bg)') + ';';
             if (opts.bold) style += 'font-weight:700;';
             var tag = opts.colspan ? ('<td colspan="' + opts.colspan + '" style="' + style + '">') : ('<td style="' + style + '">');
             return tag + content + '</td>';
@@ -1066,31 +3013,42 @@
         var inputCell = function(key, opts) {
             opts = opts || {};
             var val = pv[key] !== undefined ? pv[key] : '';
-            return td('<input type="text" class="he-plankpi" data-key="' + key + '" value="' + val + '" style="width:100%;box-sizing:border-box;padding:2px 4px;background:transparent;border:1px solid transparent;color:' + (opts.color || '#e6edf3') + ';font-size:11px;text-align:right">', {bg: opts.bg || '#0d1117', align: 'right'});
+            return td('<input type="text" class="he-plankpi" data-key="' + key + '" value="' + val + '" style="width:100%;box-sizing:border-box;padding:2px 4px;background:transparent;border:1px solid transparent;color:' + (opts.color || 'var(--he-text)') + ';font-size:11px;text-align:right">', {bg: opts.bg || 'var(--he-bg)', align: 'right'});
         };
 
         var html = '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
-        html += '<tr>' + td('Sort Details & KPIs', {bg: '#22272e', color: '#e6edf3', bold: true, colspan: 2, align: 'center'}) + '</tr>';
+        html += '<tr>' + td('Sort Details & KPIs', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, colspan: 2, align: 'center'}) + '</tr>';
         PLAN_KPI_FIELDS.forEach(function(f) {
             html += '<tr>' + td(f.label, {}) + inputCell(f.key) + '</tr>';
         });
         html += '</table>';
 
         // Volume Mix / Packages / Percents table
+        // If trailers were exported from Inbound, use those exact package counts;
+        // otherwise fall back to packageBreakdown % x Sort Volume Goal.
+        var vmp = pv.volumeMixPackages || null;
+        var vmpTotal = 0;
+        if (vmp) { PLAN_SIZE_KEYS.forEach(function(s){ vmpTotal += parseFloat(vmp[s.key]) || 0; }); }
         html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
-        html += '<tr>' + td('Volume Mix', {bg: '#22272e', color: '#e6edf3', bold: true}) + td('Packages', {bg: '#22272e', color: '#e6edf3', bold: true, align: 'right'}) + td('Percents', {bg: '#22272e', color: '#e6edf3', bold: true, align: 'right'}) + '</tr>';
-        var totalPct = 0;
+        html += '<tr>' + td('Volume Mix', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true}) + td('Packages', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, align: 'right'}) + td('Percents', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, align: 'right'}) + '</tr>';
+        var totalPct = 0, totalPackages = 0;
         PLAN_SIZE_KEYS.forEach(function(s) {
-            var pct = parseFloat(bd[s.key]) || 0;
+            var packages, pct;
+            if (vmp) {
+                packages = parseFloat(vmp[s.key]) || 0;
+                pct = vmpTotal > 0 ? (packages / vmpTotal) * 100 : 0;
+            } else {
+                pct = parseFloat(bd[s.key]) || 0;
+                packages = Math.round(sortVolumeGoal * pct / 100);
+            }
             totalPct += pct;
-            var packages = Math.round(sortVolumeGoal * pct / 100);
+            totalPackages += packages;
             html += '<tr>';
             html += td(s.label, {});
-            html += td(packages.toLocaleString(), {align: 'right', bg: '#3d4450', color: '#1a1a1a'});
-            html += td(pct.toFixed(2) + '%', {align: 'right', bg: '#3d4450', color: '#1a1a1a'});
+            html += td(packages.toLocaleString(), {align: 'right', bg: 'var(--he-border2)', color: 'var(--he-text)'});
+            html += td(pct.toFixed(2) + '%', {align: 'right', bg: 'var(--he-border2)', color: 'var(--he-text)'});
             html += '</tr>';
         });
-        var totalPackages = Math.round(sortVolumeGoal * totalPct / 100);
         html += '<tr>' + td('Total', {bold: true, extra: ''}) + td(totalPackages.toLocaleString(), {align: 'right', bold: true}) + td(totalPct.toFixed(2) + '%', {align: 'right', bold: true}) + '</tr>';
         html += '</table>';
 
@@ -1103,7 +3061,7 @@
 
         // ALPS Plan
         html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif">';
-        html += '<tr>' + td('ALPS Plan', {bg: '#22272e', color: '#e6edf3', bold: true, colspan: 2, align: 'center'}) + '</tr>';
+        html += '<tr>' + td('ALPS Plan', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, colspan: 2, align: 'center'}) + '</tr>';
         PLAN_ALPS_FIELDS.forEach(function(f) {
             html += '<tr>' + td(f.label, {}) + inputCell(f.key) + '</tr>';
         });
@@ -1138,10 +3096,10 @@
         // Excel-like grid styling (dark theme)
         var gridBorder = '1px solid #3a3f47';
         var cellPad = '4px 8px';
-        var bgDark = '#0d1117';
+        var bgDark = 'var(--he-bg)';
         var bgGray = '#c9cdd3';
-        var textLight = '#e6edf3';
-        var textMuted = '#8b949e';
+        var textLight = 'var(--he-text)';
+        var textMuted = 'var(--he-muted)';
         var textDarkOnLight = '#1a1a1a';
         var orangeBg = '#f4b183';
         var blueBg = '#9dc3e6';
@@ -1162,17 +3120,17 @@
 
         // Super-header row (Volume / Rate / Planned / SARG) - shown once at the very top
         html += '<tr>';
-        html += td('Bottoms Up Planner - Grouped by Area', {bg: '#22272e', color: textLight, bold: true, align: 'left', extra: 'text-decoration:underline;'});
-        html += td('', {bg: '#22272e'});
-        html += td('', {bg: '#22272e'});
-        html += td('Volume', {bg: '#22272e', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
-        html += td('Rate', {bg: '#22272e', color: textLight, bold: true, colspan: 3, extra: 'text-decoration:underline;'});
-        html += td('Planned', {bg: '#22272e', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
-        html += td('SARG', {bg: '#22272e', color: textLight, bold: true, extra: 'text-decoration:underline;'});
+        html += td('Bottoms Up Planner - Grouped by Area', {bg: 'var(--he-border)', color: textLight, bold: true, align: 'left', extra: 'text-decoration:underline;'});
+        html += td('', {bg: 'var(--he-border)'});
+        html += td('', {bg: 'var(--he-border)'});
+        html += td('Volume', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
+        html += td('Rate', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 3, extra: 'text-decoration:underline;'});
+        html += td('Planned', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
+        html += td('SARG', {bg: 'var(--he-border)', color: textLight, bold: true, extra: 'text-decoration:underline;'});
         html += '</tr>';
 
         engineSettings.groups.forEach(function(g, gi) {
-            var color = g.color || '#30363d';
+            var color = g.color || 'var(--he-border)';
             // Group header row (colored, acts as both group name banner and column header)
             html += '<tr>';
             html += td(g.name || 'Unnamed Group', {bg: color, color: '#fff', bold: true, align: 'left'});
@@ -1279,19 +3237,19 @@
         modal.id = 'he-formula-modal';
         modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
         modal.innerHTML =
-            '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;min-width:550px;max-width:700px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:550px;max-width:700px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-                    '<span style="font-size:14px;font-weight:600;color:#e6edf3">Formula: ' + (role.name || 'Unnamed Role') + '</span>' +
-                    '<button id="he-formula-close" style="background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer">✕</button>' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Formula: ' + (role.name || 'Unnamed Role') + '</span>' +
+                    '<button id="he-formula-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
                 '</div>' +
-                '<div style="margin-bottom:8px;color:#8b949e;font-size:11px">Available variables (click to insert):</div>' +
+                '<div style="margin-bottom:8px;color:var(--he-muted);font-size:11px">Available variables (click to insert):</div>' +
                 pillsHtml +
                 '<div style="position:relative">' +
-                    '<div id="he-formula-input" contenteditable="true" style="width:100%;min-height:100px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:monospace;font-size:13px;outline:none;white-space:pre-wrap;word-wrap:break-word"></div>' +
-                    '<div id="he-formula-autocomplete" style="position:absolute;top:100%;left:0;right:0;background:#161b22;border:1px solid #30363d;border-radius:0 0 6px 6px;max-height:120px;overflow-y:auto;display:none;z-index:10"></div>' +
+                    '<div id="he-formula-input" contenteditable="true" style="width:100%;min-height:100px;padding:10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-family:monospace;font-size:13px;outline:none;white-space:pre-wrap;word-wrap:break-word"></div>' +
+                    '<div id="he-formula-autocomplete" style="position:absolute;top:100%;left:0;right:0;background:var(--he-panel);border:1px solid var(--he-border);border-radius:0 0 6px 6px;max-height:120px;overflow-y:auto;display:none;z-index:10"></div>' +
                 '</div>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
-                    '<button id="he-formula-cancel" style="padding:6px 14px;background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-formula-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-formula-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
             '</div>';
@@ -1358,7 +3316,7 @@
             var matches = allVars.filter(function(v) { return v.toLowerCase().indexOf(partial) !== -1; });
             if (matches.length === 0 || (matches.length === 1 && matches[0] === wordMatch[1])) { acBox.style.display = 'none'; return; }
             acBox.innerHTML = matches.slice(0, 8).map(function(m) {
-                return '<div class="he-ac-item" data-val="' + m + '" style="padding:6px 10px;cursor:pointer;font-size:11px;color:#e6edf3;font-family:monospace;border-bottom:1px solid #21262d">' + m + '</div>';
+                return '<div class="he-ac-item" data-val="' + m + '" style="padding:6px 10px;cursor:pointer;font-size:11px;color:var(--he-text);font-family:monospace;border-bottom:1px solid var(--he-border2)">' + m + '</div>';
             }).join('');
             acBox.style.display = 'block';
             acBox.querySelectorAll('.he-ac-item').forEach(function(item) {
@@ -1456,16 +3414,19 @@
             saveSettings(); renderGroups();
         });
 
+        var checkGraphBtn = document.getElementById('he-check-graph');
+        if (checkGraphBtn) checkGraphBtn.addEventListener('click', function() { openGraphCheckModal(); });
+
         // Tab switching
         var tabs = document.querySelectorAll('.he-tab');
         tabs.forEach(function(tab) {
             tab.addEventListener('click', function() {
                 tabs.forEach(function(t) {
                     t.style.borderBottomColor = 'transparent';
-                    t.style.color = '#8b949e';
+                    t.style.color = 'var(--he-muted)';
                 });
                 tab.style.borderBottomColor = '#a020b8';
-                tab.style.color = '#e6edf3';
+                tab.style.color = 'var(--he-text)';
                 document.querySelectorAll('.he-tab-content').forEach(function(c) {
                     c.style.display = 'none';
                 });
@@ -1478,7 +3439,7 @@
         var settingItems = document.querySelectorAll('.he-setting-item');
         settingItems.forEach(function(item) {
             item.addEventListener('mouseenter', function() {
-                item.style.background = '#161b22';
+                item.style.background = 'var(--he-panel)';
                 item.style.borderLeftColor = '#a020b8';
             });
             item.addEventListener('mouseleave', function() {
@@ -1509,8 +3470,8 @@
 
     function getSettingContent(settingId) {
         if (settingId === 'site-code') {
-            return '<label style="display:block;margin-bottom:8px;color:#e6edf3;font-size:12px">Site Code</label>' +
-                '<input id="he-set-site-code" type="text" value="' + (engineSettings.siteCode || '') + '" placeholder="e.g. ORD9" style="width:100%;padding:8px 12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:13px">';
+            return '<label style="display:block;margin-bottom:8px;color:var(--he-text);font-size:12px">Site Code</label>' +
+                '<input id="he-set-site-code" type="text" value="' + (engineSettings.siteCode || '') + '" placeholder="e.g. ORD9" style="width:100%;padding:8px 12px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-size:13px">';
         }
         if (settingId === 'presets') {
             var html = '<div style="margin-bottom:12px">';
@@ -1522,8 +3483,8 @@
                 ids.forEach(function(id) {
                     var p = enginePresets[id];
                     var isActive = (id === activePresetId);
-                    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;background:' + (isActive ? '#1a3a2a' : '#0d1117') + ';border:1px solid ' + (isActive ? '#2ea043' : '#30363d') + ';border-radius:6px">';
-                    html += '<span style="font-size:12px;color:#e6edf3">' + p.name + (isActive ? ' <span style="color:#2ea043;font-size:10px">● active</span>' : '') + '</span>';
+                    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;background:' + (isActive ? '#1a3a2a' : 'var(--he-bg)') + ';border:1px solid ' + (isActive ? '#2ea043' : 'var(--he-border)') + ';border-radius:6px">';
+                    html += '<span style="font-size:12px;color:var(--he-text)">' + p.name + (isActive ? ' <span style="color:#2ea043;font-size:10px">● active</span>' : '') + '</span>';
                     html += '<div style="display:flex;gap:4px">';
                     html += '<button class="he-preset-load" data-id="' + id + '" style="padding:2px 8px;background:#1f6feb;border:none;border-radius:3px;color:#fff;font-size:10px;cursor:pointer">Load</button>';
                     html += '<button class="he-preset-del" data-id="' + id + '" style="padding:2px 8px;background:#da3633;border:none;border-radius:3px;color:#fff;font-size:10px;cursor:pointer">✕</button>';
@@ -1532,15 +3493,15 @@
             }
             html += '</div>';
             // Create new
-            html += '<div style="border-top:1px solid #30363d;padding-top:10px;margin-bottom:10px">';
-            html += '<label style="display:block;margin-bottom:4px;color:#8b949e;font-size:11px">New preset name:</label>';
-            html += '<div style="display:flex;gap:6px"><input id="he-preset-name" type="text" placeholder="e.g. Day Sort" style="flex:1;padding:6px 10px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">';
+            html += '<div style="border-top:1px solid var(--he-border);padding-top:10px;margin-bottom:10px">';
+            html += '<label style="display:block;margin-bottom:4px;color:var(--he-muted);font-size:11px">New preset name:</label>';
+            html += '<div style="display:flex;gap:6px"><input id="he-preset-name" type="text" placeholder="e.g. Day Sort" style="flex:1;padding:6px 10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px">';
             html += '<button id="he-preset-create" style="padding:6px 12px;background:#1a6b2a;border:1px solid #2ea043;border-radius:4px;color:#fff;font-size:11px;cursor:pointer">Create</button></div>';
             html += '</div>';
             // Import / Export
-            html += '<div style="border-top:1px solid #30363d;padding-top:10px;display:flex;gap:6px">';
-            html += '<button id="he-preset-export" style="padding:5px 10px;background:none;border:1px solid #30363d;border-radius:4px;color:#8b949e;font-size:11px;cursor:pointer">📤 Export Active</button>';
-            html += '<button id="he-preset-import" style="padding:5px 10px;background:none;border:1px solid #30363d;border-radius:4px;color:#8b949e;font-size:11px;cursor:pointer">📥 Import</button>';
+            html += '<div style="border-top:1px solid var(--he-border);padding-top:10px;display:flex;gap:6px">';
+            html += '<button id="he-preset-export" style="padding:5px 10px;background:none;border:1px solid var(--he-border);border-radius:4px;color:var(--he-muted);font-size:11px;cursor:pointer">📤 Export Active</button>';
+            html += '<button id="he-preset-import" style="padding:5px 10px;background:none;border:1px solid var(--he-border);border-radius:4px;color:var(--he-muted);font-size:11px;cursor:pointer">📥 Import</button>';
             html += '</div>';
             return html;
         }
@@ -1553,12 +3514,12 @@
                 { id: 'exact', name: 'Exact', desc: 'Pull inbound data, and use precise package breakdown' },
                 { id: 'deep-dive', name: 'Deep Dive', desc: 'Pull inbound data from packageflix, including stacking filters' }
             ];
-            var html = '<div style="margin-bottom:8px;color:#8b949e;font-size:11px">Select planning mode:</div>';
+            var html = '<div style="margin-bottom:8px;color:var(--he-muted);font-size:11px">Select planning mode:</div>';
             modes.forEach(function(m) {
                 var sel = (current === m.id);
-                html += '<label class="he-mode-label" data-mode="' + m.id + '" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;margin-bottom:4px;background:' + (sel ? '#1a3a2a' : '#0d1117') + ';border:1px solid ' + (sel ? '#2ea043' : '#30363d') + ';border-radius:6px;cursor:pointer">';
+                html += '<label class="he-mode-label" data-mode="' + m.id + '" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;margin-bottom:4px;background:' + (sel ? '#1a3a2a' : 'var(--he-bg)') + ';border:1px solid ' + (sel ? '#2ea043' : 'var(--he-border)') + ';border-radius:6px;cursor:pointer">';
                 html += '<input type="radio" name="he-plan-mode" value="' + m.id + '"' + (sel ? ' checked' : '') + ' style="margin-top:2px">';
-                html += '<div style="flex:1"><div style="font-size:12px;font-weight:600;color:#e6edf3">' + m.name + '</div><div style="font-size:11px;color:#8b949e">' + m.desc + '</div></div>';
+                html += '<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--he-text)">' + m.name + '</div><div style="font-size:11px;color:var(--he-muted)">' + m.desc + '</div></div>';
                 if (m.id === 'simple') {
                     html += '<button id="he-pkg-breakdown-btn" style="padding:3px 8px;background:#1f6feb;border:none;border-radius:4px;color:#fff;font-size:10px;cursor:pointer;white-space:nowrap" title="Set package breakdown percentages">📦 Mix</button>';
                 }
@@ -1581,20 +3542,20 @@
             var html = '<div style="overflow-x:auto;font-size:11px">';
             html += '<table style="width:100%;border-collapse:collapse">';
             // Header row
-            html += '<tr><td style="padding:4px 6px;font-weight:600;color:#8b949e;border-bottom:1px solid #30363d">Attribute</td>';
+            html += '<tr><td style="padding:4px 6px;font-weight:600;color:var(--he-muted);border-bottom:1px solid var(--he-border)">Attribute</td>';
             types.forEach(function(t) {
-                html += '<td style="padding:4px 6px;font-weight:600;color:#e6edf3;text-align:center;border-bottom:1px solid #30363d;min-width:70px">' + t + '</td>';
+                html += '<td style="padding:4px 6px;font-weight:600;color:var(--he-text);text-align:center;border-bottom:1px solid var(--he-border);min-width:70px">' + t + '</td>';
             });
             html += '</tr>';
             // Data rows
             attrs.forEach(function(attr) {
                 html += '<tr>';
-                html += '<td style="padding:3px 6px;color:#e6edf3;border-bottom:1px solid #21262d;white-space:nowrap">' + attr + '</td>';
+                html += '<td style="padding:3px 6px;color:var(--he-text);border-bottom:1px solid var(--he-border2);white-space:nowrap">' + attr + '</td>';
                 types.forEach(function(t) {
                     var key = t + '|' + attr;
                     var val = engineSettings.mheAttrs[key] || '0';
-                    html += '<td style="padding:2px 4px;border-bottom:1px solid #21262d;text-align:center">';
-                    html += '<input class="he-mhe-attr" data-key="' + key + '" type="text" value="' + val + '" style="width:55px;padding:3px 4px;background:#0d1117;border:1px solid #30363d;border-radius:3px;color:#e6edf3;font-size:11px;text-align:center;-moz-appearance:textfield;appearance:textfield">';
+                    html += '<td style="padding:2px 4px;border-bottom:1px solid var(--he-border2);text-align:center">';
+                    html += '<input class="he-mhe-attr" data-key="' + key + '" type="text" value="' + val + '" style="width:55px;padding:3px 4px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:3px;color:var(--he-text);font-size:11px;text-align:center;-moz-appearance:textfield;appearance:textfield">';
                     html += '</td>';
                 });
                 html += '</tr>';
@@ -1607,7 +3568,7 @@
             var html = '<div style="margin-bottom:10px">';
             engineSettings.mheTypes.forEach(function(name, i) {
                 html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
-                html += '<input class="he-mhe-name" data-idx="' + i + '" type="text" value="' + (name || '') + '" placeholder="e.g. Auto Sorter" style="flex:1;padding:6px 10px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">';
+                html += '<input class="he-mhe-name" data-idx="' + i + '" type="text" value="' + (name || '') + '" placeholder="e.g. Auto Sorter" style="flex:1;padding:6px 10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px">';
                 html += '<button class="he-mhe-del" data-idx="' + i + '" style="padding:4px 8px;background:#da3633;border:none;border-radius:3px;color:#fff;font-size:10px;cursor:pointer">✕</button>';
                 html += '</div>';
             });
@@ -1623,9 +3584,9 @@
             var html = '<div style="margin-bottom:10px">';
             engineSettings.sortTimes.forEach(function(s, i) {
                 html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
-                html += '<input class="he-sort-name" data-idx="' + i + '" type="text" value="' + (s.name || '') + '" placeholder="Name" style="width:90px;padding:6px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">';
-                html += '<input class="he-sort-start" data-idx="' + i + '" type="text" value="' + (s.start || '') + '" placeholder="Start" style="width:70px;padding:6px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">';
-                html += '<input class="he-sort-end" data-idx="' + i + '" type="text" value="' + (s.end || '') + '" placeholder="End" style="width:70px;padding:6px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px">';
+                html += '<input class="he-sort-name" data-idx="' + i + '" type="text" value="' + (s.name || '') + '" placeholder="Name" style="width:90px;padding:6px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px">';
+                html += '<input class="he-sort-start" data-idx="' + i + '" type="text" value="' + (s.start || '') + '" placeholder="Start" style="width:70px;padding:6px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px">';
+                html += '<input class="he-sort-end" data-idx="' + i + '" type="text" value="' + (s.end || '') + '" placeholder="End" style="width:70px;padding:6px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px">';
                 html += '<button class="he-sort-del" data-idx="' + i + '" style="padding:4px 8px;background:#da3633;border:none;border-radius:3px;color:#fff;font-size:10px;cursor:pointer">✕</button>';
                 html += '</div>';
             });
@@ -1659,8 +3620,8 @@
             var html = '<div style="margin-bottom:10px;max-height:350px;overflow-y:auto;padding-right:12px">';
             engineSettings.engineerRates.forEach(function(item, i) {
                 html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
-                html += '<input class="he-erate-desc" data-idx="' + i + '" type="text" value="' + (item.desc || '') + '" placeholder="Description" style="flex:1;padding:5px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:11px">';
-                html += '<input class="he-erate-val" data-idx="' + i + '" type="text" value="' + (item.rate || '') + '" placeholder="#" style="width:60px;padding:5px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:11px;text-align:center">';
+                html += '<input class="he-erate-desc" data-idx="' + i + '" type="text" value="' + (item.desc || '') + '" placeholder="Description" style="flex:1;padding:5px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:11px">';
+                html += '<input class="he-erate-val" data-idx="' + i + '" type="text" value="' + (item.rate || '') + '" placeholder="#" style="width:60px;padding:5px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:11px;text-align:center">';
                 html += '<button class="he-erate-del" data-idx="' + i + '" style="padding:3px 6px;background:#da3633;border:none;border-radius:3px;color:#fff;font-size:9px;cursor:pointer">✕</button>';
                 html += '</div>';
             });
@@ -1681,29 +3642,29 @@
             var html = '<div style="overflow-x:auto;font-size:11px">';
             html += '<table style="width:100%;border-collapse:collapse">';
             // Header
-            html += '<tr><td style="padding:4px 6px;font-weight:600;color:#8b949e;border-bottom:1px solid #30363d">Volume Mix %</td>';
+            html += '<tr><td style="padding:4px 6px;font-weight:600;color:var(--he-muted);border-bottom:1px solid var(--he-border)">Volume Mix %</td>';
             types.forEach(function(t) {
-                html += '<td style="padding:4px 6px;font-weight:600;color:#e6edf3;text-align:center;border-bottom:1px solid #30363d;min-width:60px">' + t + '</td>';
+                html += '<td style="padding:4px 6px;font-weight:600;color:var(--he-text);text-align:center;border-bottom:1px solid var(--he-border);min-width:60px">' + t + '</td>';
             });
-            html += '<td style="padding:4px 6px;font-weight:600;color:#8b949e;text-align:center;border-bottom:1px solid #30363d">Total</td></tr>';
+            html += '<td style="padding:4px 6px;font-weight:600;color:var(--he-muted);text-align:center;border-bottom:1px solid var(--he-border)">Total</td></tr>';
             // Rows
             sizes.forEach(function(size) {
                 html += '<tr data-row="' + size + '">';
-                html += '<td style="padding:3px 6px;color:#e6edf3;border-bottom:1px solid #21262d;white-space:nowrap">' + size + '</td>';
+                html += '<td style="padding:3px 6px;color:var(--he-text);border-bottom:1px solid var(--he-border2);white-space:nowrap">' + size + '</td>';
                 types.forEach(function(t) {
                     var key = t + '|' + size;
                     var val = engineSettings.volumeMix[key] || '0';
-                    html += '<td style="padding:2px 4px;border-bottom:1px solid #21262d;text-align:center">';
-                    html += '<input class="he-vmix" data-key="' + key + '" data-row="' + size + '" type="text" value="' + val + '" style="width:50px;padding:3px 4px;background:#0d1117;border:1px solid #30363d;border-radius:3px;color:#e6edf3;font-size:11px;text-align:center">';
+                    html += '<td style="padding:2px 4px;border-bottom:1px solid var(--he-border2);text-align:center">';
+                    html += '<input class="he-vmix" data-key="' + key + '" data-row="' + size + '" type="text" value="' + val + '" style="width:50px;padding:3px 4px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:3px;color:var(--he-text);font-size:11px;text-align:center">';
                     html += '</td>';
                 });
-                html += '<td class="he-vmix-total" data-row="' + size + '" style="padding:3px 6px;border-bottom:1px solid #21262d;text-align:center;font-weight:600;font-size:11px">0%</td>';
+                html += '<td class="he-vmix-total" data-row="' + size + '" style="padding:3px 6px;border-bottom:1px solid var(--he-border2);text-align:center;font-weight:600;font-size:11px">0%</td>';
                 html += '</tr>';
             });
             html += '</table></div>';
             return html;
         }
-        return 'Setting editor for <strong style="color:#e6edf3">' + settingId + '</strong> coming soon.';
+        return 'Setting editor for <strong style="color:var(--he-text)">' + settingId + '</strong> coming soon.';
     }
 
     function handleSettingSave(settingId) {
@@ -1841,11 +3802,11 @@
             { key: 'nonCon', label: 'Non Con' },
             { key: 'nonConPlus', label: 'Non Con+' }
         ];
-        var html = '<div style="margin-bottom:12px;color:#8b949e;font-size:11px">Enter percentage breakdown (should sum to 100%):</div>';
+        var html = '<div style="margin-bottom:12px;color:var(--he-muted);font-size:11px">Enter percentage breakdown (should sum to 100%):</div>';
         fields.forEach(function(f) {
             html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-            html += '<span style="font-size:12px;color:#e6edf3">' + f.label + '</span>';
-            html += '<div style="display:flex;align-items:center;gap:4px"><input id="he-pkg-' + f.key + '" type="number" value="' + (bd[f.key] || '') + '" placeholder="%" style="width:60px;padding:5px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e6edf3;font-size:12px;text-align:right;-moz-appearance:textfield;appearance:textfield"><span style="color:#8b949e;font-size:11px">%</span></div>';
+            html += '<span style="font-size:12px;color:var(--he-text)">' + f.label + '</span>';
+            html += '<div style="display:flex;align-items:center;gap:4px"><input id="he-pkg-' + f.key + '" type="number" value="' + (bd[f.key] || '') + '" placeholder="%" style="width:60px;padding:5px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px;text-align:right;-moz-appearance:textfield;appearance:textfield"><span style="color:var(--he-muted);font-size:11px">%</span></div>';
             html += '</div>';
         });
         html += '<div id="he-pkg-total" style="margin-top:10px;padding:8px 10px;border-radius:4px;font-size:12px;font-weight:600;text-align:right"></div>';
@@ -1854,14 +3815,14 @@
         modal.id = 'he-pkg-modal';
         modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100001;display:flex;align-items:center;justify-content:center';
         modal.innerHTML =
-            '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
-                    '<span style="font-size:14px;font-weight:600;color:#e6edf3">Package Breakdown</span>' +
-                    '<button id="he-pkg-close" style="background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer">✕</button>' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">Package Breakdown</span>' +
+                    '<button id="he-pkg-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
                 '</div>' +
                 '<div id="he-pkg-fields">' + html + '</div>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
-                    '<button id="he-pkg-cancel" style="padding:6px 14px;background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-pkg-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-pkg-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
             '</div>';
@@ -1933,16 +3894,16 @@
         modal.id = 'he-setting-modal';
         modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center';
         modal.innerHTML =
-            '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;min-width:320px;max-width:500px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
+            '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:10px;padding:20px;min-width:320px;max-width:500px;box-shadow:0 8px 30px rgba(0,0,0,0.8)">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-                    '<span style="font-size:14px;font-weight:600;color:#e6edf3">' + (titles[settingId] || settingId) + '</span>' +
-                    '<button id="he-modal-close" style="background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer">✕</button>' +
+                    '<span style="font-size:14px;font-weight:600;color:var(--he-text)">' + (titles[settingId] || settingId) + '</span>' +
+                    '<button id="he-modal-close" style="background:none;border:none;color:var(--he-muted);font-size:18px;cursor:pointer">✕</button>' +
                 '</div>' +
-                '<div id="he-modal-body" style="color:#8b949e;font-size:12px;padding:10px 0">' +
+                '<div id="he-modal-body" style="color:var(--he-muted);font-size:12px;padding:10px 0">' +
                     getSettingContent(settingId) +
                 '</div>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">' +
-                    '<button id="he-modal-cancel" style="padding:6px 14px;background:none;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:12px;cursor:pointer">Cancel</button>' +
+                    '<button id="he-modal-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-modal-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
             '</div>';
@@ -1964,8 +3925,8 @@
                 radio.addEventListener('change', function() {
                     document.querySelectorAll('.he-mode-label').forEach(function(lbl) {
                         var isSel = (lbl.getAttribute('data-mode') === radio.value && radio.checked);
-                        lbl.style.background = isSel ? '#1a3a2a' : '#0d1117';
-                        lbl.style.borderColor = isSel ? '#2ea043' : '#30363d';
+                        lbl.style.background = isSel ? '#1a3a2a' : 'var(--he-bg)';
+                        lbl.style.borderColor = isSel ? '#2ea043' : 'var(--he-border)';
                     });
                     engineSettings.planMode = radio.value;
                     saveSettings();
