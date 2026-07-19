@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.12
+// @version      2.13
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -344,7 +344,7 @@
         { id: 'autochutes',   label: 'Chute Matrix',    group: 'CHASE',  desc: 'Chute floor \u2014 live container counts mapped to physical lanes.' },
         { id: 'received',     label: 'Received',        group: 'CHASE',  desc: 'Receive dock \u2014 containers in gaylord / receive buffers.' },
         { id: 'linearchutes', label: 'Custom View',     group: 'CHASE',  desc: 'Catch-all sweep \u2014 point anywhere to find stragglers the other views miss.' },
-        { id: 'armezz',       label: 'AR Mezz',         group: 'CHASE',  desc: 'AR Mezz View \u2014 21 lanes \u00d7 16 chutes, live WIP + associate scanning status from STEM.' },
+        { id: 'armezz',       label: 'AR Mezz',         group: 'CHASE',  desc: 'AR Mezz View \u2014 live WIP + associate scanning status from STEM.' },
         { id: 'cptdetails',   label: 'CPT Details',     group: 'REVIEW', desc: 'Per-route stage breakdown \u2014 where volume sits across the pipeline.' },
         { id: 'cptperf',      label: 'CPT Performance', group: 'REVIEW', desc: 'On-time scorecard \u2014 % of CPT trailers that departed on time.' },
     ];
@@ -3631,6 +3631,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             + '<input id="hydra-wiz-new-code" type="text" placeholder="Site code (e.g. DFW7)" style="background:var(--h-bg1,#0e1620);border:1px solid var(--h-border,#2a3a4c);color:var(--h-text,#e8eaf0);padding:6px 10px;border-radius:4px;font-size:13px;width:140px">'
             + '<button id="hydra-wiz-create-btn" style="background:#1a6b2a;border:1px solid #2ea043;color:#fff;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:700">Create Preset</button>'
             + '</div>'
+            // Upload (import) a saved preset via HYDRA_PRESET_V1 string
+            + '<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:14px;flex-wrap:wrap">'
+            + '<span style="color:var(--h-muted,#aab4c0);font-size:12px">Or upload a saved preset:</span>'
+            + '<button id="hydra-wiz-upload-btn" style="background:var(--h-copy-btn,#1e4a7f);border:1px solid var(--h-blue,#5090d0);color:#fff;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:700">Upload Preset</button>'
+            + '</div>'
             // CPT Windows section
             + '<div style="text-align:left;margin-bottom:12px;padding:10px;background:var(--h-bg1,#0e1620);border:1px solid var(--h-border,#2a3a4c);border-radius:6px">'
             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="color:var(--h-text,#e8eaf0);font-size:12px;font-weight:600">CPT Windows</span><button id="hydra-wiz-cpt-add" style="background:var(--h-copy-btn,#1e4a7f);border:1px solid var(--h-blue,#5090d0);color:#fff;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:10px">+ Add</button></div>'
@@ -3870,6 +3875,55 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var newPreset = { id: newId, name: code, settings: Object.assign({}, mdw5Settings, { node: code, cptWindows: wizCptWindows, dockDoorEnabled: dockEnabled, dockDoorRaw: dockRaw, selectedCptIds: [], cptStart: '', cptEnd: '', obRouteGroups: wizRouteGroups, obRouteLists: wizRouteLists, obRouteNames: wizRouteNames, obRouteItems: wizRouteItems }) };
             hydraPresets[newId] = newPreset;
             finishWizard(newId);
+        });
+
+        // Upload a saved preset — same flow as the Import Preset modal
+        // (paste a HYDRA_PRESET_V1:... string + name), but finalizes the wizard.
+        var _wizUploadBtn = document.getElementById('hydra-wiz-upload-btn');
+        if (_wizUploadBtn) _wizUploadBtn.addEventListener('click', function() {
+            var existingImp = document.getElementById('hydra-wiz-import-modal');
+            if (existingImp) existingImp.remove();
+            var imp = document.createElement('div');
+            imp.id = 'hydra-wiz-import-modal';
+            imp.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:2147483648;display:flex;align-items:center;justify-content:center';
+            imp.innerHTML = '<div style="background:var(--h-bg3, #1b2330);border:1px solid var(--h-blue, #5090d0);border-radius:8px;padding:20px;max-width:520px;width:90%">'
+                + '<div style="color:var(--h-blue, #5090d0);font-weight:700;margin-bottom:8px">Import Preset</div>'
+                + '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin-bottom:6px">Paste the HYDRA_PRESET_V1:... string below:</div>'
+                + '<textarea id="hydra-wiz-import-string" style="width:100%;height:100px;background:var(--h-bg1, #0e1620);border:1px solid var(--h-border, #2a3a4c);color:var(--h-text, #e8eaf0);font-size:11px;font-family:monospace;padding:8px;box-sizing:border-box;resize:none" placeholder="HYDRA_PRESET_V1:..."></textarea>'
+                + '<div style="margin-top:6px"><label style="color:var(--h-muted2, #7a8a9a);font-size:11px">Preset name:&nbsp;</label><input id="hydra-wiz-import-name" style="background:var(--h-bg1, #0e1620);border:1px solid var(--h-border, #2a3a4c);color:var(--h-text, #e8eaf0);padding:4px 8px;border-radius:3px;font-size:12px" placeholder="My Preset"></div>'
+                + '<div id="hydra-wiz-import-error" style="color:#ef5350;font-size:11px;margin-top:4px;min-height:16px"></div>'
+                + '<div style="display:flex;gap:8px;margin-top:8px">'
+                + '<button id="hydra-wiz-import-confirm" style="flex:1;background:var(--h-copy-btn, #1e4a7f);border:1px solid var(--h-blue, #5090d0);color:#fff;padding:6px;border-radius:4px;cursor:pointer">Import</button>'
+                + '<button id="hydra-wiz-import-cancel" style="flex:1;background:var(--h-border, #2a3a4c);border:1px solid var(--h-border2, #3a4a5c);color:var(--h-text, #e8eaf0);padding:6px;border-radius:4px;cursor:pointer">Cancel</button>'
+                + '</div></div>';
+            document.body.appendChild(imp);
+            document.getElementById('hydra-wiz-import-cancel').addEventListener('click', function() { imp.remove(); });
+            imp.addEventListener('click', function(e) { if (e.target === imp) imp.remove(); });
+            document.getElementById('hydra-wiz-import-string').addEventListener('input', function() {
+                try {
+                    var v = this.value.trim();
+                    if (v.indexOf('HYDRA_PRESET_V1:') !== 0) return;
+                    var pp = JSON.parse(decodeURIComponent(escape(atob(v.slice(16)))));
+                    if (pp.name) document.getElementById('hydra-wiz-import-name').value = pp.name;
+                } catch(e4) {}
+            });
+            document.getElementById('hydra-wiz-import-confirm').addEventListener('click', function() {
+                var raw2 = document.getElementById('hydra-wiz-import-string').value.trim();
+                var errEl = document.getElementById('hydra-wiz-import-error');
+                errEl.textContent = '';
+                if (raw2.indexOf('HYDRA_PRESET_V1:') !== 0) { errEl.textContent = 'Invalid — must start with HYDRA_PRESET_V1:'; return; }
+                try {
+                    var parsed = JSON.parse(decodeURIComponent(escape(atob(raw2.slice(16)))));
+                    if (!parsed.settings) { errEl.textContent = 'Invalid preset — missing settings'; return; }
+                    var pName = (document.getElementById('hydra-wiz-import-name').value.trim() || parsed.name || 'Imported').trim();
+                    var pId = pName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+                    if (!pId) pId = 'imported';
+                    if (hydraPresets[pId]) pId = pId + '-' + Date.now();
+                    hydraPresets[pId] = { id: pId, name: pName, settings: parsed.settings };
+                    imp.remove();
+                    finishWizard(pId);
+                } catch(e3) { errEl.textContent = 'Parse error: ' + e3.message; }
+            });
         });
     }
 
@@ -11914,7 +11968,28 @@ if (k === 'eta') {
             });
         }
 
-        var sections = [[1,7],[8,15],[16,21]];
+        // Derive grid dimensions from the live data so ANY site works
+        // (e.g. 21 lanes x 16 chutes, 30 lanes x 9 chutes, etc.). maxLane/
+        // maxChute come straight from the workstation aliases we parsed.
+        var maxLane = 0, maxChute = 0, presentChutes = {};
+        Object.keys(grid).forEach(function(lk) {
+            var ln = parseInt(lk, 10);
+            if (ln > maxLane) maxLane = ln;
+            Object.keys(grid[lk]).forEach(function(ck) {
+                var cn = parseInt(ck, 10);
+                if (cn > maxChute) maxChute = cn;
+                presentChutes[cn] = true;
+            });
+        });
+        if (maxLane < 1) maxLane = 1;
+        if (maxChute < 1) maxChute = 1;
+        // Split lanes into 3 near-equal contiguous sections (keeps the 3-table
+        // stacked layout regardless of how many lanes the site has).
+        var sections = [];
+        var _lanesPerSec = Math.ceil(maxLane / 3);
+        for (var _ss = 1; _ss <= maxLane; _ss += _lanesPerSec) {
+            sections.push([_ss, Math.min(_ss + _lanesPerSec - 1, maxLane)]);
+        }
         var html = '<div style="display:flex;justify-content:center;width:100%"><div class="hydra-table" style="padding:16px 12px;font-size:12px">';
         // Header stat cards
         html += '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:stretch;flex-wrap:wrap;margin-left:152px">';
@@ -11962,7 +12037,7 @@ if (k === 'eta') {
             var guidToMapId = {};
             qbccChuteData.forEach(function(ci) { guidToMapId[ci.chuteId.workcellGuid] = ci.chuteId.mapId; });
             // Also add WATT workstationIds from grid (may be different GUIDs)
-            for (var gl = 1; gl <= 21; gl++) { if (grid[gl]) for (var gc = 1; gc <= 16; gc++) { var gcd = grid[gl][gc]; if (gcd && gcd.wsId) guidToMapId[gcd.wsId] = 20000 + gc * 100 + gl; } }
+            for (var gl = 1; gl <= maxLane; gl++) { if (grid[gl]) for (var gc = 1; gc <= maxChute; gc++) { var gcd = grid[gl][gc]; if (gcd && gcd.wsId) guidToMapId[gcd.wsId] = 20000 + gc * 100 + gl; } }
             // Filter to chute assignments only (workstationId not null)
             var chuteAssignments = staffingAssignments.filter(function(a) { return a.workstationId; });
             // Cross-reference with grid to find in-transit (not yet at assigned chute)
@@ -11980,7 +12055,7 @@ if (k === 'eta') {
                 if (!atDest && destMapId) {
                     // Find current location from grid
                     var curLoc = null;
-                    for (var sl = 1; sl <= 21 && !curLoc; sl++) { if (grid[sl]) for (var sc = 1; sc <= 16; sc++) { var scd = grid[sl][sc]; if (scd && scd.assoc && scd.assoc.login === a.associateId) { curLoc = scd.chuteId; break; } } }
+                    for (var sl = 1; sl <= maxLane && !curLoc; sl++) { if (grid[sl]) for (var sc = 1; sc <= maxChute; sc++) { var scd = grid[sl][sc]; if (scd && scd.assoc && scd.assoc.login === a.associateId) { curLoc = scd.chuteId; break; } } }
                     activeMoves.push({ login: a.associateId, name: a.associate ? a.associate.fullName : a.associateId, dest: destLabel, destMapId: destMapId, curLoc: curLoc, source: a.source, user: a.lastUpdateUser, time: a.updatedTime });
                 }
             });
@@ -12008,7 +12083,7 @@ if (k === 'eta') {
         sections.forEach(function(sec) {
             var startL = sec[0], endL = sec[1];
             var secWip = 0, secAssoc = 0;
-            for (var l = startL; l <= endL; l++) { if (grid[l]) for (var c = 1; c <= 16; c++) { var cell = grid[l] && grid[l][c]; if (cell) { secWip += cell.wip; if (cell.assocCount) secAssoc++; } } }
+            for (var l = startL; l <= endL; l++) { if (grid[l]) for (var c = 1; c <= maxChute; c++) { var cell = grid[l] && grid[l][c]; if (cell) { secWip += cell.wip; if (cell.assocCount) secAssoc++; } } }
             html += '<table style="margin-bottom:28px;border-collapse:collapse;width:100%;font-size:11px">';
             // Section header row
             html += '<thead><tr>';
@@ -12017,12 +12092,12 @@ if (k === 'eta') {
             html += '<th style="padding:4px 6px;color:#22d3ee;font-weight:700;border-bottom:2px solid #22d3ee">AA ' + secAssoc + '</th>';
             html += '<th style="padding:4px 6px;color:#22d3ee;font-weight:700;border-bottom:2px solid #22d3ee;border-right:2px solid var(--h-border2,#3a4a5c)">AVG ' + (secAssoc > 0 ? Math.round(secWip/secAssoc) : 0) + '</th>';
             html += '<th style="width:12px;border-bottom:2px solid #22d3ee"></th>';
-            for (var c = 1; c <= 16; c++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center' + (c===16?';border-right:2px solid var(--h-border2,#3a4a5c)':'') + '">CH' + c + '</th>';
+            for (var c = 1; c <= maxChute; c++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center' + (c===maxChute?';border-right:2px solid var(--h-border2,#3a4a5c)':'') + '">CH' + c + '</th>';
             html += '</tr></thead><tbody>';
 
             for (var l = startL; l <= endL; l++) {
                 var laneWip = 0, laneAssoc = 0;
-                if (grid[l]) for (var c2 = 1; c2 <= 16; c2++) { var cc = grid[l] && grid[l][c2]; if (cc) { laneWip += cc.wip; if (cc.assocCount) laneAssoc++; } }
+                if (grid[l]) for (var c2 = 1; c2 <= maxChute; c2++) { var cc = grid[l] && grid[l][c2]; if (cc) { laneWip += cc.wip; if (cc.assocCount) laneAssoc++; } }
                 // Determine if this lane is the first of a pair (2/3, 4/5, 6/7, 8/9, 10/11, 12/13, 14/15, 16/17, 18/19, 20/21)
                 var isPairFirst = (l >= 2 && l % 2 === 0 && l + 1 <= endL);
                 var isPairSecond = (l >= 3 && l % 2 === 1 && l !== startL);
@@ -12032,7 +12107,7 @@ if (k === 'eta') {
                     var l2 = l + 1;
                     pairWip = laneWip;
                     pairAssoc = laneAssoc;
-                    if (grid[l2]) for (var c3 = 1; c3 <= 16; c3++) { var cc2 = grid[l2] && grid[l2][c3]; if (cc2) { pairWip += cc2.wip; if (cc2.assocCount) pairAssoc++; } }
+                    if (grid[l2]) for (var c3 = 1; c3 <= maxChute; c3++) { var cc2 = grid[l2] && grid[l2][c3]; if (cc2) { pairWip += cc2.wip; if (cc2.assocCount) pairAssoc++; } }
                 }
                 html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">';
                 html += '<td style="padding:3px 8px;font-weight:600;white-space:nowrap;color:var(--h-text,#e8eaf0);border-left:2px solid var(--h-border2,#3a4a5c)">Lane ' + l + '</td>';
@@ -12049,7 +12124,7 @@ if (k === 'eta') {
                     html += '<td style="padding:3px 6px;text-align:center;color:var(--h-muted,#aab4c0);border-right:2px solid var(--h-border2,#3a4a5c)">' + (laneAssoc > 0 ? Math.round(laneWip/laneAssoc) : 0) + '</td>';
                 }
                 html += '<td style="width:12px"></td>';
-                for (var c = 1; c <= 16; c++) {
+                for (var c = 1; c <= maxChute; c++) {
                     var cd = grid[l] && grid[l][c];
                     var cellWip = cd ? cd.wip : 0;
                     var cellDisplay = cellWip;
@@ -12063,18 +12138,18 @@ if (k === 'eta') {
                     var qbccBorder = '';
                     var qbccMapId = 20000 + c * 100 + l;
                     var overlayStyle = '';
-                    if (c !== 9 && arMezzOverlay === 'priority') {
+                    if (presentChutes[c] && arMezzOverlay === 'priority') {
                         if (qbccPriorities[qbccMapId] === 'high') overlayStyle = 'outline:3px solid #ef4444;outline-offset:-3px;';
                         else if (qbccPriorities[qbccMapId] === 'low') overlayStyle = 'outline:2px dashed #f97316;outline-offset:-2px;';
-                    } else if (c !== 9 && arMezzOverlay === 'amzl') {
+                    } else if (presentChutes[c] && arMezzOverlay === 'amzl') {
                         if (amzlChutes[qbccMapId]) overlayStyle = 'box-shadow:inset 0 0 0 2px #3b82f6;';
                         else overlayStyle = 'opacity:0.25;';
-                    } else if (c !== 9 && arMezzOverlay === 'perspective') {
+                    } else if (presentChutes[c] && arMezzOverlay === 'perspective') {
                         if (perspChutes[qbccMapId] === 'hardware') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
                         else if (perspChutes[qbccMapId] === 'inactive') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
                         else if (perspChutes[qbccMapId] === 'full') overlayStyle = 'outline:3px solid #3b82f6;outline-offset:-3px;';
                         else if (perspChutes[qbccMapId] === 'half') overlayStyle = 'outline:3px solid #eab308;outline-offset:-3px;';
-                    } else if (c !== 9 && arMezzOverlay === 'serpenteye') {
+                    } else if (presentChutes[c] && arMezzOverlay === 'serpenteye') {
                         // Priority overrides perspective
                         if (qbccPriorities[qbccMapId] === 'high') overlayStyle = 'outline:3px solid #ef4444;outline-offset:-3px;';
                         else if (qbccPriorities[qbccMapId] === 'low') overlayStyle = 'outline:2px dashed #f97316;outline-offset:-2px;';
@@ -12084,7 +12159,7 @@ if (k === 'eta') {
                         // AMZL text styling
                         if (amzlChutes[qbccMapId]) overlayStyle += 'font-size:120%;font-weight:700;text-decoration:underline;color:#ffffff !important;';
                     }
-                    html += '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + overlayStyle + bg + ';' + color + (c===16?';border-right:2px solid var(--h-border2,#3a4a5c)':'') + '">' + (cellDisplay || '') + '</td>';
+                    html += '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + overlayStyle + bg + ';' + color + (c===maxChute?';border-right:2px solid var(--h-border2,#3a4a5c)':'') + '">' + (cellDisplay || '') + '</td>';
                 }
                 html += '</tr>';
             }
@@ -12095,7 +12170,7 @@ if (k === 'eta') {
 
         // Right side panel: Top 5 / Bottom 5 chutes
         var allChutes = [];
-        for (var ll = 1; ll <= 21; ll++) { if (grid[ll]) for (var cc = 1; cc <= 16; cc++) { var ccc = grid[ll][cc]; if (ccc && ccc.chuteId) allChutes.push(ccc); } }
+        for (var ll = 1; ll <= maxLane; ll++) { if (grid[ll]) for (var cc = 1; cc <= maxChute; cc++) { var ccc = grid[ll][cc]; if (ccc && ccc.chuteId) allChutes.push(ccc); } }
         var top5 = allChutes.filter(function(c){return c.wip > 0;}).sort(function(a,b){return b.wip - a.wip;}).slice(0,5);
         var bot5 = allChutes.filter(function(c){return c.scanning;}).sort(function(a,b){return a.wip - b.wip;}).slice(0,5);
 
@@ -17068,7 +17143,7 @@ if (k === 'eta') {
         aiInit();
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
-            var CURRENT_VERSION = '2.12';
+            var CURRENT_VERSION = '2.13';
             var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
             var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
             GM_xmlhttpRequest({
