@@ -11987,8 +11987,15 @@ if (k === 'eta') {
         // stacked layout regardless of how many lanes the site has).
         var sections = [];
         var _lanesPerSec = Math.ceil(maxLane / 3);
-        for (var _ss = 1; _ss <= maxLane; _ss += _lanesPerSec) {
-            sections.push([_ss, Math.min(_ss + _lanesPerSec - 1, maxLane)]);
+        var _ss = 1;
+        while (_ss <= maxLane) {
+            var _end = Math.min(_ss + _lanesPerSec - 1, maxLane);
+            // Keep even/odd lane pairs together by ending on an odd lane
+            // (an even lane pairs with the next odd one, which must stay in
+            // the same section). For 21 lanes this yields [[1,7],[8,15],[16,21]].
+            if (_end < maxLane && _end % 2 === 0) _end++;
+            sections.push([_ss, _end]);
+            _ss = _end + 1;
         }
         var html = '<div style="display:flex;justify-content:center;width:100%"><div class="hydra-table" style="padding:16px 12px;font-size:12px">';
         // Header stat cards
