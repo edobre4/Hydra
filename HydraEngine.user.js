@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra Engine
-// @version      0.2
+// @version      0.3
 // @description  AI-powered pipeline optimization engine for NASC sort centers
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.meta.js?raw=1
@@ -254,7 +254,7 @@
     ];
     var IB_DEFAULT_VISIBLE = new Set([
         'equip','vrid','route','status','location','progress','total','sortable',
-        'crossdock','cpt','noncon','containers','fluid','containerized','sat','aat'
+        'crossdock','cpt','noncon','containers','fluid','containerized','sat','aat','eta'
     ]);
     var IB_ALWAYS_VISIBLE = new Set(['equip','vrid']);
     var IB_COPYABLE_COLS = [
@@ -266,7 +266,7 @@
     ];
 
     var ibTableData = [], ibActiveTab = 'ondock';
-    var ibTrailerFilter = 'all';
+    var ibTrailerFilter = GM_getValue('he-ib-trailer-filter', 'all');
     var ibVisibleCols = new Set(IB_DEFAULT_VISIBLE), ibColOrder = IB_COLS.map(function(c) { return c.key; });
 
     function encodeToken(t) { return t.replace(/=/g, '%3D').replace(/\//g, '%2F').replace(/\+/g, '%2B'); }
@@ -839,7 +839,7 @@
 
     var ibTabSort = { all: {key:'cpt',dir:-1}, arrived: {key:'cpt',dir:-1}, ondock: {key:'cpt',dir:-1}, yard: {key:'cpt',dir:-1}, scheduled: {key:'sat',dir:1}, manifested: {key:'eta',dir:1}, completed: {key:'aat',dir:-1} };
     function getIbSort() { return ibTabSort[ibActiveTab] || (ibTabSort[ibActiveTab] = {key:'cpt',dir:-1}); }
-    var ibFilterText = '', ibFilterXD = false, ibFilterSortable = false;
+    var ibFilterText = '', ibFilterXD = (ibTrailerFilter === 'xd'), ibFilterSortable = (ibTrailerFilter === 'sortable');
 
     function getIBFiltered(tabId) {
         var tab = IB_TABS.find(function(t) { return t.id === tabId; });
@@ -898,7 +898,7 @@
             var e = w.endH   * 60 + (w.endM   || 0);
             var inWindow = (e <= s) ? (t >= s || t <= e) : (t >= s && t <= e);
             if (inWindow) {
-                return { bg: w.bgColor || 'var(--h-bg4, #1a2535)', text: w.textColor || 'var(--h-text, #e8eaf0)' };
+                return { bg: w.bgColor || 'var(--h-bg4, #1a2535)', text: w.textColor || 'var(--h-text, var(--he-text))' };
             }
         }
         return null;
@@ -910,25 +910,25 @@
     }
     function cptCellHtml(v, noHeat) {
         v = v || 0;
-        if (noHeat) return '<td style="padding:3px 10px">' + v + '</td>';
+        if (noHeat) return '<td style="padding:3px 10px;border-bottom:1px solid #2a2a2a">' + v + '</td>';
         var bg, color = '#fff', fw = ';font-weight:700', extra = '';
         if (v >= 200) { bg = '#b71c1c'; extra = ';box-shadow:inset 0 0 8px rgba(0,0,0,.4)'; }
         else if (v >= 100) { bg = '#c62828'; }
         else if (v >= 40) { bg = '#e65100'; }
         else if (v >= 10) { bg = '#f57f17'; color = '#111'; }
         else { bg = '#1b5e20'; fw = ''; }
-        return '<td style="background:' + bg + ';color:' + color + fw + extra + ';border-radius:3px;padding:3px 10px">' + v + '</td>';
+        return '<td style="background:' + bg + ';color:' + color + fw + extra + ';border-radius:3px;padding:3px 10px;border:1px solid rgba(0,0,0,0.45)">' + v + '</td>';
     }
     function ncCptCellHtml(v, noHeat) {
         v = v || 0;
-        if (noHeat) return '<td style="padding:3px 10px">' + v + '</td>';
+        if (noHeat) return '<td style="padding:3px 10px;border-bottom:1px solid #2a2a2a">' + v + '</td>';
         var bg, color = '#fff', fw = ';font-weight:700', extra = '';
         if      (v >= 200) { bg = '#b71c1c'; extra = ';box-shadow:inset 0 0 8px rgba(0,0,0,.4)'; }
         else if (v >= 100) { bg = '#c62828'; }
         else if (v >= 40)  { bg = '#e65100'; }
         else if (v >= 10)  { bg = '#f57f17'; color = '#111'; }
         else               { bg = '#1b5e20'; fw = ''; }
-        return '<td style="background:' + bg + ';color:' + color + fw + extra + ';border-radius:3px;padding:3px 10px">' + v + '</td>';
+        return '<td style="background:' + bg + ';color:' + color + fw + extra + ';border-radius:3px;padding:3px 10px;border:1px solid rgba(0,0,0,0.45)">' + v + '</td>';
     }
     function ppcColorStyle(containerized, containers) {
         var c = Number(containers) || 0;
@@ -1085,7 +1085,7 @@
                 '<button id="he-ib-export-plan" style="background:linear-gradient(135deg,#cc1040,#a00830);color:#fff;border:none;border-radius:4px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer">Export To Plan</button>' +
                 '<button id="he-ib-sel-clear" style="background:none;border:none;color:var(--he-muted);cursor:pointer;font-size:12px">Clear</button>' +
             '</div>' +
-            '<div id="he-ib-table-wrap" style="overflow:auto;flex:1;min-height:0;user-select:none;font-size:12px;position:relative"></div>';
+            '<div id="he-ib-table-wrap" style="overflow:auto;flex:1;min-height:0;user-select:none;font-size:12px;position:relative;background:var(--he-bg)"></div>';
 
         // Wire controls
         var cptSel = document.getElementById('he-ib-cpt-preset');
@@ -1114,6 +1114,7 @@
                 ibTrailerFilter = btn.getAttribute('data-tf');
                 ibFilterXD = (ibTrailerFilter === 'xd');
                 ibFilterSortable = (ibTrailerFilter === 'sortable');
+                GM_setValue('he-ib-trailer-filter', ibTrailerFilter);
                 updateTfilterButtons();
                 renderIBTabs();
                 renderIBTable();
@@ -1126,10 +1127,13 @@
     }
 
     function updateTfilterButtons() {
+        var isDark = GM_getValue('he-theme', 'light') === 'dark';
+        var activeBg = isDark ? '#3d1020' : '#ffdbe2';
+        var activeFg = isDark ? '#ff4070' : '#cc1040';
         document.querySelectorAll('.he-ib-tfilter').forEach(function(btn) {
             var active = btn.getAttribute('data-tf') === ibTrailerFilter;
-            btn.style.background = active ? '#3d1020' : 'var(--he-bg)';
-            btn.style.color = active ? '#ff4070' : 'var(--he-muted)';
+            btn.style.background = active ? activeBg : 'var(--he-bg)';
+            btn.style.color = active ? activeFg : 'var(--he-muted)';
             btn.style.border = '1px solid ' + (active ? '#cc1040' : 'var(--he-border)');
         });
     }
@@ -1171,15 +1175,10 @@
         });
         var total = sums.extraSmall + sums.small + sums.medium + sums.large + sums.extraLarge + sums.nonCon + sums.nonConPlus;
         if (!engineSettings.planVars) engineSettings.planVars = {};
-        // Store exact package counts per size (renderPlanVarsPanel prefers these)
+        // Store exact package counts per size = the "data pull" (trailers the
+        // user plans to unload). Used by Scaling (for mix %) and Exact (counts).
         engineSettings.planVars.volumeMixPackages = sums;
         engineSettings.planVars.sortVolumeGoal = String(total);
-        // Sync packageBreakdown percentages to the exported mix
-        if (!engineSettings.packageBreakdown) engineSettings.packageBreakdown = {};
-        var pctKeys = { extraSmall:'extraSmall', small:'small', medium:'medium', large:'large', extraLarge:'extraLarge', nonCon:'nonCon', nonConPlus:'nonConPlus' };
-        Object.keys(pctKeys).forEach(function(k) {
-            engineSettings.packageBreakdown[k] = total > 0 ? ((sums[k] / total) * 100).toFixed(2) : '0';
-        });
         saveSettings();
         // Switch to Engine → Plan so the result is visible
         var engTab = document.querySelector('.he-view-tab.eng-tab');
@@ -1217,11 +1216,14 @@
     function renderIBTabs() {
         var wrap = document.getElementById('he-ib-tabs');
         if (!wrap) return;
+        var isDark = GM_getValue('he-theme', 'light') === 'dark';
+        var actCountBg = isDark ? '#3d1020' : '#ffdbe2';
+        var actFg = isDark ? '#ff4070' : '#cc1040';
         wrap.innerHTML = IB_TABS.map(function(t) {
             var rows = (t.isChart) ? [] : getIBFiltered(t.id);
             var active = ibActiveTab === t.id;
-            var countHtml = t.isChart ? '' : '<span style="margin-left:5px;background:' + (active ? '#3d1020' : 'var(--he-border2)') + ';color:' + (active ? '#ff4070' : 'var(--he-muted)') + ';border:1px solid ' + (active ? '#ff4070' : 'transparent') + ';border-radius:8px;padding:0 6px;font-size:10px;font-weight:700">' + rows.length + '</span>';
-            return '<div class="he-ib-tab" data-tab="' + t.id + '" style="padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;color:' + (active ? '#ff4070' : 'var(--he-muted)') + ';border-bottom:3px solid ' + (active ? '#ff2855' : 'transparent') + ';margin-bottom:-2px;user-select:none">' + t.label + countHtml + '</div>';
+            var countHtml = t.isChart ? '' : '<span style="margin-left:5px;background:' + (active ? actCountBg : 'var(--he-border2)') + ';color:' + (active ? actFg : 'var(--he-muted)') + ';border:1px solid ' + (active ? actFg : 'transparent') + ';border-radius:8px;padding:0 6px;font-size:10px;font-weight:700">' + rows.length + '</span>';
+            return '<div class="he-ib-tab" data-tab="' + t.id + '" style="padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;color:' + (active ? actFg : 'var(--he-muted)') + ';border-bottom:3px solid ' + (active ? '#ff2855' : 'transparent') + ';margin-bottom:-2px;user-select:none">' + t.label + countHtml + '</div>';
         }).join('');
         wrap.querySelectorAll('.he-ib-tab').forEach(function(el) {
             el.addEventListener('click', function() {
@@ -1308,15 +1310,24 @@
         return _lastEnd - _slaH * 3600000;
     }
 
-    var IB_BADGE_COLORS = {
+    var IB_BADGE_LIGHT = {
+        'UNLOADING_IN_PROGRESS': ['#43a860','#fff'], 'READY_FOR_UNLOAD': ['#3183ce','#fff'],
+        'UNLOADING_PAUSED': ['#e0952e','#fff'], 'LOAD_ARRIVED': ['#d98a2b','#fff'],
+        'IN_TRANSIT': ['#a465c4','#fff'], 'SCHEDULED': ['#6aa84f','#fff'],
+        'MANIFESTED': ['#a465c4','#fff'], 'COMPLETED': ['#5f70cf','#fff']
+    };
+    var IB_BADGE_DARK = {
         'UNLOADING_IN_PROGRESS': ['#1a4731','#2e9e4f'], 'READY_FOR_UNLOAD': ['#1a3a5c','#2f7fc8'],
         'UNLOADING_PAUSED': ['#3d2a00','#c87f0a'], 'LOAD_ARRIVED': ['#3d2a00','#cc7a00'],
         'IN_TRANSIT': ['#2a1a3d','#8e44ad'], 'SCHEDULED': ['#1a2a1a','#2e9e4f'],
         'MANIFESTED': ['#2a1a3d','#8e44ad'], 'COMPLETED': ['#1a1a2a','#3f51b5']
     };
     function ibBadge(ds, status) {
-        var c = IB_BADGE_COLORS[ds] || IB_BADGE_COLORS[status] || ['#2a2a2a','#bbb'];
-        return '<span style="display:inline-block;background:' + c[0] + ';color:' + c[1] + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.08);white-space:nowrap">' + String(ds).replace(/_/g,' ') + '</span>';
+        var isDark = GM_getValue('he-theme', 'light') === 'dark';
+        var map = isDark ? IB_BADGE_DARK : IB_BADGE_LIGHT;
+        var c = map[ds] || map[status] || (isDark ? ['#2a2a2a','#bbb'] : ['#7a8a9a','#fff']);
+        var border = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.45)';
+        return '<span style="display:inline-block;background:' + c[0] + ';color:' + c[1] + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid ' + border + ';white-space:nowrap">' + String(ds).replace(/_/g,' ') + '</span>';
     }
 
     function ibNumFmt(v) { return (v || 0).toLocaleString(); }
@@ -1351,7 +1362,7 @@
         });
 
         var visArr = ibColOrder.filter(function(k) { return ibVisibleCols.has(k); });
-        var thStyle = 'position:sticky;top:0;z-index:10;background:#3a3a3a;color:#ff2855;padding:7px 12px;text-align:center;border-bottom:2px solid #cc1040;white-space:nowrap;font-weight:700;cursor:pointer';
+        var thStyle = 'position:sticky;top:0;z-index:10;background:var(--he-panel);color:#cc1040;padding:7px 12px;text-align:center;border-bottom:2px solid #cc1040;white-space:nowrap;font-weight:700;cursor:pointer';
         var headHtml = '<tr>' + visArr.map(function(k) {
             var c = IB_COLS.find(function(col) { return col.key === k; });
             var arrow = _sortKey === k ? (_sortDir === 1 ? ' \u25B2' : ' \u25BC') : '';
@@ -1366,7 +1377,7 @@
         });
         totals.fluidPct = totals.total > 0 ? Math.round((totals.fluid / totals.total) * 100) : 0;
         totals.containerizedPct = totals.total > 0 ? Math.round((totals.containerized / totals.total) * 100) : 0;
-        var totCell = 'padding:5px 10px;font-weight:700;background:#242424;color:#ddd;border-bottom:1px solid #444';
+        var totCell = 'padding:5px 10px;font-weight:700;background:var(--he-border2);color:var(--he-text);border-bottom:1px solid var(--he-border)';
         var totalsHtml = '<tr>' + visArr.map(function(k) {
             var v = '';
             if (k === 'equip') v = data.length;
@@ -1378,24 +1389,24 @@
         }).join('') + '</tr>';
 
         var _slaThresholdMs = computeSlaThresholdMs();
-        var tdBase = 'padding:4px 10px;border-bottom:1px solid #2a2a2a;white-space:nowrap';
+        var tdBase = 'padding:4px 10px;border-bottom:1px solid var(--he-border);color:var(--he-text);white-space:nowrap';
         var rowsHtml = data.map(function(r) {
             var noHeat = (_slaThresholdMs !== null && r.aatMs && r.aatMs > _slaThresholdMs);
             var cells = visArr.map(function(k) {
                 if (k === 'equip') { var eq = equipCell(r.equipType); return '<td style="' + tdBase + ';text-align:center" title="' + eq.label + '">' + eq.html + '</td>'; }
-                if (k === 'vrid') return '<td style="' + tdBase + '"><span class="he-ib-copy" data-copy="' + r.vrid + '" style="color:#4fc3f7;font-weight:600;cursor:pointer" title="Click to copy">' + r.vrid + '</span></td>';
+                if (k === 'vrid') return '<td style="' + tdBase + '"><span class="he-ib-copy" data-copy="' + r.vrid + '" style="color:#1f6feb;font-weight:600;cursor:pointer" title="Click to copy">' + r.vrid + '</span></td>';
                 if (k === 'route') {
                     var rc = routeColorClass(r);
                     var pill = ROUTE_PILL[rc];
                     var routeTxt = r.route || '\u2014';
                     if (!pill) return '<td style="' + tdBase + '">' + routeTxt + '</td>';
-                    return '<td style="' + tdBase + '"><span title="' + (ROUTE_LABELS[rc] || '') + '" style="background:' + pill.bg + ';color:' + pill.color + ';border-radius:4px;padding:1px 7px;font-weight:700;border:1px solid rgba(255,255,255,0.08)">' + routeTxt + '</span></td>';
+                    return '<td style="' + tdBase + '"><span title="' + (ROUTE_LABELS[rc] || '') + '" style="background:' + pill.bg + ';color:' + pill.color + ';border-radius:4px;padding:1px 7px;font-weight:700;border:1px solid rgba(0,0,0,0.45)">' + routeTxt + '</span></td>';
                 }
                 if (k === 'status') { var ds = r.displayStatus || r.status; return '<td style="' + tdBase + '">' + ibBadge(ds, r.status) + '</td>'; }
                 if (k === 'progress') {
                     var pct = (r.total > 0) ? Math.max(0, Math.min(100, Math.round(((r.total - r.remaining) / r.total) * 100))) : 0;
                     var pc = pct < 10 ? '#c0392b' : pct < 25 ? '#d35400' : pct < 50 ? '#e67e22' : pct < 75 ? '#f1c40f' : '#27ae60';
-                    return '<td style="' + tdBase + ';min-width:90px"><div style="position:relative;background:#2a3a4e;border:1px solid rgba(255,255,255,0.08);border-radius:3px;height:16px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + pc + '"></div><span style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)">' + pct + '%</span></div></td>';
+                    return '<td style="' + tdBase + ';min-width:90px"><div style="position:relative;background:var(--he-border2);border:1px solid rgba(255,255,255,0.08);border-radius:3px;height:16px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + pc + '"></div><span style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)">' + pct + '%</span></div></td>';
                 }
                 if (k === 'cpt') return cptCellHtml(r.cpt, noHeat);
                 if (k === 'ncCpt') return ncCptCellHtml(r.ncCpt, noHeat);
@@ -1407,20 +1418,20 @@
                 }
                 if (k === 'eta') {
                     if (!r.etaMs) return '<td style="' + tdBase + '">\u2014</td>';
-                    var etaColor = r.etaMs < Date.now() ? '#ef5350' : 'var(--he-text)';
+                    var etaColor = r.etaMs < Date.now() ? '#e5484d' : 'var(--he-text)';
                     return '<td style="' + tdBase + ';color:' + etaColor + '">' + formatEtaCountdown(r.etaMs) + '</td>';
                 }
                 if (k === 'sat' || k === 'aat') return '<td style="' + tdBase + '">' + (r[k] || '\u2014') + '</td>';
                 if (k === 'location' || k === 'route' || k === 'vrid') return '<td style="' + tdBase + '">' + (r[k] != null ? r[k] : '\u2014') + '</td>';
                 // numeric default
                 var val = r[k];
-                if (typeof val === 'number') return '<td style="' + tdBase + ';text-align:right">' + (val === 0 ? '<span style="color:#3a4a5a">0</span>' : ibNumFmt(val)) + '</td>';
+                if (typeof val === 'number') return '<td style="' + tdBase + ';text-align:right">' + (val === 0 ? '<span style="color:var(--he-muted)">0</span>' : ibNumFmt(val)) + '</td>';
                 return '<td style="' + tdBase + '">' + (val != null ? val : '\u2014') + '</td>';
             }).join('');
             return '<tr class="he-ib-row' + (ibSelectedIds.has(r.vrid) ? ' selected' : '') + '" data-vrid="' + r.vrid + '" style="cursor:pointer">' + cells + '</tr>';
         }).join('');
 
-        wrap.innerHTML = '<table style="width:max-content;border-collapse:collapse;font-size:12px"><thead>' + headHtml + '</thead><tbody>' + totalsHtml + rowsHtml + '</tbody></table>';
+        wrap.innerHTML = '<table style="width:max-content;border-collapse:collapse;font-size:12px;background:var(--he-bg);color:var(--he-text)"><thead>' + headHtml + '</thead><tbody>' + totalsHtml + rowsHtml + '</tbody></table>';
 
         var countEl = document.getElementById('he-ib-search-count');
         if (countEl) countEl.textContent = (ibFilterText || ibFilterXD || ibFilterSortable) ? (data.length + ' shown') : '';
@@ -1960,6 +1971,13 @@
         var theme = GM_getValue('he-theme', 'light');
         GM_setValue('he-theme', theme === 'dark' ? 'light' : 'dark');
         applyTheme();
+        // Re-render inbound view so theme-dependent colors (badges, active tab/
+        // filter pills) update immediately.
+        if (ibViewBuilt) {
+            if (typeof updateTfilterButtons === 'function') updateTfilterButtons();
+            if (typeof renderIBTabs === 'function') renderIBTabs();
+            if (typeof renderIBTable === 'function') renderIBTable();
+        }
     }
 
     function savePanelGeometry() {
@@ -1995,8 +2013,8 @@
             // View switcher (Hydra-style Inbound | Engine) — crimson→purple→navy gradient
             '#he-view-switcher{display:flex;position:relative;flex-shrink:0;border-radius:10px 10px 0 0;overflow:visible;background:linear-gradient(90deg,#d01818 0%,#c01830 10%,#a81845 20%,#8e1a60 30%,#7a1880 38%,#8020a0 44%,#9020b0 48%,#a020b8 50%,#9028c0 52%,#8030c8 56%,#6040d0 62%,#4050d8 70%,#2868d8 80%,#1890e0 90%,#10b8ee 100%)}' +
             '.he-view-tab{flex:1;padding:9px 27px;font-size:15px;font-weight:700;text-align:center;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;user-select:none;color:#fff;background:transparent;display:flex;align-items:center;gap:11px;text-shadow:0 1px 3px rgba(0,0,0,0.7);letter-spacing:0.5px}' +
-            '.he-view-tab.ib-tab{justify-content:flex-start;padding-left:20px}' +
-            '.he-view-tab.eng-tab{justify-content:flex-end;padding-right:20px}' +
+            '.he-view-tab.ib-tab{justify-content:flex-start;padding-left:84px}' +
+            '.he-view-tab.eng-tab{justify-content:flex-end;padding-right:84px}' +
             '.he-view-tab:hover{filter:brightness(1.15)}' +
             '.he-view-tab.ib-tab:hover{background:rgba(180,20,30,0.22)}' +
             '.he-view-tab.eng-tab:hover{background:rgba(32,212,240,0.15)}' +
@@ -2008,7 +2026,7 @@
             '#hydra-engine-panel.eng-view{box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px #0a6e8a}' +
             '#he-ib-table-wrap tr.he-ib-row.selected>td{background:rgba(255,40,85,0.18) !important}' +
             '#he-ib-table-wrap tr.he-ib-row.drag-preview>td{background:rgba(255,40,85,0.30) !important}' +
-            '#he-ib-table-wrap tr.he-ib-row:hover>td{background:rgba(255,255,255,0.04)}';
+            '#he-ib-table-wrap tr.he-ib-row:hover>td{background:rgba(127,127,127,0.15)}';
         document.head.appendChild(style);
         applyTheme();
 
@@ -2029,8 +2047,8 @@
                 '<div class="he-view-tab ib-tab" data-eview="IB"><span>Inbound</span></div>' +
                 '<div id="he-logo-center" title="Hydra Engine"><img src="' + GOLD_DRAGON_ICON + '" alt="Hydra"></div>' +
                 '<div class="he-view-tab eng-tab active" data-eview="ENG"><span>Engine</span></div>' +
-                '<button id="he-theme-toggle" style="position:absolute;right:52px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:15px;cursor:pointer;padding:4px 8px;opacity:0.85;z-index:3" title="Toggle light/dark">☀</button>' +
-                '<button id="he-close" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px;opacity:0.85;z-index:3" title="Close">✕</button>' +
+                '<button id="he-theme-toggle" style="position:absolute;right:50px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.35);border:none;color:#fff;font-size:15px;cursor:pointer;padding:3px 7px;border-radius:6px;opacity:1;z-index:3;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.8)" title="Toggle light/dark">☀</button>' +
+                '<button id="he-close" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.35);border:none;color:#fff;font-size:18px;font-weight:700;cursor:pointer;padding:3px 8px;border-radius:6px;opacity:1;z-index:3;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.8)" title="Close">✕</button>' +
             '</div>' +
             // Inbound view (1:1 Hydra inbound — ported in stage 2)
             '<div id="he-ib-view" style="flex:1;overflow:hidden;display:none;flex-direction:column">' +
@@ -2873,54 +2891,193 @@
         });
     }
 
-    function getFormulaVariables() {
-        var vars = ['volume', 'sortLength', 'totalHC', 'engRate'];
-        // Add MHE type-based variables from attributes
-        var attrs = ['Hourly Throughput','Container Build %','Fluid Load %','Direct to Container %',
-            'Shuttle Volume %','Pallet Volume %','Cart Volume %','Bag Volume %',
-            'Chute - Lanes Volume %','Chute - OB Volume %','Runout Volume %',
-            'Packages per Shuttle','Packages per Pallet','Packages per Cart','Packages per Bag'];
-        if (engineSettings.mheTypes) {
-            engineSettings.mheTypes.forEach(function(mhe) {
-                attrs.forEach(function(attr) {
-                    vars.push(mhe.replace(/\s+/g,'-') + '-' + attr.replace(/[\s%]+/g,'-').replace(/-+$/,''));
-                });
-            });
+    // Package-size formula variables. v = variable token; bd = packageBreakdown
+    // key / volumeMixPackages key; mix = Volume Mix row label (per-MHE %).
+    var FORMULA_SIZE_VARS = [
+        { v: 'xs',  bd: 'extraSmall',  mix: 'Extra Small' },
+        { v: 's',   bd: 'small',       mix: 'Small' },
+        { v: 'm',   bd: 'medium',      mix: 'Medium' },
+        { v: 'l',   bd: 'large',       mix: 'Large' },
+        { v: 'xl',  bd: 'extraLarge',  mix: 'Extra Large' },
+        { v: 'nc',  bd: 'nonCon',      mix: 'Non-Con' },
+        { v: 'ncp', bd: 'nonConPlus',  mix: 'Non-Con Plus' }
+    ];
+    var FORMULA_MHE_ATTRS = ['Hourly Throughput','Container Build %','Fluid Load %','Direct to Container %',
+        'Shuttle Volume %','Pallet Volume %','Cart Volume %','Bag Volume %',
+        'Chute - Lanes Volume %','Chute - OB Volume %','Runout Volume %',
+        'Packages per Shuttle','Packages per Pallet','Packages per Cart','Packages per Bag'];
+
+    // Total packages of a given size = exported counts if present, else
+    // Sort Volume Goal x packageBreakdown %.
+    // Sum of exported inbound package counts (the "data pull" total).
+    function ibDataPullTotal() {
+        var vmp = (engineSettings.planVars || {}).volumeMixPackages;
+        if (!vmp) return 0;
+        var t = 0;
+        FORMULA_SIZE_VARS.forEach(function(s) { t += parseFloat(vmp[s.bd]) || 0; });
+        return t;
+    }
+
+    // Effective planning volume per mode:
+    //  - simple/scaling: the manually-entered Sort Volume Goal
+    //  - exact: the inbound data-pull total
+    function ibEffectiveVolume() {
+        if (engineSettings.planMode === 'exact') return ibDataPullTotal();
+        return parseFloat((engineSettings.planVars || {}).sortVolumeGoal) || 0;
+    }
+
+    // Operational Length = Sort Length - Start Up & Break (the working hours).
+    function ibOperationalLength() {
+        var pv = engineSettings.planVars || {};
+        var sortLen = parseFloat(pv.sortLength) || 0;
+        var breakUp = parseFloat(pv.startUpBreak) || 0;
+        return Math.max(0, sortLen - breakUp);
+    }
+
+    // Total non-con volume: exact mode = exact NC + NC+ counts, else the
+    // manually-entered Sort Non-Con Volume Goal.
+    function ibSortNonConGoal() {
+        if (engineSettings.planMode === 'exact') {
+            return ibSizeTotal('nonCon') + ibSizeTotal('nonConPlus');
         }
+        return parseFloat((engineSettings.planVars || {}).sortNonConVolumeGoal) || 0;
+    }
+
+    // Total packages of a given size, per plan mode:
+    //  - simple:  effective volume x Plan-Mode Mix %  (manual mix)
+    //  - scaling: manual volume x data-derived mix %  (mix from IB pull)
+    //  - exact:   exact IB pull count for the size
+    function ibSizeTotal(bdKey) {
+        var pv = engineSettings.planVars || {};
+        var mode = engineSettings.planMode || 'simple';
+        var vmp = pv.volumeMixPackages || null;
+        if (mode === 'exact') {
+            return (vmp && vmp[bdKey] !== undefined && vmp[bdKey] !== '') ? (parseFloat(vmp[bdKey]) || 0) : 0;
+        }
+        if (mode === 'scaling') {
+            var vol = parseFloat(pv.sortVolumeGoal) || 0;
+            var tot = ibDataPullTotal();
+            var cnt = vmp ? (parseFloat(vmp[bdKey]) || 0) : 0;
+            return tot > 0 ? vol * (cnt / tot) : 0;
+        }
+        // simple
+        var vol2 = parseFloat(pv.sortVolumeGoal) || 0;
+        var bd = engineSettings.packageBreakdown || {};
+        var pct = parseFloat(bd[bdKey]) || 0;
+        return vol2 * pct / 100;
+    }
+
+    // Total volume routed to an MHE = sum over sizes of size total x that MHE's
+    // Volume Mix %. Used by Volume Targets and the {MHE}-hourly formula vars.
+    function ibMheVolume(mhe) {
+        var vmix = engineSettings.volumeMix || {};
+        var total = 0;
+        FORMULA_SIZE_VARS.forEach(function(s) {
+            var mixPct = parseFloat(vmix[mhe + '|' + s.mix]) || 0;
+            total += ibSizeTotal(s.bd) * mixPct / 100;
+        });
+        return total;
+    }
+
+    // Grouped variable catalog — used to render the ƒx picker in labeled
+    // sections. getFormulaVariables() flattens this, so this is the single
+    // source of truth for which variables exist.
+    function getFormulaVariableGroups() {
+        var groups = [];
+        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate'] });
+        groups.push({ label: 'Sizes (total pkgs)', vars: FORMULA_SIZE_VARS.map(function(s) { return s.v; }) });
+        (engineSettings.mheTypes || []).forEach(function(mhe) {
+            var slug = mhe.replace(/\s+/g, '-');
+            var mvars = [slug + '-total', slug + '-Sort-Length'];
+            FORMULA_SIZE_VARS.forEach(function(s) { mvars.push(slug + '-' + s.v); });
+            FORMULA_MHE_ATTRS.forEach(function(attr) {
+                mvars.push(slug + '-' + attr.replace(/[\s%]+/g, '-').replace(/-+$/, ''));
+            });
+            groups.push({ label: mhe, vars: mvars });
+        });
+        return groups;
+    }
+
+    function getFormulaVariables() {
+        // Only variables the engine can actually resolve are exposed.
+        var vars = [];
+        getFormulaVariableGroups().forEach(function(g) {
+            g.vars.forEach(function(v) { vars.push(v); });
+        });
         return vars;
     }
 
     // Resolve a formula variable name to its current numeric value
     function resolveFormulaVarValue(varName) {
         var pv = engineSettings.planVars || {};
-        if (varName === 'volume') return parseFloat(pv.sortVolumeGoal) || 0;
-        if (varName === 'sortLength') return parseFloat(pv.operationalLength) || 0;
-        if (varName === 'totalHC') return 0; // reserved, not yet wired to live headcount
-        if (varName === 'engRate') return 0; // per-role engRate is substituted separately when evaluating a role's own formula
-        // MHE-type-attribute vars: "MHEType-Attribute-Slug"
+        if (varName === 'volume') return ibEffectiveVolume();
+        if (varName === 'sortLength') return ibOperationalLength();
+        if (varName === 'engRate') return 0; // substituted per-role in evaluateRoleFormula
+        // Total packages per size (xs, s, m, l, xl, nc, ncp)
+        for (var si = 0; si < FORMULA_SIZE_VARS.length; si++) {
+            if (FORMULA_SIZE_VARS[si].v === varName) return ibSizeTotal(FORMULA_SIZE_VARS[si].bd);
+        }
         if (engineSettings.mheTypes) {
-            var attrs = ['Hourly Throughput','Container Build %','Fluid Load %','Direct to Container %',
-                'Shuttle Volume %','Pallet Volume %','Cart Volume %','Bag Volume %',
-                'Chute - Lanes Volume %','Chute - OB Volume %','Runout Volume %',
-                'Packages per Shuttle','Packages per Pallet','Packages per Cart','Packages per Bag'];
+            var vm = engineSettings.volumeMix || {};
             for (var i = 0; i < engineSettings.mheTypes.length; i++) {
                 var mhe = engineSettings.mheTypes[i];
                 var mheSlug = mhe.replace(/\s+/g, '-');
-                for (var j = 0; j < attrs.length; j++) {
-                    var attr = attrs[j];
+                // Per-MHE total volume goal: MHE-total = MHE volume
+                if (mheSlug + '-total' === varName) {
+                    return ibMheVolume(mhe);
+                }
+                // Per-MHE user-defined Sort Length
+                if (mheSlug + '-Sort-Length' === varName) {
+                    return parseFloat((engineSettings.mheSortLength || {})[mhe]) || 0;
+                }
+                // Per-MHE size volume: MHE-xs = sizeTotal x volumeMix[MHE|size] %
+                for (var k = 0; k < FORMULA_SIZE_VARS.length; k++) {
+                    var sv = FORMULA_SIZE_VARS[k];
+                    if (mheSlug + '-' + sv.v === varName) {
+                        var mixPct = parseFloat(vm[mhe + '|' + sv.mix]) || 0;
+                        return ibSizeTotal(sv.bd) * mixPct / 100;
+                    }
+                }
+                // Per-MHE attribute value
+                for (var j = 0; j < FORMULA_MHE_ATTRS.length; j++) {
+                    var attr = FORMULA_MHE_ATTRS[j];
                     var slug = mheSlug + '-' + attr.replace(/[\s%]+/g, '-').replace(/-+$/, '');
                     if (slug === varName) {
-                        var key = mhe + '|' + attr;
-                        var raw = (engineSettings.mheAttrs && engineSettings.mheAttrs[key]) || '0';
+                        var raw = (engineSettings.mheAttrs && engineSettings.mheAttrs[mhe + '|' + attr]) || '0';
                         var num = parseFloat(raw) || 0;
-                        // Percent-style attributes are stored as whole numbers (e.g. 87 for 87%); convert to fraction
-                        if (attr.indexOf('%') !== -1) return num / 100;
+                        if (attr.indexOf('%') !== -1) return num / 100; // percent stored as whole number
                         return num;
                     }
                 }
             }
         }
         return 0;
+    }
+
+    // Excel-style functions available inside formulas.
+    var FORMULA_FUNCS = {
+        IF: function(c, a, b) { return c ? a : b; },
+        MIN: function() { return Math.min.apply(null, arguments); },
+        MAX: function() { return Math.max.apply(null, arguments); },
+        ROUND: function(n, d) { var f = Math.pow(10, d || 0); return Math.round(n * f) / f; },
+        ROUNDUP: function(n, d) { var f = Math.pow(10, d || 0); return Math.ceil(n * f) / f; },
+        ROUNDDOWN: function(n, d) { var f = Math.pow(10, d || 0); return Math.floor(n * f) / f; },
+        CEILING: function(n) { return Math.ceil(n); },
+        FLOOR: function(n) { return Math.floor(n); },
+        ABS: function(n) { return Math.abs(n); },
+        AND: function() { return Array.prototype.every.call(arguments, Boolean); },
+        OR: function() { return Array.prototype.some.call(arguments, Boolean); },
+        NOT: function(a) { return !a; },
+        SUM: function() { var s = 0; for (var i = 0; i < arguments.length; i++) s += (parseFloat(arguments[i]) || 0); return s; },
+        MROUND: function(n, m) { return m ? Math.round(n / m) * m : n; }
+    };
+    var FORMULA_FUNC_NAMES = Object.keys(FORMULA_FUNCS);
+
+    // Evaluate an already-substituted expression string with the Excel-style
+    // helper functions injected into scope. Shared by evaluation and validation.
+    function runFormulaExpr(expr) {
+        var fn = Function.apply(null, FORMULA_FUNC_NAMES.concat(['"use strict"; return (' + expr + ')']));
+        return fn.apply(null, FORMULA_FUNC_NAMES.map(function(k) { return FORMULA_FUNCS[k]; }));
     }
 
     // Evaluate a role's formula string, substituting variables with live values.
@@ -2932,15 +3089,69 @@
         var sorted = allVars.slice().sort(function(a, b) { return b.length - a.length; });
         var expr = formula;
         sorted.forEach(function(v) {
-            var val = (v === 'engRate') ? (parseFloat(role && role.rate) || 0) : resolveFormulaVarValue(v);
+            var val;
+            if (v === 'engRate') {
+                val = parseFloat(role && role.rate) || 0;
+            } else if (v === 'Variable') {
+                // The role's own Variable column (blank => 1x).
+                val = (role && role.variable !== undefined && role.variable !== '') ? (parseFloat(role.variable) || 0) : 1;
+            } else {
+                val = resolveFormulaVarValue(v);
+            }
             expr = expr.replace(new RegExp(v.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'), '(' + val + ')');
         });
         try {
-            var result = Function('"use strict"; return (' + expr + ')')();
+            var result = runFormulaExpr(expr);
             return (typeof result === 'number' && !isNaN(result)) ? result : NaN;
         } catch (e) {
             return NaN;
         }
+    }
+
+    // Bottoms Up HC = sum of Planned HC across every role (same per-role math
+    // as the Plan table: hourly / plan rate).
+    function computeBupHC() {
+        var opLen = ibOperationalLength();
+        var totalHC = 0;
+        (engineSettings.groups || []).forEach(function(g) {
+            (g.roles || []).forEach(function(r) {
+                if (typeof r !== 'object') return;
+                var engRate = parseFloat(r.rate) || 0;
+                var planRate = (r.planRate !== undefined && r.planRate !== '') ? parseFloat(r.planRate) : engRate;
+                if (isNaN(planRate)) planRate = engRate;
+                var variable = (r.variable !== undefined && r.variable !== '') ? parseFloat(r.variable) : 1;
+                if (isNaN(variable)) variable = 1;
+                var rawTotal = evaluateRoleFormula(r.formula, r);
+                var total = isNaN(rawTotal) ? 0 : rawTotal;
+                var hourly = (opLen > 0) ? total / opLen : 0;
+                var plannedHC = (planRate > 0) ? hourly / planRate : 0;
+                if (!isNaN(plannedHC)) totalHC += plannedHC;
+            });
+        });
+        return totalHC;
+    }
+
+    // Bottoms Up TPH = total volume / sort length / total BUP HC.
+    function computeBupTPH() {
+        var sortLen = parseFloat((engineSettings.planVars || {}).sortLength) || 0;
+        var hc = computeBupHC();
+        if (sortLen <= 0 || hc <= 0) return 0;
+        return ibEffectiveVolume() / sortLen / hc;
+    }
+
+    // Expected Attendance = SSPOT HC x Attendance Assumption.
+    function ibExpectedAttendance() {
+        var pv = engineSettings.planVars || {};
+        var sspot = parseFloat(pv.sspotHC) || 0;
+        var att = parseFloat(pv.attendanceAssumption) || 0;
+        var frac = att > 1 ? att / 100 : att;
+        return sspot * frac;
+    }
+
+    // VTO / VET = Bottoms Up HC - Expected Attendance
+    // (positive => surplus/VTO, negative => shortfall/VET).
+    function ibVtoVet() {
+        return computeBupHC() - ibExpectedAttendance();
     }
 
     function renderPlanTab() {
@@ -2950,11 +3161,14 @@
 
     // Field definitions for the "Sort Details & KPIs" planning variables panel.
     // All values are hardcoded/manual inputs (no calculated fields).
+    // Sort Details & KPIs. Computed fields (operationalLength, sortNonConVolume-
+    // Goal in exact, bottomsUpHC, bottomsUpTPH) are rendered read-only.
     var PLAN_KPI_FIELDS = [
         { key: 'sortVolumeGoal', label: 'Sort Volume Goal' },
         { key: 'sortNonConVolumeGoal', label: 'Sort Non-Con Volume Goal' },
-        { key: 'operationalLength', label: 'Operational Length' },
+        { key: 'sortLength', label: 'Sort Length' },
         { key: 'startUpBreak', label: 'Start Up & Break' },
+        { key: 'operationalLength', label: 'Operational Length' },
         { key: 'laborPlanTPH', label: 'Labor Plan TPH' },
         { key: 'laborPlanHC', label: 'Labor Plan HC' },
         { key: 'sspotHC', label: 'SSPOT HC' },
@@ -3018,31 +3232,60 @@
 
         var html = '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
         html += '<tr>' + td('Sort Details & KPIs', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, colspan: 2, align: 'center'}) + '</tr>';
+        var _kpiRO = function(label, valStr, title) {
+            return '<tr>' + td(label, {}) + td('<span style="color:var(--he-muted)"' + (title ? ' title="' + title + '"' : '') + '>' + valStr + '</span>', {align: 'right', bg: 'var(--he-border2)'}) + '</tr>';
+        };
+        var _fmtN = function(n, dec) { return (isNaN(n) ? 0 : n).toLocaleString(undefined, {minimumFractionDigits: dec||0, maximumFractionDigits: dec||0}); };
         PLAN_KPI_FIELDS.forEach(function(f) {
-            html += '<tr>' + td(f.label, {}) + inputCell(f.key) + '</tr>';
+            if (f.key === 'sortVolumeGoal' && engineSettings.planMode === 'exact') {
+                html += _kpiRO(f.label, ibEffectiveVolume().toLocaleString(), 'Exact mode: volume equals the inbound data pull');
+            } else if (f.key === 'sortNonConVolumeGoal' && engineSettings.planMode === 'exact') {
+                html += _kpiRO(f.label, Math.round(ibSortNonConGoal()).toLocaleString(), 'Exact mode: NC + NC+ from the inbound data pull');
+            } else if (f.key === 'operationalLength') {
+                html += _kpiRO(f.label, _fmtN(ibOperationalLength(), 2), 'Sort Length - Start Up & Break');
+            } else if (f.key === 'bottomsUpHC') {
+                html += _kpiRO(f.label, _fmtN(computeBupHC(), 1), 'Sum of Planned HC across all roles');
+            } else if (f.key === 'bottomsUpTPH') {
+                html += _kpiRO(f.label, _fmtN(computeBupTPH(), 1), 'Total volume / Sort Length / Bottoms Up HC');
+            } else if (f.key === 'expectedAttendance') {
+                html += _kpiRO(f.label, _fmtN(ibExpectedAttendance(), 0), 'SSPOT HC x Attendance Assumption');
+            } else if (f.key === 'vtoVet') {
+                html += _kpiRO(f.label, _fmtN(ibVtoVet(), 0), 'Bottoms Up HC - Expected Attendance');
+            } else {
+                html += '<tr>' + td(f.label, {}) + inputCell(f.key) + '</tr>';
+            }
         });
         html += '</table>';
 
-        // Volume Mix / Packages / Percents table
-        // If trailers were exported from Inbound, use those exact package counts;
-        // otherwise fall back to packageBreakdown % x Sort Volume Goal.
-        var vmp = pv.volumeMixPackages || null;
-        var vmpTotal = 0;
-        if (vmp) { PLAN_SIZE_KEYS.forEach(function(s){ vmpTotal += parseFloat(vmp[s.key]) || 0; }); }
+        // Per-MHE Sort Length (user-defined; exposed as {MHE}-Sort-Length var).
+        if (!engineSettings.mheSortLength) engineSettings.mheSortLength = {};
+        if ((engineSettings.mheTypes || []).length) {
+            html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
+            html += '<tr>' + td('MHE Sort Length', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, colspan: 2, align: 'center'}) + '</tr>';
+            engineSettings.mheTypes.forEach(function(mhe) {
+                var v = engineSettings.mheSortLength[mhe] !== undefined ? engineSettings.mheSortLength[mhe] : '';
+                html += '<tr>' + td(mhe, {}) +
+                    td('<input type="text" class="he-mhe-sortlen" data-mhe="' + mhe + '" value="' + v + '" style="width:100%;box-sizing:border-box;padding:2px 4px;background:transparent;border:1px solid transparent;color:var(--he-text);font-size:11px;text-align:right">', {align: 'right'}) + '</tr>';
+            });
+            html += '</table>';
+        }
+
+        // matches the active plan mode (simple: goal x mix%, scaling: goal x
+        // data mix%, exact: exact IB counts). Percent = size / total.
+        var _sizePkgs = {};
+        var totalPackages = 0;
+        PLAN_SIZE_KEYS.forEach(function(s) {
+            var p = Math.round(ibSizeTotal(s.key));
+            _sizePkgs[s.key] = p;
+            totalPackages += p;
+        });
         html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
         html += '<tr>' + td('Volume Mix', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true}) + td('Packages', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, align: 'right'}) + td('Percents', {bg: 'var(--he-border)', color: 'var(--he-text)', bold: true, align: 'right'}) + '</tr>';
-        var totalPct = 0, totalPackages = 0;
+        var totalPct = 0;
         PLAN_SIZE_KEYS.forEach(function(s) {
-            var packages, pct;
-            if (vmp) {
-                packages = parseFloat(vmp[s.key]) || 0;
-                pct = vmpTotal > 0 ? (packages / vmpTotal) * 100 : 0;
-            } else {
-                pct = parseFloat(bd[s.key]) || 0;
-                packages = Math.round(sortVolumeGoal * pct / 100);
-            }
+            var packages = _sizePkgs[s.key];
+            var pct = totalPackages > 0 ? (packages / totalPackages) * 100 : 0;
             totalPct += pct;
-            totalPackages += packages;
             html += '<tr>';
             html += td(s.label, {});
             html += td(packages.toLocaleString(), {align: 'right', bg: 'var(--he-border2)', color: 'var(--he-text)'});
@@ -3052,10 +3295,43 @@
         html += '<tr>' + td('Total', {bold: true, extra: ''}) + td(totalPackages.toLocaleString(), {align: 'right', bold: true}) + td(totalPct.toFixed(2) + '%', {align: 'right', bold: true}) + '</tr>';
         html += '</table>';
 
+        // Volume Targets: Total Sort + one row per MHE type, with Hourly/15min/5min derived.
+        // Hourly = Total / Operational Length; 15 Min = Hourly/4; 5 Min = Hourly/12.
+        var opLen = ibOperationalLength();
+        var vmix = engineSettings.volumeMix || {};
+        var fmtT = function(n) { return Math.round(n).toLocaleString(); };
+        function targetsRow(label, totalGoal, bold) {
+            var hourly = opLen > 0 ? totalGoal / opLen : 0;
+            return '<tr>' + td(label, {bold: !!bold}) +
+                td(fmtT(totalGoal), {align:'right', bg:'var(--he-border2)', bold: !!bold}) +
+                td(fmtT(hourly), {align:'right', bg:'var(--he-border2)'}) +
+                td(fmtT(hourly / 4), {align:'right', bg:'var(--he-border2)'}) +
+                td(fmtT(hourly / 12), {align:'right', bg:'var(--he-border2)'}) + '</tr>';
+        }
+        html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
+        html += '<tr>' + td('Volume Targets', {bg:'var(--he-border)', color:'var(--he-text)', bold:true}) +
+            td('Total Goal', {bg:'var(--he-border)', color:'var(--he-text)', bold:true, align:'right'}) +
+            td('Hourly Goal', {bg:'var(--he-border)', color:'var(--he-text)', bold:true, align:'right'}) +
+            td('15 Min Goal', {bg:'var(--he-border)', color:'var(--he-text)', bold:true, align:'right'}) +
+            td('5 Min Goal', {bg:'var(--he-border)', color:'var(--he-text)', bold:true, align:'right'}) + '</tr>';
+        html += targetsRow('Total Sort', ibEffectiveVolume(), true);
+        (engineSettings.mheTypes || []).forEach(function(mhe) {
+            html += targetsRow(mhe, ibMheVolume(mhe), false);
+        });
+        html += '</table>';
+
         // Misc inputs (Problem Solve / Jackpot / Non-Con)
         html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
         PLAN_MISC_FIELDS.forEach(function(f) {
-            html += '<tr>' + td(f.label, {}) + inputCell(f.key) + '</tr>';
+            if (f.key === 'problemSolve') {
+                var psPct = parseFloat(pv.problemSolvePct) || 0;
+                html += _kpiRO(f.label, Math.round(ibEffectiveVolume() * psPct / 100).toLocaleString(), 'Total volume x Problem Solve %');
+            } else if (f.key === 'jackpotVolume') {
+                var jpPct = parseFloat(pv.jackpotPct) || 0;
+                html += _kpiRO(f.label, Math.round(ibEffectiveVolume() * jpPct / 100).toLocaleString(), 'Total volume x Jackpot %');
+            } else {
+                html += '<tr>' + td(f.label, {}) + inputCell(f.key) + '</tr>';
+            }
         });
         html += '</table>';
 
@@ -3076,9 +3352,33 @@
                 engineSettings.planVars[key] = inp.value.trim();
                 saveSettings();
                 renderPlanTable();
-                if (key === 'sortVolumeGoal') renderPlanVarsPanel();
+                // Re-render the panel so computed fields (Operational Length,
+                // Bottoms Up HC/TPH, Volume Mix, Volume Targets) update.
+                renderPlanVarsPanel();
             });
         });
+
+        // Wire up per-MHE Sort Length inputs
+        container.querySelectorAll('.he-mhe-sortlen').forEach(function(inp) {
+            inp.addEventListener('change', function() {
+                if (!engineSettings.mheSortLength) engineSettings.mheSortLength = {};
+                engineSettings.mheSortLength[inp.getAttribute('data-mhe')] = inp.value.trim();
+                saveSettings();
+                renderPlanTable();
+            });
+        });
+    }
+
+    // Return readable text color (dark or white) for a given background hex,
+    // so user-picked group colors (e.g. yellow) stay legible.
+    function heContrastText(hex) {
+        if (!hex || hex.charAt(0) !== '#') return '#fff';
+        var h = hex.slice(1);
+        if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+        if (h.length < 6) return '#fff';
+        var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
+        var lum = 0.299*r + 0.587*g + 0.114*b;
+        return lum > 150 ? '#111' : '#fff';
     }
 
     function renderPlanTable() {
@@ -3089,7 +3389,7 @@
             return;
         }
         var pv = engineSettings.planVars || {};
-        var opLength = parseFloat(pv.operationalLength) || 0;
+        var opLength = ibOperationalLength();
         var attendance = parseFloat(pv.attendanceAssumption) || 0;
         var attendanceFrac = attendance > 1 ? attendance / 100 : attendance;
 
@@ -3131,19 +3431,20 @@
 
         engineSettings.groups.forEach(function(g, gi) {
             var color = g.color || 'var(--he-border)';
+            var hdrFg = heContrastText(g.color || '');
             // Group header row (colored, acts as both group name banner and column header)
             html += '<tr>';
-            html += td(g.name || 'Unnamed Group', {bg: color, color: '#fff', bold: true, align: 'left'});
-            html += td('Process Path', {bg: color, color: '#fff', bold: true, align: 'left'});
-            html += td('Variable', {bg: color, color: '#fff', bold: true});
-            html += td('Total', {bg: color, color: '#fff', bold: true});
-            html += td('Hourly', {bg: color, color: '#fff', bold: true});
-            html += td('Engineer', {bg: color, color: '#fff', bold: true});
-            html += td('Plan', {bg: color, color: '#fff', bold: true});
-            html += td('Delta', {bg: color, color: '#fff', bold: true});
-            html += td('HC', {bg: color, color: '#fff', bold: true});
-            html += td('Hrs', {bg: color, color: '#fff', bold: true});
-            html += td('HC', {bg: color, color: '#fff', bold: true});
+            html += td(g.name || 'Unnamed Group', {bg: color, color: hdrFg, bold: true, align: 'left'});
+            html += td('Process Path', {bg: color, color: hdrFg, bold: true, align: 'left'});
+            html += td('Variable', {bg: color, color: hdrFg, bold: true});
+            html += td('Total', {bg: color, color: hdrFg, bold: true});
+            html += td('Hourly', {bg: color, color: hdrFg, bold: true});
+            html += td('Engineer', {bg: color, color: hdrFg, bold: true});
+            html += td('Plan', {bg: color, color: hdrFg, bold: true});
+            html += td('Delta', {bg: color, color: hdrFg, bold: true});
+            html += td('HC', {bg: color, color: hdrFg, bold: true});
+            html += td('Hrs', {bg: color, color: hdrFg, bold: true});
+            html += td('HC', {bg: color, color: hdrFg, bold: true});
             html += '</tr>';
 
             if (!g.roles || g.roles.length === 0) return;
@@ -3158,7 +3459,7 @@
                 var hasVariable = (r.variable !== undefined && r.variable !== '');
 
                 var rawTotal = evaluateRoleFormula(r.formula, r);
-                var total = isNaN(rawTotal) ? NaN : rawTotal * variable;
+                var total = isNaN(rawTotal) ? NaN : rawTotal;
                 var totalValid = !isNaN(total);
                 var hourly = (totalValid && opLength > 0) ? (total / opLength) : NaN;
                 var delta = (engRate > 0) ? (planRate / engRate - 1) : NaN;
@@ -3227,9 +3528,21 @@
 
         var allVars = getFormulaVariables();
 
-        var pillsHtml = '<div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow-y:auto">';
-        allVars.forEach(function(v) {
-            pillsHtml += '<span class="he-formula-pill" data-var="' + v + '" style="padding:2px 8px;background:#1c1c3a;border:1px solid #a78bfa;border-radius:12px;color:#a78bfa;font-size:10px;cursor:pointer;white-space:nowrap">' + v + '</span>';
+        var _fmDark = GM_getValue('he-theme', 'light') === 'dark';
+        var pillBg = _fmDark ? '#1c1c3a' : '#ede9fe';
+        var pillFg = _fmDark ? '#a78bfa' : '#6d28d9';
+        var pillBorder = _fmDark ? '#a78bfa' : '#c4b5fd';
+        var inlinePill = 'display:inline-block;padding:1px 6px;margin:0 2px;background:' + pillBg + ';border:1px solid ' + pillBorder + ';border-radius:10px;color:' + pillFg + ';font-size:11px;vertical-align:baseline;user-select:all';
+
+        var pillsHtml = '<div style="margin-bottom:10px;max-height:340px;overflow-y:auto;padding:8px 10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px">';
+        getFormulaVariableGroups().forEach(function(grp) {
+            if (!grp.vars.length) return;
+            pillsHtml += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--he-muted);margin:8px 0 4px;position:sticky;top:0;background:var(--he-bg)">' + grp.label + '</div>';
+            pillsHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+            grp.vars.forEach(function(v) {
+                pillsHtml += '<span class="he-formula-pill" data-var="' + v + '" style="padding:2px 8px;background:' + pillBg + ';border:1px solid ' + pillBorder + ';border-radius:12px;color:' + pillFg + ';font-size:10px;cursor:pointer;white-space:nowrap">' + v + '</span>';
+            });
+            pillsHtml += '</div>';
         });
         pillsHtml += '</div>';
 
@@ -3244,11 +3557,16 @@
                 '</div>' +
                 '<div style="margin-bottom:8px;color:var(--he-muted);font-size:11px">Available variables (click to insert):</div>' +
                 pillsHtml +
+                '<div style="margin:2px 0 10px;padding:8px 10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:10px;line-height:1.6">' +
+                    '<b>Functions:</b> IF(cond, then, else) · MIN · MAX · SUM · ROUND(n,d) · ROUNDUP · ROUNDDOWN · CEILING · FLOOR · ABS · MROUND(n,m) · AND · OR · NOT<br>' +
+                    '<b>Operators:</b> <code>+ - * /</code> &nbsp; <code>&gt; &lt; &gt;= &lt;= == !=</code> &nbsp; <code>&amp;&amp; ||</code> &nbsp; and ternary <code>cond ? a : b</code>' +
+                '</div>' +
                 '<div style="position:relative">' +
                     '<div id="he-formula-input" contenteditable="true" style="width:100%;min-height:100px;padding:10px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-family:monospace;font-size:13px;outline:none;white-space:pre-wrap;word-wrap:break-word"></div>' +
                     '<div id="he-formula-autocomplete" style="position:absolute;top:100%;left:0;right:0;background:var(--he-panel);border:1px solid var(--he-border);border-radius:0 0 6px 6px;max-height:120px;overflow-y:auto;display:none;z-index:10"></div>' +
                 '</div>' +
                 '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
+                    '<button id="he-formula-clear" style="padding:6px 14px;background:none;border:1px solid #da3633;border-radius:6px;color:#da3633;font-size:12px;cursor:pointer;margin-right:auto">Clear</button>' +
                     '<button id="he-formula-cancel" style="padding:6px 14px;background:none;border:1px solid var(--he-border);border-radius:6px;color:var(--he-muted);font-size:12px;cursor:pointer">Cancel</button>' +
                     '<button id="he-formula-save" style="padding:6px 14px;background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">Save</button>' +
                 '</div>' +
@@ -3263,7 +3581,7 @@
             if (!formula) return '';
             return formula.replace(/([a-zA-Z][\w\-]*)/g, function(word) {
                 if (allVars.indexOf(word) !== -1) {
-                    return '<span contenteditable="false" style="display:inline-block;padding:1px 6px;margin:0 2px;background:#1c1c3a;border:1px solid #a78bfa;border-radius:10px;color:#a78bfa;font-size:11px;vertical-align:baseline;user-select:all">' + word + '</span>';
+                    return '<span contenteditable="false" style="' + inlinePill + '">' + word + '</span>';
                 }
                 return word;
             });
@@ -3284,7 +3602,7 @@
             });
             pill.addEventListener('click', function() {
                 var v = pill.getAttribute('data-var');
-                var pillHtml = '<span contenteditable="false" style="display:inline-block;padding:1px 6px;margin:0 2px;background:#1c1c3a;border:1px solid #a78bfa;border-radius:10px;color:#a78bfa;font-size:11px;vertical-align:baseline;user-select:all">' + v + '</span>&nbsp;';
+                var pillHtml = '<span contenteditable="false" style="' + inlinePill + '">' + v + '</span>&nbsp;';
                 input.focus();
                 // Place cursor at end if no selection
                 var sel = window.getSelection();
@@ -3328,7 +3646,7 @@
                     var r2 = sel2.getRangeAt(0);
                     r2.setStart(r2.startContainer, r2.startOffset - wordMatch[1].length);
                     r2.deleteContents();
-                    var pillHtml = '<span contenteditable="false" style="display:inline-block;padding:1px 6px;margin:0 2px;background:#1c1c3a;border:1px solid #a78bfa;border-radius:10px;color:#a78bfa;font-size:11px;vertical-align:baseline;user-select:all">' + replacement + '</span>&nbsp;';
+                    var pillHtml = '<span contenteditable="false" style="' + inlinePill + '">' + replacement + '</span>&nbsp;';
                     document.execCommand('insertHTML', false, pillHtml);
                     acBox.style.display = 'none';
                     input.focus();
@@ -3372,17 +3690,30 @@
 
         document.getElementById('he-formula-close').addEventListener('click', function() { modal.remove(); });
         document.getElementById('he-formula-cancel').addEventListener('click', function() { modal.remove(); });
+        document.getElementById('he-formula-clear').addEventListener('click', function() {
+            engineSettings.groups[gi].roles[ri].formula = '';
+            saveSettings();
+            modal.remove();
+            renderGroups();
+        });
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.getElementById('he-formula-save').addEventListener('click', function() {
             var val = getFormulaText();
-            if (!val) { modal.remove(); renderGroups(); return; }
-            // Validate: replace known variables with 1, then try to evaluate
+            if (!val) {
+                // Empty formula = clear it
+                engineSettings.groups[gi].roles[ri].formula = '';
+                saveSettings();
+                modal.remove(); renderGroups(); return;
+            }
+            // Validate: replace known variables with 1, then try to evaluate.
+            // Sort longest-first so short vars (e.g. size "l") don't clobber
+            // substrings of longer names (e.g. "Linear-Sorter-hourly").
             var testExpr = val;
-            allVars.forEach(function(v) {
+            allVars.slice().sort(function(a, b) { return b.length - a.length; }).forEach(function(v) {
                 testExpr = testExpr.replace(new RegExp(v.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g'), '1');
             });
             try {
-                var result = Function('"use strict"; return (' + testExpr + ')')();
+                var result = runFormulaExpr(testExpr);
                 if (typeof result !== 'number' || isNaN(result)) throw new Error('Not a number');
                 engineSettings.groups[gi].roles[ri].formula = val;
                 saveSettings();
@@ -3393,7 +3724,10 @@
                 if (!errDiv) {
                     errDiv = document.createElement('div');
                     errDiv.id = 'he-formula-error';
-                    errDiv.style.cssText = 'margin-top:8px;padding:6px 10px;background:#2d1215;border:1px solid #da3633;border-radius:4px;color:#da3633;font-size:11px';
+                    var _errDark = GM_getValue('he-theme', 'light') === 'dark';
+                    var _errBg = _errDark ? '#2d1215' : '#fdecea';
+                    var _errFg = _errDark ? '#ff6b6b' : '#b42318';
+                    errDiv.style.cssText = 'margin-top:8px;padding:6px 10px;background:' + _errBg + ';border:1px solid #da3633;border-radius:4px;color:' + _errFg + ';font-size:11px';
                     input.parentNode.after(errDiv);
                 }
                 errDiv.textContent = '⚠ Invalid formula: ' + e.message;
@@ -3480,10 +3814,12 @@
             if (ids.length === 0) {
                 html += '<div style="color:#555;font-size:11px;margin-bottom:10px">No presets saved yet.</div>';
             } else {
+                var _prDark = GM_getValue('he-theme', 'light') === 'dark';
+                var _prSelBg = _prDark ? '#1a3a2a' : '#e6f4ea';
                 ids.forEach(function(id) {
                     var p = enginePresets[id];
                     var isActive = (id === activePresetId);
-                    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;background:' + (isActive ? '#1a3a2a' : 'var(--he-bg)') + ';border:1px solid ' + (isActive ? '#2ea043' : 'var(--he-border)') + ';border-radius:6px">';
+                    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;background:' + (isActive ? _prSelBg : 'var(--he-bg)') + ';border:1px solid ' + (isActive ? '#2ea043' : 'var(--he-border)') + ';border-radius:6px">';
                     html += '<span style="font-size:12px;color:var(--he-text)">' + p.name + (isActive ? ' <span style="color:#2ea043;font-size:10px">● active</span>' : '') + '</span>';
                     html += '<div style="display:flex;gap:4px">';
                     html += '<button class="he-preset-load" data-id="' + id + '" style="padding:2px 8px;background:#1f6feb;border:none;border-radius:3px;color:#fff;font-size:10px;cursor:pointer">Load</button>';
@@ -3515,9 +3851,11 @@
                 { id: 'deep-dive', name: 'Deep Dive', desc: 'Pull inbound data from packageflix, including stacking filters' }
             ];
             var html = '<div style="margin-bottom:8px;color:var(--he-muted);font-size:11px">Select planning mode:</div>';
+            var _pmDark = GM_getValue('he-theme', 'light') === 'dark';
+            var selBg = _pmDark ? '#1a3a2a' : '#e6f4ea';
             modes.forEach(function(m) {
                 var sel = (current === m.id);
-                html += '<label class="he-mode-label" data-mode="' + m.id + '" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;margin-bottom:4px;background:' + (sel ? '#1a3a2a' : 'var(--he-bg)') + ';border:1px solid ' + (sel ? '#2ea043' : 'var(--he-border)') + ';border-radius:6px;cursor:pointer">';
+                html += '<label class="he-mode-label" data-mode="' + m.id + '" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;margin-bottom:4px;background:' + (sel ? selBg : 'var(--he-bg)') + ';border:1px solid ' + (sel ? '#2ea043' : 'var(--he-border)') + ';border-radius:6px;cursor:pointer">';
                 html += '<input type="radio" name="he-plan-mode" value="' + m.id + '"' + (sel ? ' checked' : '') + ' style="margin-top:2px">';
                 html += '<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--he-text)">' + m.name + '</div><div style="font-size:11px;color:var(--he-muted)">' + m.desc + '</div></div>';
                 if (m.id === 'simple') {
@@ -3532,12 +3870,7 @@
                 return '<div style="color:#da3633;font-size:12px;padding:10px 0">⚠ No MHE types defined. Please add MHE types in "MHE Type List" first.</div>';
             }
             if (!engineSettings.mheAttrs) engineSettings.mheAttrs = {};
-            var attrs = [
-                'Hourly Throughput', 'Container Build %', 'Fluid Load %', 'Direct to Container %',
-                'Shuttle Volume %', 'Pallet Volume %', 'Cart Volume %', 'Bag Volume %',
-                'Chute - Lanes Volume %', 'Chute - OB Volume %', 'Runout Volume %',
-                'Packages per Shuttle', 'Packages per Pallet', 'Packages per Cart', 'Packages per Bag'
-            ];
+            var attrs = FORMULA_MHE_ATTRS;
             var types = engineSettings.mheTypes;
             var html = '<div style="overflow-x:auto;font-size:11px">';
             html += '<table style="width:100%;border-collapse:collapse">';
@@ -3848,8 +4181,9 @@
             var saveBtn = document.getElementById('he-pkg-save');
             if (totalEl) {
                 var isGood = (Math.abs(sum - 100) < 0.1);
-                totalEl.style.color = isGood ? '#2ea043' : '#da3633';
-                totalEl.style.background = isGood ? '#1a3a2a' : '#2d1215';
+                var _pbDark = GM_getValue('he-theme', 'light') === 'dark';
+                totalEl.style.color = isGood ? (_pbDark ? '#3fb950' : '#1a7f37') : (_pbDark ? '#ff6b6b' : '#b42318');
+                totalEl.style.background = isGood ? (_pbDark ? '#1a3a2a' : '#e6f4ea') : (_pbDark ? '#2d1215' : '#fdecea');
                 totalEl.textContent = 'Total: ' + sum.toFixed(1) + '%' + (isGood ? ' ✓' : '');
                 if (saveBtn) {
                     saveBtn.disabled = !isGood;
@@ -3923,9 +4257,10 @@
             // Update label highlights on radio change and save immediately
             document.querySelectorAll('input[name="he-plan-mode"]').forEach(function(radio) {
                 radio.addEventListener('change', function() {
+                    var _selBg = GM_getValue('he-theme', 'light') === 'dark' ? '#1a3a2a' : '#e6f4ea';
                     document.querySelectorAll('.he-mode-label').forEach(function(lbl) {
                         var isSel = (lbl.getAttribute('data-mode') === radio.value && radio.checked);
-                        lbl.style.background = isSel ? '#1a3a2a' : 'var(--he-bg)';
+                        lbl.style.background = isSel ? _selBg : 'var(--he-bg)';
                         lbl.style.borderColor = isSel ? '#2ea043' : 'var(--he-border)';
                     });
                     engineSettings.planMode = radio.value;

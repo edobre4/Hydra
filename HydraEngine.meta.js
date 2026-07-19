@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra Engine
-// @version      0.2
+// @version      0.3
 // @description  AI-powered pipeline optimization engine for NASC sort centers
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.meta.js?raw=1
