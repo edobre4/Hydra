@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.14
+// @version      2.15
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -957,6 +957,8 @@
         if (_dd) { _dd.style.display = (_isOB && _tab === 'linearchutes') ? '' : 'none'; _dd.value = oneDFilterSource; }
         var _acT2 = document.getElementById('hydra-ac-util-toggle');
         if (_acT2) { var _showAc2 = (_isOB && _tab === 'autochutes'); _acT2.style.display = _showAc2 ? 'inline-flex' : 'none'; if (_showAc2 && typeof updateAcUtilToggle === 'function') updateAcUtilToggle(); }
+        var _acT2b90 = document.getElementById('hydra-ac-util90');
+        if (_acT2b90 && !(_isOB && _tab === 'autochutes')) _acT2b90.style.display = 'none';
         // SLA cutoff indicator -- keyed off the selected pane's view (IB panes).
         if (typeof updateSlaIndicator === 'function') updateSlaIndicator(p.view);
     }
@@ -1148,6 +1150,7 @@
     var AUTO_CHUTE_FILTER = 'AUTO-CHUTE';
     var AUTO_CHUTE_MODE   = 'cpt';
     var acUtilMode        = false; // Chute Matrix: show container utilization % instead of CPT counts
+    var acUtilHighOnly    = false; // Chute Matrix util mode: only show chutes at >= 90% utilization
     var AUTO_CHUTE_MIN    = 10;
     var AUTO_CHUTE_SEP1   = '';   // separator between filter and lane (default: none)
     var AUTO_CHUTE_SEP2   = '';  // separator between lane and slot (default: -)
@@ -3393,7 +3396,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             customStackedThreshold: (Array.isArray(CUSTOM_STACKED_THRESHOLD) ? CUSTOM_STACKED_THRESHOLD.join(',') : CUSTOM_STACKED_THRESHOLD),
                 customStagedFilter: (Array.isArray(CUSTOM_STAGED_FILTER) ? CUSTOM_STAGED_FILTER.join(',') : CUSTOM_STAGED_FILTER),
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
-            autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode,
+            autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
             cptWindows:  cptWindows.map(function(w) { return Object.assign({}, w); }),
@@ -3524,6 +3527,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.autoChuteFilter) AUTO_CHUTE_FILTER = s.autoChuteFilter;
         if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
         if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
+        if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
         if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
         if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
         if (s.autoChuteSep2 !== undefined) AUTO_CHUTE_SEP2 = s.autoChuteSep2;
@@ -4096,7 +4100,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 customStagedFilter: (Array.isArray(CUSTOM_STAGED_FILTER) ? CUSTOM_STAGED_FILTER.join(',') : CUSTOM_STAGED_FILTER),
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
                 autoChuteFilter: AUTO_CHUTE_FILTER,
-                autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode,
+                autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
                 autoChuteSep2:   AUTO_CHUTE_SEP2,
@@ -4260,6 +4264,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.autoChuteFilter) AUTO_CHUTE_FILTER = s.autoChuteFilter;
             if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
             if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
+            if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
             if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
             if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
             if (s.autoChuteSep2 !== undefined) AUTO_CHUTE_SEP2 = s.autoChuteSep2;
@@ -4949,7 +4954,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0);margin-left:auto">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
-            '<div id="hydra-search-bar"><input id="hydra-search-input" type="text" placeholder="Search VRID, route, door, status..."><button id="hydra-search-clear">&#x2715;</button><span id="hydra-search-count"></span><span id="hydra-sla-indicator" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#ff4070;white-space:nowrap;padding:2px 8px;border:1px solid #cc1040;border-radius:4px" title="Trailers arriving after this time are not heat-colored (CPT SLA suppression)"></span><span id="hydra-cptperf-window-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap">SDT Window:<input id="hydra-cptperf-start" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"><span style="opacity:0.6">to</span><input id="hydra-cptperf-end" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"></span><button id="hydra-obv-selectall" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap" title="Select all routes/CPTs visible in the current filter">Select all</button><button id="hydra-div-copy-chutes-hdr" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 10px;cursor:pointer;white-space:nowrap" title="Copy non-zero diverter chute IDs (space-separated)">\u2398 Copy chutes</button><label id="hydra-obv-selonly-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);cursor:pointer;white-space:nowrap" title="Show only selected routes"><input type="checkbox" id="hydra-obv-selonly" style="cursor:pointer">Selected only</label><select id="hydra-1d-source" style="display:none;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 8px;font-size:12px;font-weight:600" title="Custom View source"><option value="stacked">Stacked</option><option value="staged">Staged</option><option value="inFacilityReceived">Received</option><option value="diverted">Diverted</option></select><button id="hydra-ac-util-toggle" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Toggle Chute Matrix cells between CPT package counts and container utilization %">CPT Packages</button><div id="hydra-bar-zoom"><input type="range" id="hydra-bar-zoom-slider" min="50" max="250" step="1" value="100"><span id="hydra-bar-zoom-value">100%</span><button id="hydra-bar-autofit-btn" type="button" title="Auto-fit zoom" style="margin-left:4px;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0);border-radius:4px">Auto Zoom</button></div></div>' +
+            '<div id="hydra-search-bar"><input id="hydra-search-input" type="text" placeholder="Search VRID, route, door, status..."><button id="hydra-search-clear">&#x2715;</button><span id="hydra-search-count"></span><span id="hydra-sla-indicator" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#ff4070;white-space:nowrap;padding:2px 8px;border:1px solid #cc1040;border-radius:4px" title="Trailers arriving after this time are not heat-colored (CPT SLA suppression)"></span><span id="hydra-cptperf-window-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap">SDT Window:<input id="hydra-cptperf-start" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"><span style="opacity:0.6">to</span><input id="hydra-cptperf-end" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"></span><button id="hydra-obv-selectall" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap" title="Select all routes/CPTs visible in the current filter">Select all</button><button id="hydra-div-copy-chutes-hdr" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 10px;cursor:pointer;white-space:nowrap" title="Copy non-zero diverter chute IDs (space-separated)">\u2398 Copy chutes</button><label id="hydra-obv-selonly-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);cursor:pointer;white-space:nowrap" title="Show only selected routes"><input type="checkbox" id="hydra-obv-selonly" style="cursor:pointer">Selected only</label><select id="hydra-1d-source" style="display:none;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 8px;font-size:12px;font-weight:600" title="Custom View source"><option value="stacked">Stacked</option><option value="staged">Staged</option><option value="inFacilityReceived">Received</option><option value="diverted">Diverted</option></select><button id="hydra-ac-util-toggle" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Toggle Chute Matrix cells between CPT package counts and container utilization %">CPT Packages</button><button id="hydra-ac-util90" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Show only chutes at 90%+ utilization">&#8805;90% only</button><div id="hydra-bar-zoom"><input type="range" id="hydra-bar-zoom-slider" min="50" max="250" step="1" value="100"><span id="hydra-bar-zoom-value">100%</span><button id="hydra-bar-autofit-btn" type="button" title="Auto-fit zoom" style="margin-left:4px;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0);border-radius:4px">Auto Zoom</button></div></div>' +
             '<div id="hydra-selection-bar"><span id="hydra-sel-info"><span style="color:var(--h-dim, #4a5a6a)">No trailers selected</span></span><div id="hydra-sel-right"><button id="hydra-vc-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer" title="Volume Calculator">VC</button><button id="hydra-cm-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px" title="Chute Map - map selected IB incoming packages onto OB chutes by route">Chute Map</button><button id="hydra-rtc-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px" title="Ready to Close - shows which chutes are ready to close based on IB volume threshold">Ready To Close</button><button id="hydra-copy-btn">&#128203; Copy</button><button id="hydra-sel-clear">&#x2715; Clear</button></div></div>' +
             '<div id="hydra-door-panel" style="display:none"></div>' +
             '<div id="hydra-tabs"></div>' +
@@ -11068,6 +11073,19 @@ if (k === 'eta') {
         b.style.color = acUtilMode ? '#20d4f0' : 'var(--h-muted, #aab4c0)';
         b.style.borderColor = acUtilMode ? '#20d4f0' : 'var(--h-border2, #3a4a5c)';
         b.title = acUtilMode ? 'Utilization % (red = full, get a water spider). Click for CPT packages.' : 'CPT package counts. Click for container utilization %.';
+        updateUtil90Button();
+    }
+
+    // Shows the "\u226590% only" filter button when utilization values are on
+    // screen: Chute Matrix in util mode, or Custom View with Utilization %.
+    function updateUtil90Button() {
+        var b90 = document.getElementById('hydra-ac-util90');
+        if (!b90) return;
+        var show = (activeView === 'OB' && obActiveTab === 'autochutes' && acUtilMode) ||
+                   (activeView === 'OB' && obActiveTab === 'linearchutes' && oneDFilterUtil);
+        b90.style.display = show ? 'inline-flex' : 'none';
+        b90.style.color = acUtilHighOnly ? '#20d4f0' : 'var(--h-muted, #aab4c0)';
+        b90.style.borderColor = acUtilHighOnly ? '#20d4f0' : 'var(--h-border2, #3a4a5c)';
     }
     function updateSlaIndicator(forceView) {
         var el = document.getElementById('hydra-sla-indicator');
@@ -11104,6 +11122,8 @@ if (k === 'eta') {
         }
         var _acT = document.getElementById('hydra-ac-util-toggle');
         if (_acT) { var _showAc = (activeView === 'OB' && obActiveTab === 'autochutes'); _acT.style.display = _showAc ? 'inline-flex' : 'none'; if (_showAc) updateAcUtilToggle(); }
+        var _acT90 = document.getElementById('hydra-ac-util90');
+        if (_acT90) updateUtil90Button();
         var dd = document.getElementById('hydra-1d-source');
         if (!dd) return;
         var show = (activeView === 'OB' && obActiveTab === 'linearchutes');
@@ -11312,6 +11332,10 @@ if (k === 'eta') {
             }
             return true;
         });
+        // "\u226590% only" filter: when Utilization % is on, keep only rows at 90%+
+        if (oneDFilterUtil && acUtilHighOnly) {
+            allRows = allRows.filter(function(r) { return typeof r.util === 'number' && r.util >= 90; });
+        }
         if (!allRows.length) {
             tableWrap.innerHTML = '<div id="hydra-empty">No containers match filters.</div>';
             return;
@@ -11539,6 +11563,8 @@ if (k === 'eta') {
                 var val  = cell ? (typeof cell === 'object' ? cell.val : cell) : 0;
                 var bg = '', color = 'var(--h-chip-off, #555)', fw = '';
                 var _hasData = _acUtil ? !!(cell && cell.containers && cell.containers.length) : (val > 0);
+                // "\u226590% only" filter: in utilization mode, hide chutes below 90%
+                if (_acUtil && acUtilHighOnly && !(val >= 90)) _hasData = false;
                 if (_acUtil) {
                     if (_hasData) {
                         if      (val >= 90) { bg = '#b71c1c'; color = '#fff'; fw = 'font-weight:700'; }
@@ -15262,6 +15288,17 @@ if (k === 'eta') {
             setStatus('Chute Matrix mode: ' + (acUtilMode ? 'Utilization %' : 'CPT Packages') + ' \u2014 click Refresh to load.');
         });
 
+        // "\u226590% only" filter — no data pull needed, just re-render the active view
+        var _b90 = document.getElementById('hydra-ac-util90');
+        if (_b90) _b90.addEventListener('click', function(e) {
+            e.stopPropagation();
+            acUtilHighOnly = !acUtilHighOnly;
+            try { saveAllSettings(); } catch (ex) {}
+            updateUtil90Button();
+            if (obActiveTab === 'linearchutes' && typeof renderOBCustomStackedTable === 'function') renderOBCustomStackedTable();
+            else if (typeof renderChuteMatrix === 'function') renderChuteMatrix();
+        });
+
         // Auto refresh
         document.getElementById('hydra-auto-btn').addEventListener('click', toggleAutoRefresh);
         // Auto refresh interval input
@@ -17150,7 +17187,7 @@ if (k === 'eta') {
         aiInit();
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
-            var CURRENT_VERSION = '2.14';
+            var CURRENT_VERSION = '2.15';
             var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
             var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
             GM_xmlhttpRequest({
