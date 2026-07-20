@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.15
+// @version      2.16
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -11827,7 +11827,7 @@ if (k === 'eta') {
     }
 
     function fetchArMezzData() {
-        var node = (typeof mdw5Settings !== 'undefined' && mdw5Settings.node) ? mdw5Settings.node : 'ORD9';
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         var query = 'query getWorkstationDataWindow($nodeId: String!, $minutes: Int!) {\n  workstationDataWindow(nodeId: $nodeId, minutes: $minutes) {\n    workstationData {\n      workstation {\n        workstationAlias\n        workstationType\n        workstationId\n      }\n      workstationStates {\n        windowStartTime\n        incomingCount { value }\n        workInProgressCount { value }\n        associateData { perAssociateData { associateId scanCount lastScanTime signedIn } }\n      }\n    }\n  }\n}';
         var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
         var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
@@ -17187,7 +17187,7 @@ if (k === 'eta') {
         aiInit();
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
-            var CURRENT_VERSION = '2.15';
+            var CURRENT_VERSION = '2.16';
             var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
             var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
             GM_xmlhttpRequest({
