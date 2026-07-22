@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.16
+// @version      2.17
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -11705,7 +11705,7 @@ if (k === 'eta') {
     var staffingAssignments = null; // cached getStaffingAssignments response
 
     function fetchStaffingAssignments() {
-        var node = (typeof mdw5Settings !== 'undefined' && mdw5Settings.node) ? mdw5Settings.node.toUpperCase() : 'ORD9';
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
         var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
         var query = 'query GetStaffingAssignments($nodeId: String!) {\n  getStaffingAssignments(nodeId: $nodeId) {\n    nodeId\n    associateId\n    workstationId\n    processSegmentId\n    source\n    locked\n    lastUpdateUser\n    updatedTime\n    associate {\n      associateId\n      fullName\n      __typename\n    }\n    __typename\n  }\n}';
@@ -11736,7 +11736,7 @@ if (k === 'eta') {
     }
 
     function fetchQbccChuteInfo() {
-        var node = (typeof mdw5Settings !== 'undefined' && mdw5Settings.node) ? mdw5Settings.node : 'ORD9';
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         var ksk = { customer: 'AMZN', warehouse: node.toUpperCase(), zone: 'scKivaA02' };
         var endpoint = 'https://vh4qdrfwc5awhjsbjqlfeuqwv4.appsync-api.us-east-1.amazonaws.com/graphql';
         var query = 'query queryChuteInfo($ksk: KivaSystemKeyInput!) {\n  queryChuteInfo(input: $ksk) {\n    jsonString\n    __typename\n  }\n}';
@@ -12438,7 +12438,7 @@ if (k === 'eta') {
                     }
                 }
                 if (!destGuid) { assignBar.textContent = '\u26A0 No workstation ID for this chute'; setTimeout(function() { assignBar.style.display = 'none'; }, 2000); arMezzAssignState = null; if (wrap._armezzSrcTd) { wrap._armezzSrcTd.style.outline = ''; wrap._armezzSrcTd.style.outlineOffset = ''; } return; }
-                var node = (typeof mdw5Settings !== 'undefined' && mdw5Settings.node) ? mdw5Settings.node.toUpperCase() : 'ORD9';
+                var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
                 var login = arMezzAssignState.login;
                 console.log('[Hydra Assign] Using guid:', destGuid, 'source:', (destCd && destCd.wsId) ? 'WATT' : 'QBCC');
                 assignBar.textContent = 'Assigning ' + login + ' to chute ' + qMapId + '...';
@@ -17187,7 +17187,7 @@ if (k === 'eta') {
         aiInit();
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
-            var CURRENT_VERSION = '2.16';
+            var CURRENT_VERSION = '2.17';
             var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
             var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
             GM_xmlhttpRequest({
