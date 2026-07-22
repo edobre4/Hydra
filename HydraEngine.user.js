@@ -1,10 +1,8 @@
 // ==UserScript==
 // @name         Hydra Engine
-// @version      0.3
+// @version      0.4
 // @description  AI-powered pipeline optimization engine for NASC sort centers
 // @author       eddobrev
-// @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.meta.js?raw=1
-// @downloadURL  https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.user.js?raw=1
 // @match        https://admin.faststart.ats.amazon.dev/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        GM_xmlhttpRequest
@@ -24,7 +22,7 @@
     // SECTION 1: CONFIGURATION
     // ═══════════════════════════════════════════════════════════════════════════
 
-    var ENGINE_VERSION = '0.1';
+    var ENGINE_VERSION = '0.4';
     var HYDRA_TEXT_LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADsAAAAcCAYAAADfjMc9AAAPN0lEQVR42pWZWZAdV3nHf+ec3u69c2fuLJpFGmuXrNWyhS1bFhhsQ2xhZMBxQgFJFRThJSEPpFKVPIHzkEpVqpJUHlLJQ1IJlRASxwaKxXjBdjAUGFuykdA+GmlGs8/cufvS2zknD3c0mpFMldNV3ff26e7T3//b+vv+R7iFnVZbgQIsFmDlCCAQq6M3Rli5UwIWsXp87+3mlZuzmJVxccvM9pYnbj7zm+dft9lbb70xYBFYpLGQE5bUGoToDAtxq8B2jXhiDTjxPoCalb1zbqymIDNkpItZM29HsWLdO8X/Byi3A10rMYDUVrBLWT7S5ZIkGlcKUtOxGzd1cpu936+iQaxgEYDE2IQD3iaGVS/GaiTyPQFZIdbZ+zfN/l54hZQIcVPmG7CllILxyPDl/oBj/VnCMGZLxic1Giluuq0AlOhYPbUWKUCK9wFVgESgjUUJQc712CEG2KIGwKZokyKFXFHGGj+x72VVuwb8+mtCCKSjsFKQ1hvoOAah1qlEOliqwuH5mQp/N1rgqaFuPpSTfGrnCEkrxNqOq2kEcZySakO/q0hSTZJqlBA4K/taQQUWhSVJDbG2WKP5zKbt5G2GUboZcfpxnS4Gu0eIwwomjTsCS4lSCqUUUkmko1CORCmJELeGTUc2ISVpHJMslzH1Jlse+RDDD96PiSLEqlwWx1pACl6N4NDYLM/sGWVquUx2IEtu3x18e7JImGruynkc2rqB70yXGFKWL+7ZyH/NlJmuNDtathbhOUjRcYfUAtZw14ZeKtUGf37wECeLIWldM1LIkxs6wA/PnWTbhn0c2Pkgv7jwEo16CdIUjAVrO7834lq5yFwWx1ForVfCQ4DWpGFM/+ZRtn7oAXY+fQI5tInvfO4PYFU5nTkcg6ULqDgu55oN1NgUTxzYSRDH/NWdg5SWq7xQMVxpRPzZcMhXjm7l+GvnqS6X+N49o/ykWGfB8QiV4tuXZpkKU5QQ9DgOf7h7mI8HPl73Hk5Na751/Qqf9DaT7+vHbtzMY+GTPDf+Pzy0+wm+9OTXacg6C0mVhq1hAkMSSFJfkbRaNK9c5frb7xJVqrj5ro4ukoRg4wgn/uYvUIcOkgwN0J4r88t/+HfC8XGc7m7sDcUAjrYwoix7PYfv2wxmsUx3rcXx/dv4znMv8Uu6EMqjieTfzk/x9e6A1z51hOM/PIX/09N89ZNH2T7Sy5kzE/x7nCClJNWWu7OSr4x0EyqHH11p882rFfqVYK8/zEy9hHVaHDv2cfytA3zj5b9lcmGMI/seZ/+9h9hx4h4WCy5zWUEtsGwZzJABahev8NqffI23X3kDt6cb4oREa2ZGt/OB/m5spczLv56AqLWaYNdujisF46nh6cCwIetxra0oTc9xqV5lIBuQsRlEO0E4irzrcKUW8rAUPJoVvFrxGX7hFE987lEcIfEyAaYRAYKDIkUK+N6y5ieXphkPEr48cIix4izViXl8Ktz94Y9x7MMfp2/XJv7+H79K7Z0yj5kvEDUSJm2L+XYN987NTPe5HN7WzVMP74dv/hNTj3yahUtXEUoSSEFoDTZOcBerhD15Mj1dnVxzS8JWTtD/TCok462IJ33JnoyPjprs8z16chl+1jbMpBZlLZ8b7kJUq5CmlBZKvBnkucu0iSsVHty7lYuR5sx0iY15j7+8cwMXZypcmGixmJNsCnp4rGeE15emmRcR9WadsfPn2XLXdrbdd5R6NeTc2VfZtPsI+cJWwkyGmfFfM/nWCxSXqpyNClyplpnZvQXZiJn/8WtYLBvu2s/RP/4iE6cu8/qLpxg4she/2aD44stYR60DKw3gYJlzPP671uJys4G10OfA5VabyVjjKIkRgvPLdbpsyqBj6QtclsOYMeEyMzvPfBzz2YKDlfCJbsme3gynqyGn62VOt0Mez/Qyr0N8v8BpZ57Lzjza0bzxnz9iYWGRI48+iZfNM7c0Dnf30XN0FGOqLJ58geUf/DN2/B3OTjcoXZ6ltmETTlcWopjCfYdptlOmJpepBF24pTKF/XvIDQ2ikwSxpkLquLa1POpZzrlZrmlBgGVWW0ayPkVjSRONSQ3CWrZ4Cs91Ua6HBlqOS7dQzE3NcXca81B/wFOFgIlyRNyMuKoSDjgBr+t5ugoZulUWIR1qpsmMWKZVqbJw+gKB209f/g6kI+jd1EPa7yPzWVS+H2MtSVhCbB5iemyOsNoCqZCZgJGHPkip1qRca9CVD1ieKZEMD9Nz134II5A3o1dKIEUQGMvXcmB1wojrsDvj4Vfr/FaPz0cHczwylOOeQoZebfBSja8kGsEbsWBOO1y4cI04jfjrAmx1DN8dm2XRaqrK42S4zLFuh9FEkunq6sQPDmVdwbqS+uUi4USd/t47SJstwoZGFLLIjELXZ7DSZfipx/G3D6IXqujJKdJahZ7t2zBbt9JcbBBfm0SfepNI+kRSUjj6ABi9rtJyrO18rl5JBAeJebqQoxKHOMKye7if57uzRN05/IxL3I6Yny3R7wp2Zl0GfCjGhudTxWfbNWbqTXaEEWctlGpt3hYBi2iOO/DBWo3SiEM2yGKtQQhFYlO0NMTlNu2lEq7yscLiIQmkZcvHjuD2/Cl7njyBeuR+zjz7U9T0MtE7b2J1m777PoDpKbB09jx69jrx1Utkjp9AzyzhHjpM0NNDnOpVV3YsoIBYSv4lknw6CrnXFTzfiEmSlFylhaOKNKTAR5ILXJhaZnvG44NZxXfDlAnH55rxOTVVZNd9d/LuO+O0EsN4oBAWfJ1SSVNaCFJjVkpDgbGafJDDEy7V8hJpqpGpJl9OsK0Gex+6n0efeoRER7z47E9ZfmuC9NLb1M6cQnp5cvfdR61YJy1Via+OEY1dpB+NbbbQ/RvI37mbpXd/hZPLYo3FudGXBFiWXZcLUch2relarPOjehvlOHhCdMp1rdkoUvZt28hzsxVeDDuxGwPvqhxbayVeL7ep1mJOenkaK27TNJa2hno7JTKm84kXIKygL8iTdQPmSktEYZMcLo1LS4xfmqc4M0/dJhTu3UTl8AHas69QevXbWNcnMzSEu3c/tYk5otk5/GYFm2rSyatUBg/jRQldhz/A0ltvIUS2Uy7eKKZ8LJ/3HZR1ibVmJOMzZBTPOxkSBIkQHEnbHJZt5o2hZQR4HsJ0YqIlJcJ1uPLuGHkvT1U6q+ESIqnFmlK9SZRKhO10xIFw6fcKxDamVp0nTVokeNSuTZPbNcDpC9+nGFcYLXyCHY955L5wgjdffZ64WqJr7zHiSBBPzjL6wAF2fuYb5AVMWcXkckhjuoi/cy9ONoM1Bou46cZVC6dDzXHl0JY+IZIB5ZBYSAUYaxHGUDWauTjljpxHrmko204tLIGckBTyAbPx+o4ktrCQWpZbDULjIoUkTZts7drFcNcIZxvTxFGTZlSjy9+ArleoX2uTpm3qc7+icnU/xf/tp/93H2bg4Y8w+9x/kNl9gNZMiXRihqVijerUIDKTQbRDGpPXMb29pH0bCDaN0pqeQnpBx40t4AnBSWuxoeVjGYUT+Dg2xU0sqbBIKxlVgnYqKYcRpxJYJosrOmHQtBBJh0HlUPEVcWxXeI5Oyp/Rhma7RVt4GJOyO7+NE8MfRSif5XCZRMeU2tNsDkapLS/RSnwy2W7SVoWwMsH0yT7co/vY+ZmnKf74ZbK79xEvFmlPzJC0qkhpEEGAiWNs7xBBrUnX9gfJHDxE4+o4MsjgSGFJLPQLyUFP0tIRM4mlHcVsVIrNQnI+1nhCEGIpA0fdgGFhIV7TdlqoCMm8o2jHEmcNz5BFoJOEsg3ZlBvlS91PMJrdQj6ziVem3qApLFVdJk0bKG1pxy18pxukBSFpLV5C3rGLyo9PUvjI/eQP3Y2dm6F7cIRyzif62WuktQpCKWwS0/v7f0RSqWPDmK4HHmT5B98DLPKGGy8aw4jwOBa4FNOUQStY1JqFxCCtJLaWKoqCFJwBHhzqY4/voK0FA9tcyaCxnKunTIcGX3SsaoFBpdjkdOMKh0i3KNg+Flt1Xpx8iWJYpx4VuVg6iXRybO7ZTWpjWu1lurJ94LiExTlMc4H5t85RO3eFTU//HtPPfYvi5DwyjUibDWQ2hwgyIBR67jruyDCtd06T2X+QYNcu0lodeaP9EcLywzhhmoAeTxFiaQlF095syl0BvY7L5XLIv85WmUs6bIaH5Xc29KAyGWKrcHBIrOj0s57L/UEXb6UxM+Ec45WzXClf5kzxLNOteWqmwoXGr9E24lD/vQwVRllOq9SWFxkd2EZhYBStE5oXfoE1CcWf/Qp/4w669uyk8sufQBJCmqz0vxqbJji5gOydu2gUG7Sniox85av4vf0oFfQ9AxYFNNHkcBBpQp+v6BYOJ7UlWun0H/Mk1kgmlM9LxhKxwkoKGGuGVBshOenQ5wS8Q0Id6LGCN8OYS1hqjkQoH5VC6gTMqEUmwytIIZHSxREu55bPUIqWqEWLLJavEcZ10jQkbdQBDX1bCKdnGHz8OOnURYovfR9rQTpOh0BQCpFqorELUJ6l8fYvSK5PIqJWJ0HdLJQtM2gGnDyhiRjyPdy4jTUw4EgyCl6I4aIUuPYGpSpAGMasIPQyDGhLKgTSKkBzWWuQtkOp2JAZ0WCju4VFqiwkM3gyg8GAsFxvXFnfk9UMUjpIqRCeQ+PqedJGhWTPvRjfof+3P0/h7kPMPvss9anrCCUQjkPr6mW4fL5TvAhBK00RfoBSfu8zN8EKKkbjSJ+sUdwRCK5pw4I2OMCbqWVBSNw1jN0q5YGlLAUGwQ6hWJKSOZPiy471JeAg0FYTqC5KtkrThh2y7Ua/KRyUUCi5sit3hSUUK4SZS1qvEk+P0Ro7Q+nnPyeu1zHNBkm10kn71iIcB+l5SNdFuC7K9xFSrbVsJ6G4Ai6aFm0RcE+ieMB3OROltG0HiLtKpq//lhoErhWclZasjhmRPkKs0Emr9JhFCocpPU9iE6SQ6yj41f92PaG2yiBbg3Q7EphmHV2rUJq4jPBclOd14nali7PW3kbpCrdnh73JxNt1pOWo8Hg84/DdsM2isTjr1gdu3H8rcEGKoRtB+5bVhPfDct++xiDWsb/rVgkEK+FhbwJdfdLeRsIKt2envV2kzgOpNWSExJdQN2sEEKKTlVbBchuHq+1qs3yrHteci9uWOVbfIkBYfsNSiOE97HPL+oVdF2YA/wdW8IwBcUuqBwAAAABJRU5ErkJggg==';
     var GOLD_DRAGON_ICON = 'data:image/png;base64,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';
     var AI_SERVER_URLS = [
@@ -1987,6 +1985,19 @@
         GM_setValue('he-panel-geo', geo);
     }
 
+    // Keep the panel (and its draggable header) within the viewport so the
+    // logo/header can always be grabbed. Clamps top to >= 0 and leaves at
+    // least ~80px of the panel visible horizontally.
+    function clampPanel(panel) {
+        if (!panel) return;
+        var vw = window.innerWidth, vh = window.innerHeight, margin = 80;
+        var w = parseFloat(panel.style.width) || panel.offsetWidth || 700;
+        var left = parseFloat(panel.style.left);
+        var top = parseFloat(panel.style.top);
+        if (!isNaN(left)) panel.style.left = Math.min(Math.max(left, margin - w), vw - margin) + 'px';
+        if (!isNaN(top)) panel.style.top = Math.min(Math.max(top, 0), vh - 40) + 'px';
+    }
+
     function restorePanelGeometry() {
         var panel = document.getElementById('hydra-engine-panel');
         if (!panel) return;
@@ -1996,6 +2007,7 @@
             if (geo.width) panel.style.width = geo.width;
             if (geo.height) panel.style.height = geo.height;
         }
+        clampPanel(panel);
     }
 
         // Inject CSS for FAB and panel
@@ -2008,7 +2020,7 @@
             'html:not(.he-theme-light):not(.he-theme-dark){--he-bg:#ffffff;--he-panel:#f6f8fa;--he-text:#1a1a1a;--he-muted:#57606a;--he-border:#d0d7de;--he-border2:#e5e8ec}' +
             '#he-fab{position:fixed;top:6px;right:18px;z-index:99999;background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:2px solid transparent;border-radius:8px;padding:0;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);display:inline-flex;align-items:center;justify-content:center;transition:all .2s;line-height:0}' +
             '#he-fab:hover{transform:scale(1.06);box-shadow:0 4px 18px rgba(0,0,0,.6),0 0 18px rgba(255,48,48,0.6),0 0 18px rgba(32,200,240,0.55);filter:brightness(1.08)}' +
-            '#hydra-engine-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:80vh;min-width:400px;min-height:300px;z-index:99990;background:var(--he-bg);display:none;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--he-text);box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px rgba(48,54,61,.8);border-radius:10px;overflow:visible}' +
+            '#hydra-engine-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:1200px;max-width:96vw;height:80vh;min-width:400px;min-height:300px;z-index:99990;background:var(--he-bg);display:none;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--he-text);box-shadow:0 8px 40px rgba(0,0,0,.8),0 0 0 1px rgba(48,54,61,.8);border-radius:10px;overflow:visible}' +
             '#hydra-engine-panel.open{display:flex}' +
             // View switcher (Hydra-style Inbound | Engine) — crimson→purple→navy gradient
             '#he-view-switcher{display:flex;position:relative;flex-shrink:0;border-radius:10px 10px 0 0;overflow:visible;background:linear-gradient(90deg,#d01818 0%,#c01830 10%,#a81845 20%,#8e1a60 30%,#7a1880 38%,#8020a0 44%,#9020b0 48%,#a020b8 50%,#9028c0 52%,#8030c8 56%,#6040d0 62%,#4050d8 70%,#2868d8 80%,#1890e0 90%,#10b8ee 100%)}' +
@@ -2076,6 +2088,7 @@
                     '<div class="he-setting-item" data-setting="mhe-type-attrs" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">MHE Type Attributes</div>' +
                     '<div class="he-setting-item" data-setting="volume-mix" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Volume Mix</div>' +
                     '<div class="he-setting-item" data-setting="engineer-rates" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Engineer Rates</div>' +
+                    '<div class="he-setting-item" data-setting="learned-rules" style="padding:8px 16px;font-size:12px;color:var(--he-text);cursor:pointer;border-left:3px solid transparent">Learned Rules</div>' +
                 '</div>' +
                 // Right panel - Groups / Roles
                 '<div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column">' +
@@ -2099,8 +2112,16 @@
                     '<div id="he-plan-table"></div>' +
                 '</div>' +
             '</div>' +
-            '<div id="he-tab-execute" class="he-tab-content" style="flex:1;overflow-y:auto;padding:20px;display:none">' +
-                '<div style="color:#555;text-align:center;width:100%;padding:40px">Execute tab content</div>' +
+            '<div id="he-tab-execute" class="he-tab-content" style="flex:1;overflow:hidden;display:none">' +
+                '<div style="flex:1;overflow-y:auto;padding:16px">' +
+                    '<div id="he-exec-header"></div>' +
+                    '<div id="he-exec-table"></div>' +
+                '</div>' +
+                '<div style="width:340px;border-left:1px solid var(--he-border);display:flex;flex-direction:column;background:var(--he-panel)">' +
+                    '<div style="padding:10px 14px;border-bottom:1px solid var(--he-border);font-weight:700;color:var(--he-text);font-size:13px;display:flex;align-items:center;justify-content:space-between"><span>Hydra AI Optimizer</span><button id="he-exec-optimize" style="background:#1f6feb;border:none;border-radius:6px;color:#fff;font-size:11px;font-weight:700;padding:4px 12px;cursor:pointer">Optimize</button></div>' +
+                    '<div id="he-exec-ai-messages" style="flex:1;overflow-y:auto;padding:10px;font-size:12px;color:var(--he-text)"></div>' +
+                    '<div style="padding:8px;border-top:1px solid var(--he-border);display:flex;gap:6px"><input id="he-exec-ai-input" type="text" placeholder="e.g. protect 14:30, cap TDR at 2" style="flex:1;padding:6px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:6px;color:var(--he-text);font-size:12px"><button id="he-exec-ai-send" style="background:var(--he-border);border:1px solid var(--he-border2);border-radius:6px;color:var(--he-text);font-size:12px;padding:6px 12px;cursor:pointer">Send</button></div>' +
+                '</div>' +
             '</div>' +
             '<div id="he-tab-report" class="he-tab-content" style="flex:1;overflow-y:auto;padding:20px;display:none">' +
                 '<div style="color:#555;text-align:center;width:100%;padding:40px">Report tab content</div>' +
@@ -2184,9 +2205,21 @@
                 if (!isDragging) return;
                 panel.style.left = (startLeft + e.clientX - startX) + 'px';
                 panel.style.top = (startTop + e.clientY - startY) + 'px';
+                clampPanel(panel);
             });
             document.addEventListener('mouseup', function() {
                 if (isDragging) { isDragging = false; savePanelGeometry(); }
+            });
+            // Double-click the logo to reset panel to default size/position
+            var logo = document.getElementById('he-logo-center');
+            if (logo) logo.addEventListener('dblclick', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                panel.style.left = '50%';
+                panel.style.top = '50%';
+                panel.style.transform = 'translate(-50%,-50%)';
+                panel.style.width = '1200px';
+                panel.style.height = '80vh';
+                GM_setValue('he-panel-geo', null);
             });
         })();
 
@@ -2435,6 +2468,20 @@
             html += '<button class="he-grp-add-role" data-gi="' + gi + '" style="padding:2px 6px;background:#1f6feb;border:none;border-radius:3px;color:#fff;font-size:9px;cursor:pointer">+ Role</button>';
             html += '<button class="he-grp-del" data-gi="' + gi + '" style="padding:2px 6px;background:#da3633;border:none;border-radius:3px;color:#fff;font-size:9px;cursor:pointer">✕</button>';
             html += '</div>';
+            // MHE selector — which MHE's Sort Length drives this group's Hourly math
+            (function() {
+                var am = autoMatchMhe(g.name);
+                var s = '<div style="display:flex;align-items:center;gap:6px;padding:3px 10px;background:' + (g.color || 'var(--he-border)') + '11;font-size:10px;color:var(--he-muted)">';
+                s += '<span style="white-space:nowrap">Hourly sort length:</span>';
+                s += '<select class="he-grp-mhe" data-gi="' + gi + '" style="flex:1;padding:2px 4px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:3px;color:var(--he-text);font-size:10px">';
+                s += '<option value=""' + (!g.mhe ? ' selected' : '') + '>Auto' + (am ? ' \u2192 ' + am : ' (total sort)') + '</option>';
+                s += '<option value="__total__"' + (g.mhe === '__total__' ? ' selected' : '') + '>Total sort length</option>';
+                (engineSettings.mheTypes || []).forEach(function(m) {
+                    s += '<option value="' + m + '"' + (g.mhe === m ? ' selected' : '') + '>' + m + '</option>';
+                });
+                s += '</select></div>';
+                html += s;
+            })();
             // Roles
             if (g.roles && g.roles.length > 0) {
                 g.roles.forEach(function(r, ri) {
@@ -2492,6 +2539,10 @@
             var gi = parseInt(el.getAttribute('data-gi'));
             if (engineSettings.groups[gi]) engineSettings.groups[gi].color = el.value;
         });
+        document.querySelectorAll('.he-grp-mhe').forEach(function(el) {
+            var gi = parseInt(el.getAttribute('data-gi'));
+            if (engineSettings.groups[gi]) engineSettings.groups[gi].mhe = el.value;
+        });
         document.querySelectorAll('.he-role-name').forEach(function(el) {
             var gi = parseInt(el.getAttribute('data-gi'));
             var ri = parseInt(el.getAttribute('data-ri'));
@@ -2516,7 +2567,7 @@
 
     function attachGroupHandlers() {
         // Color/name changes save on blur
-        document.querySelectorAll('.he-grp-name,.he-grp-color,.he-role-name,.he-role-rate').forEach(function(el) {
+        document.querySelectorAll('.he-grp-name,.he-grp-color,.he-grp-mhe,.he-role-name,.he-role-rate').forEach(function(el) {
             el.addEventListener('change', function() { collectGroupsFromDOM(); saveSettings(); });
         });
         // Auto-fill eng rate when role name matches
@@ -2928,10 +2979,42 @@
 
     // Operational Length = Sort Length - Start Up & Break (the working hours).
     function ibOperationalLength() {
+        return ibOpLengthFor(null);
+    }
+
+    // Operational length for a specific MHE: uses that MHE's Sort Length when
+    // set (> 0), otherwise the global Sort Length; minus Start Up & Break.
+    function ibOpLengthFor(mhe) {
         var pv = engineSettings.planVars || {};
-        var sortLen = parseFloat(pv.sortLength) || 0;
         var breakUp = parseFloat(pv.startUpBreak) || 0;
+        var msl = mhe ? parseFloat((engineSettings.mheSortLength || {})[mhe]) : NaN;
+        var sortLen = (!isNaN(msl) && msl > 0) ? msl : (parseFloat(pv.sortLength) || 0);
         return Math.max(0, sortLen - breakUp);
+    }
+
+    // Best-guess MHE for a group from its name (e.g. "Linear" -> "Linear Sorter").
+    function autoMatchMhe(name) {
+        if (!name) return '';
+        var gn = name.toLowerCase();
+        var match = '';
+        (engineSettings.mheTypes || []).forEach(function(m) {
+            var mn = (m || '').toLowerCase();
+            if (!mn) return;
+            var mnShort = mn.replace(/sorter/g, '').trim();
+            if (gn.indexOf(mn) !== -1 || mn.indexOf(gn) !== -1 || (mnShort && gn.indexOf(mnShort) !== -1)) match = m;
+        });
+        return match;
+    }
+
+    // Resolve which MHE a group maps to. g.mhe values:
+    //   '__total__'  -> use total (global) sort length
+    //   '<MHE name>' -> that MHE
+    //   unset/''     -> auto-match by group name (falls back to global)
+    function resolveGroupMhe(g) {
+        if (!g) return '';
+        if (g.mhe === '__total__') return '';
+        if (g.mhe) return g.mhe;
+        return autoMatchMhe(g.name);
     }
 
     // Total non-con volume: exact mode = exact NC + NC+ counts, else the
@@ -3111,9 +3194,9 @@
     // Bottoms Up HC = sum of Planned HC across every role (same per-role math
     // as the Plan table: hourly / plan rate).
     function computeBupHC() {
-        var opLen = ibOperationalLength();
         var totalHC = 0;
         (engineSettings.groups || []).forEach(function(g) {
+            var opLen = ibOpLengthFor(resolveGroupMhe(g));
             (g.roles || []).forEach(function(r) {
                 if (typeof r !== 'object') return;
                 var engRate = parseFloat(r.rate) || 0;
@@ -3296,11 +3379,12 @@
         html += '</table>';
 
         // Volume Targets: Total Sort + one row per MHE type, with Hourly/15min/5min derived.
-        // Hourly = Total / Operational Length; 15 Min = Hourly/4; 5 Min = Hourly/12.
-        var opLen = ibOperationalLength();
+        // Hourly = Total / Operational Length (per-MHE when the MHE has its own
+        // Sort Length); 15 Min = Hourly/4; 5 Min = Hourly/12.
         var vmix = engineSettings.volumeMix || {};
         var fmtT = function(n) { return Math.round(n).toLocaleString(); };
-        function targetsRow(label, totalGoal, bold) {
+        function targetsRow(label, totalGoal, bold, mheForLen) {
+            var opLen = ibOpLengthFor(mheForLen || null);
             var hourly = opLen > 0 ? totalGoal / opLen : 0;
             return '<tr>' + td(label, {bold: !!bold}) +
                 td(fmtT(totalGoal), {align:'right', bg:'var(--he-border2)', bold: !!bold}) +
@@ -3316,7 +3400,7 @@
             td('5 Min Goal', {bg:'var(--he-border)', color:'var(--he-text)', bold:true, align:'right'}) + '</tr>';
         html += targetsRow('Total Sort', ibEffectiveVolume(), true);
         (engineSettings.mheTypes || []).forEach(function(mhe) {
-            html += targetsRow(mhe, ibMheVolume(mhe), false);
+            html += targetsRow(mhe, ibMheVolume(mhe), false, mhe);
         });
         html += '</table>';
 
@@ -3389,7 +3473,6 @@
             return;
         }
         var pv = engineSettings.planVars || {};
-        var opLength = ibOperationalLength();
         var attendance = parseFloat(pv.attendanceAssumption) || 0;
         var attendanceFrac = attendance > 1 ? attendance / 100 : attendance;
 
@@ -3420,9 +3503,7 @@
 
         // Super-header row (Volume / Rate / Planned / SARG) - shown once at the very top
         html += '<tr>';
-        html += td('Bottoms Up Planner - Grouped by Area', {bg: 'var(--he-border)', color: textLight, bold: true, align: 'left', extra: 'text-decoration:underline;'});
-        html += td('', {bg: 'var(--he-border)'});
-        html += td('', {bg: 'var(--he-border)'});
+        html += td('Bottoms Up Planner - Grouped by Area', {bg: 'var(--he-border)', color: textLight, bold: true, align: 'left', colspan: 2, extra: 'text-decoration:underline;'});
         html += td('Volume', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
         html += td('Rate', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 3, extra: 'text-decoration:underline;'});
         html += td('Planned', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
@@ -3432,9 +3513,11 @@
         engineSettings.groups.forEach(function(g, gi) {
             var color = g.color || 'var(--he-border)';
             var hdrFg = heContrastText(g.color || '');
-            // Group header row (colored, acts as both group name banner and column header)
+            var gOpLength = ibOpLengthFor(resolveGroupMhe(g));
+            // Group name banner (colored, over the Process Path column only;
+            // rest of the row left blank), then the column-label row.
+            html += '<tr>' + td(g.name || 'Unnamed Group', {bg: color, color: hdrFg, bold: true, align: 'left'}) + td('', {colspan: 9}) + '</tr>';
             html += '<tr>';
-            html += td(g.name || 'Unnamed Group', {bg: color, color: hdrFg, bold: true, align: 'left'});
             html += td('Process Path', {bg: color, color: hdrFg, bold: true, align: 'left'});
             html += td('Variable', {bg: color, color: hdrFg, bold: true});
             html += td('Total', {bg: color, color: hdrFg, bold: true});
@@ -3461,10 +3544,10 @@
                 var rawTotal = evaluateRoleFormula(r.formula, r);
                 var total = isNaN(rawTotal) ? NaN : rawTotal;
                 var totalValid = !isNaN(total);
-                var hourly = (totalValid && opLength > 0) ? (total / opLength) : NaN;
+                var hourly = (totalValid && gOpLength > 0) ? (total / gOpLength) : NaN;
                 var delta = (engRate > 0) ? (planRate / engRate - 1) : NaN;
                 var plannedHC = (!isNaN(hourly) && planRate > 0) ? (hourly / planRate) : NaN;
-                var plannedHrs = (!isNaN(plannedHC)) ? (plannedHC * opLength) : NaN;
+                var plannedHrs = (!isNaN(plannedHC)) ? (plannedHC * gOpLength) : NaN;
                 var sargHC = (!isNaN(plannedHC) && attendanceFrac > 0) ? Math.ceil(plannedHC / attendanceFrac) : NaN;
 
                 // Conditional formatting on Delta: red < 0, green > 0, gray at 0/blank
@@ -3476,8 +3559,7 @@
                 };
                 var fmtPct = function(n) { return isNaN(n) ? '—' : (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%'; };
 
-                html += '<tr>';
-                html += td('', {});
+                html += '<tr class="he-plan-row">';
                 html += td(name, {color: textLight, align: 'left'});
                 html += td('<input type="text" class="he-plan-variable" data-gi="' + gi + '" data-ri="' + ri + '" value="' + (r.variable || '') + '" placeholder="" style="width:50px;padding:2px 4px;background:transparent;border:1px solid transparent;color:' + textDarkOnLight + ';font-size:11px;text-align:center">', {bg: hasVariable ? orangeBg : bgDark});
                 html += td(fmt(total), {bg: bgGray, color: textDarkOnLight});
@@ -3519,7 +3601,587 @@
                 }
             });
         });
+
+        wirePlanCellSelection(container);
     }
+
+    // Excel-style rectangular cell selection for the Bottoms Up Planner table.
+    // Click = single cell, Shift+click = extend range, drag = rectangle,
+    // Ctrl/Cmd+click = toggle extra cells. Shows Sum/Count/Avg of the numeric
+    // cells in the selection via a floating status bar.
+    function wirePlanCellSelection(container) {
+        var stale = document.getElementById('he-plan-selbar');
+        if (stale) stale.remove();
+        var rows = container.querySelectorAll('tr.he-plan-row');
+        if (!rows.length) return;
+        var grid = []; // grid[r][c] = td
+        rows.forEach(function(tr, r) {
+            tr.setAttribute('data-dr', r);
+            var rowCells = [];
+            Array.prototype.forEach.call(tr.children, function(cell, c) {
+                cell.setAttribute('data-dc', c);
+                cell.classList.add('he-pcell');
+                cell.style.userSelect = 'none';
+                rowCells.push(cell);
+            });
+            grid.push(rowCells);
+        });
+
+        var anchor = null, focus = null, dragging = false;
+        var extra = []; // additional {r,c} from ctrl-click
+
+        function cellNumber(cell) {
+            if (!cell) return null;
+            var inp = cell.querySelector('input');
+            var raw = inp ? inp.value : cell.textContent;
+            if (raw == null) return null;
+            raw = ('' + raw).replace(/[,%\s]/g, '').replace(/[^0-9.\-]/g, '');
+            if (raw === '' || raw === '-' || raw === '.') return null;
+            var n = parseFloat(raw);
+            return isNaN(n) ? null : n;
+        }
+
+        function selectedCells() {
+            var out = [];
+            if (anchor && focus) {
+                var r0 = Math.min(anchor.r, focus.r), r1 = Math.max(anchor.r, focus.r);
+                var c0 = Math.min(anchor.c, focus.c), c1 = Math.max(anchor.c, focus.c);
+                for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) if (grid[r] && grid[r][c]) out.push(grid[r][c]);
+            }
+            extra.forEach(function(e) { if (grid[e.r] && grid[e.r][e.c]) out.push(grid[e.r][e.c]); });
+            return out;
+        }
+
+        var dark = GM_getValue('he-theme', 'light') === 'dark';
+        var selBg = dark ? 'rgba(56,132,255,0.30)' : 'rgba(31,111,235,0.18)';
+        var selOutline = dark ? '#4f8cff' : '#1f6feb';
+
+        function paint() {
+            container.querySelectorAll('.he-pcell.he-sel').forEach(function(c) {
+                c.classList.remove('he-sel'); c.style.boxShadow = ''; c.style.background = c.getAttribute('data-obg') || '';
+            });
+            var cells = selectedCells();
+            cells.forEach(function(c) {
+                if (c.getAttribute('data-obg') === null) c.setAttribute('data-obg', c.style.background || '');
+                c.classList.add('he-sel');
+                c.style.background = selBg;
+                c.style.boxShadow = 'inset 0 0 0 1px ' + selOutline;
+            });
+            updateBar(cells);
+        }
+
+        function updateBar(cells) {
+            var bar = document.getElementById('he-plan-selbar');
+            var nums = cells.map(cellNumber).filter(function(n) { return n !== null; });
+            if (!cells.length) { if (bar) bar.remove(); return; }
+            var sum = nums.reduce(function(a, b) { return a + b; }, 0);
+            var avg = nums.length ? sum / nums.length : 0;
+            var fmt = function(n) { return n.toLocaleString(undefined, { maximumFractionDigits: 2 }); };
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'he-plan-selbar';
+                bar.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:100000;background:var(--he-panel);border:1px solid var(--he-border);border-radius:8px;padding:8px 16px;font-family:Calibri,Arial,sans-serif;font-size:12px;color:var(--he-text);box-shadow:0 4px 16px rgba(0,0,0,0.35);display:flex;gap:18px;align-items:center';
+                document.body.appendChild(bar);
+            }
+            bar.innerHTML =
+                '<span><b style="color:var(--he-muted)">Sum</b> ' + fmt(sum) + '</span>' +
+                '<span><b style="color:var(--he-muted)">Count</b> ' + nums.length + '</span>' +
+                '<span><b style="color:var(--he-muted)">Avg</b> ' + fmt(avg) + '</span>' +
+                '<span><b style="color:var(--he-muted)">Cells</b> ' + cells.length + '</span>' +
+                '<span id="he-plan-selclear" style="cursor:pointer;color:var(--he-muted);font-weight:700">\u2715</span>';
+            var clr = document.getElementById('he-plan-selclear');
+            if (clr) clr.addEventListener('click', clearSel);
+        }
+
+        function clearSel() { anchor = focus = null; extra = []; paint(); }
+
+        function coord(cell) { return { r: parseInt(cell.getAttribute('data-dr') || cell.parentNode.getAttribute('data-dr'), 10), c: parseInt(cell.getAttribute('data-dc'), 10) }; }
+
+        container.addEventListener('mousedown', function(e) {
+            var cell = e.target.closest ? e.target.closest('.he-pcell') : null;
+            if (!cell || !container.contains(cell)) return;
+            // Let inputs (Variable / Plan) still be editable
+            if (e.target.tagName === 'INPUT') return;
+            var co = { r: parseInt(cell.parentNode.getAttribute('data-dr'), 10), c: parseInt(cell.getAttribute('data-dc'), 10) };
+            if (e.shiftKey && anchor) { focus = co; }
+            else if (e.ctrlKey || e.metaKey) { extra.push(co); anchor = anchor || co; focus = focus || co; }
+            else { anchor = co; focus = co; extra = []; }
+            dragging = true;
+            e.preventDefault();
+            paint();
+        });
+        container.addEventListener('mouseover', function(e) {
+            if (!dragging) return;
+            var cell = e.target.closest ? e.target.closest('.he-pcell') : null;
+            if (!cell || !container.contains(cell)) return;
+            focus = { r: parseInt(cell.parentNode.getAttribute('data-dr'), 10), c: parseInt(cell.getAttribute('data-dc'), 10) };
+            paint();
+        });
+        document.addEventListener('mouseup', function() { dragging = false; });
+    }
+    // ===== Execute tab =====
+    // Runtime cache of RightStation-pulled actuals, keyed by group||role.
+    // (Live pull wired later; empty until then so everything is manual.)
+    var execPulled = {};
+
+    function execRoleKey(g, r) { return (g.name || '') + '||' + (r.name || ''); }
+
+    // Planned HC for a role — mirrors the Bottoms Up Planner math.
+    function execRolePlannedHC(g, r) {
+        var opLen = ibOpLengthFor(resolveGroupMhe(g));
+        var engRate = parseFloat(r.rate) || 0;
+        var planRate = (r.planRate !== undefined && r.planRate !== '') ? parseFloat(r.planRate) : engRate;
+        if (isNaN(planRate)) planRate = engRate;
+        var rawTotal = evaluateRoleFormula(r.formula, r);
+        var total = isNaN(rawTotal) ? 0 : rawTotal;
+        var hourly = (opLen > 0) ? total / opLen : 0;
+        return { plannedHC: (planRate > 0) ? hourly / planRate : 0, planRate: planRate };
+    }
+
+    // Effective actual HC/rate for a role: manual override > RightStation pull >
+    // blank (manual entry). Returns the value + a source badge.
+    function execActualFor(g, r) {
+        var key = execRoleKey(g, r);
+        var ov = (engineSettings.execActuals || {})[key] || {};
+        var pulled = execPulled[key];
+        var hasMap = !!(r.station && r.station.trim());
+        var hc, rate, src;
+        if (ov.hc !== undefined && ov.hc !== '') { hc = parseFloat(ov.hc); src = hasMap ? 'RS\u270E' : 'manual'; }
+        else if (pulled && pulled.hc != null) { hc = pulled.hc; src = 'RS'; }
+        else { hc = null; src = hasMap ? 'RS\u2026' : 'manual'; }
+        if (ov.rate !== undefined && ov.rate !== '') rate = parseFloat(ov.rate);
+        else if (pulled && pulled.rate != null) rate = pulled.rate;
+        else rate = null;
+        return { hc: (isNaN(hc) ? null : hc), rate: (isNaN(rate) ? null : rate), src: src, key: key, ovHc: (ov.hc || ''), ovRate: (ov.rate || '') };
+    }
+
+    // Seam for the live RightStation pull. Stubbed for now.
+    function fetchExecActuals() { return Promise.resolve(execPulled); }
+
+    function renderExecuteTab() {
+        fetchExecActuals().then(function() { renderExecuteView(); }).catch(function() { renderExecuteView(); });
+    }
+
+    function renderExecuteView() {
+        var head = document.getElementById('he-exec-header');
+        var body = document.getElementById('he-exec-table');
+        if (!body) return;
+        if (!engineSettings.execActuals) engineSettings.execActuals = {};
+        if (!engineSettings.groups || !engineSettings.groups.length) {
+            if (head) head.innerHTML = '';
+            body.innerHTML = '<div style="color:var(--he-muted);text-align:center;padding:40px;font-size:12px">No groups/roles defined yet. Build them first.</div>';
+            return;
+        }
+
+        var dark = GM_getValue('he-theme', 'light') === 'dark';
+        var bgGray = dark ? '#2a2f37' : '#c9cdd3';
+        var blueBg = dark ? '#1d3a5f' : '#bdd7ee';
+        var textDark = '#111';
+        var gridBorder = '1px solid var(--he-border)';
+        var td = function(c, opts) {
+            opts = opts || {};
+            var s = 'padding:4px 8px;border:' + gridBorder + ';font-size:11px;text-align:' + (opts.align || 'center') + ';';
+            s += 'color:' + (opts.color || 'var(--he-text)') + ';background:' + (opts.bg || 'var(--he-bg)') + ';';
+            if (opts.bold) s += 'font-weight:700;';
+            return '<td' + (opts.colspan ? ' colspan="' + opts.colspan + '"' : '') + ' style="' + s + '">' + c + '</td>';
+        };
+
+        var totalPlanned = 0, totalActual = 0;
+        execActualMap = {};
+        var html = '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif">';
+        html += '<tr>' +
+            td('Process Path', {bg: 'var(--he-border)', bold: true, align: 'left'}) +
+            td('Planned HC', {bg: 'var(--he-border)', bold: true}) +
+            td('Actual HC', {bg: 'var(--he-border)', bold: true}) +
+            td('\u0394', {bg: 'var(--he-border)', bold: true}) +
+            td('Plan Rate', {bg: 'var(--he-border)', bold: true}) +
+            td('Actual Rate', {bg: 'var(--he-border)', bold: true}) +
+            td('Src', {bg: 'var(--he-border)', bold: true}) +
+            td('Optimized HC', {bg: 'var(--he-border)', bold: true}) + '</tr>';
+
+        engineSettings.groups.forEach(function(g, gi) {
+            var color = g.color || 'var(--he-border)';
+            var hdrFg = heContrastText(g.color || '');
+            html += '<tr>' + td(g.name || 'Unnamed Group', {bg: color, color: hdrFg, bold: true, align: 'left'}) + td('', {colspan: 7}) + '</tr>';
+            (g.roles || []).forEach(function(r, ri) {
+                if (typeof r !== 'object') return;
+                var p = execRolePlannedHC(g, r);
+                var a = execActualFor(g, r);
+                var plannedHC = p.plannedHC;
+                var actualHC = (a.hc != null) ? a.hc : NaN;
+                totalPlanned += isNaN(plannedHC) ? 0 : plannedHC;
+                totalActual += isNaN(actualHC) ? 0 : actualHC;
+                var delta = (!isNaN(actualHC)) ? (actualHC - plannedHC) : NaN;
+                execActualMap[a.key] = (a.hc != null) ? a.hc : null;
+                var deltaBg = isNaN(delta) ? bgGray : (delta < -0.5 ? '#f8cbad' : (delta > 0.5 ? '#c6e0b4' : bgGray));
+                var fmt = function(n, d) { return (n == null || isNaN(n)) ? '\u2014' : n.toLocaleString(undefined, {minimumFractionDigits: d || 0, maximumFractionDigits: d || 0}); };
+                var hcInput = '<input type="text" class="he-exec-hc" data-key="' + a.key + '" value="' + a.ovHc + '" placeholder="' + (a.hc != null && !a.ovHc ? Math.round(a.hc) : '') + '" style="width:52px;padding:2px 4px;background:transparent;border:1px solid transparent;color:' + textDark + ';font-size:11px;text-align:center">';
+                var rateInput = '<input type="text" class="he-exec-rate" data-key="' + a.key + '" value="' + a.ovRate + '" placeholder="' + (a.rate != null && !a.ovRate ? Math.round(a.rate) : '') + '" style="width:56px;padding:2px 4px;background:transparent;border:1px solid transparent;color:' + textDark + ';font-size:11px;text-align:center">';
+                var srcColor = a.src.indexOf('RS') === 0 ? '#f97316' : 'var(--he-muted)';
+                html += '<tr>' +
+                    td(r.name || '(unnamed role)', {align: 'left'}) +
+                    td(fmt(plannedHC, 1), {bg: bgGray, color: textDark}) +
+                    td(hcInput, {bg: bgGray}) +
+                    td(fmt(delta, 1), {bg: deltaBg, color: textDark, bold: true}) +
+                    td(fmt(p.planRate), {bg: blueBg, color: textDark}) +
+                    td(rateInput, {bg: bgGray}) +
+                    td('<span style="font-size:9px;color:' + srcColor + '">' + a.src + '</span>', {}) +
+                    td('<span style="color:var(--he-muted)" data-opt-key="' + a.key + '">\u2014</span>', {bg: 'var(--he-border2)'}) + '</tr>';
+            });
+        });
+        html += '</table>';
+        body.innerHTML = html;
+
+        if (head) {
+            var gap = totalActual - totalPlanned;
+            var gapColor = gap < -0.5 ? '#d13438' : (gap > 0.5 ? '#1a7f37' : 'var(--he-muted)');
+            head.innerHTML =
+                '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px">' +
+                execStat('Planned HC', Math.round(totalPlanned), 'var(--he-text)') +
+                execStat('Actual HC', Math.round(totalActual), 'var(--he-text)') +
+                execStat('Gap', (gap >= 0 ? '+' : '') + Math.round(gap), gapColor) +
+                '</div>';
+        }
+
+        // Wire editable actuals (re-render on blur so totals/deltas update)
+        body.querySelectorAll('.he-exec-hc').forEach(function(inp) {
+            inp.addEventListener('change', function() {
+                var k = inp.getAttribute('data-key');
+                if (!engineSettings.execActuals[k]) engineSettings.execActuals[k] = {};
+                engineSettings.execActuals[k].hc = inp.value.trim();
+                saveSettings();
+                renderExecuteView();
+            });
+        });
+        body.querySelectorAll('.he-exec-rate').forEach(function(inp) {
+            inp.addEventListener('change', function() {
+                var k = inp.getAttribute('data-key');
+                if (!engineSettings.execActuals[k]) engineSettings.execActuals[k] = {};
+                engineSettings.execActuals[k].rate = inp.value.trim();
+                saveSettings();
+                renderExecuteView();
+            });
+        });
+    }
+
+    function execStat(label, value, color) {
+        return '<div style="background:var(--he-panel);border:1px solid var(--he-border);border-radius:8px;padding:8px 16px;min-width:90px">' +
+            '<div style="font-size:10px;color:var(--he-muted);text-transform:uppercase;letter-spacing:0.5px">' + label + '</div>' +
+            '<div style="font-size:20px;font-weight:700;color:' + color + '">' + value + '</div></div>';
+    }
+    // ---- Execute AI optimizer (reuses the DevSpace AI backend) ----
+    var execActualMap = {};
+    var execAiHistory = [];
+    // "Tonight only" ephemeral constraints — session-scoped, never persisted.
+    var execSessionNotes = [];
+
+    // ---- Learned-rules memory (with immune system) ----
+    // Rule: { id, text, scope ('site' or a role name), source, learnedAt,
+    //         bindCount, overrideCount, lastBoundAt, status: 'active' }
+    function getLearnedRules() {
+        if (!Array.isArray(engineSettings.learnedRules)) engineSettings.learnedRules = [];
+        return engineSettings.learnedRules;
+    }
+
+    function addLearnedRule(text, scope, source) {
+        var rules = getLearnedRules();
+        var id = 'lr' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+        rules.push({ id: id, text: text, scope: scope || 'site', source: source || '',
+            learnedAt: new Date().toISOString().slice(0, 10),
+            bindCount: 0, overrideCount: 0, lastBoundAt: '', status: 'active' });
+        saveSettings();
+        return id;
+    }
+
+    function bumpRuleCounter(ruleId, field) {
+        var r = getLearnedRules().find(function(x) { return x.id === ruleId; });
+        if (!r) return;
+        r[field] = (r[field] || 0) + 1;
+        if (field === 'bindCount') r.lastBoundAt = new Date().toISOString().slice(0, 10);
+        saveSettings();
+    }
+
+    function activeLearnedRules() {
+        return getLearnedRules().filter(function(r) { return r.status === 'active'; });
+    }
+
+    // Build the ground-truth facts payload the AI optimizes over.
+    function execBuildFacts() {
+        var paths = [];
+        (engineSettings.groups || []).forEach(function(g) {
+            var mhe = resolveGroupMhe(g);
+            var opLen = ibOpLengthFor(mhe);
+            (g.roles || []).forEach(function(r) {
+                if (typeof r !== 'object') return;
+                var p = execRolePlannedHC(g, r);
+                var a = execActualFor(g, r);
+                var rate = (a.rate != null) ? a.rate : p.planRate;
+                var r1 = function(n) { return (n == null || isNaN(n)) ? null : Math.round(n * 10) / 10; };
+                paths.push({
+                    id: a.key,
+                    group: g.name || '',
+                    path: r.name || '',
+                    mhe: mhe || '(total sort)',
+                    plannedHC: r1(p.plannedHC),
+                    planRate: p.planRate || null,
+                    hourlyTarget: (p.plannedHC && p.planRate) ? Math.round(p.plannedHC * p.planRate) : null,
+                    actualHC: a.hc != null ? a.hc : null,
+                    actualRate: a.rate != null ? a.rate : null,
+                    capacityPerHr: (a.hc != null && rate) ? Math.round(a.hc * rate) : null,
+                    connected: !!r.connected,
+                    source: r.source || null,
+                    output: r.output || null,
+                    rules: (r.aiRules || '').trim()
+                });
+            });
+        });
+        var totalActual = paths.reduce(function(s, p) { return s + (p.actualHC || 0); }, 0);
+        return {
+            site: engineSettings.siteCode || '',
+            planMode: engineSettings.planMode || 'simple',
+            operationalLength: ibOperationalLength(),
+            sortVolumeGoal: ibEffectiveVolume(),
+            totalPlannedHC: Math.round(computeBupHC() * 10) / 10,
+            totalActualHC: Math.round(totalActual * 10) / 10,
+            mheTargets: (engineSettings.mheTypes || []).map(function(m) {
+                var ol = ibOpLengthFor(m);
+                return { mhe: m, totalVolume: Math.round(ibMheVolume(m)), hourlyGoal: ol > 0 ? Math.round(ibMheVolume(m) / ol) : 0, opLength: ol };
+            }),
+            // Distilled memory: durable operator rules learned from past
+            // interactions (each has an id the AI must cite when applied).
+            learnedRules: activeLearnedRules().map(function(r) {
+                return { id: r.id, scope: r.scope, text: r.text, learnedAt: r.learnedAt, timesOverridden: r.overrideCount || 0 };
+            }),
+            // Ephemeral constraints for tonight only (from this session's chat).
+            tonightOnly: execSessionNotes.slice(),
+            paths: paths
+        };
+    }
+
+    function execRunOptimizer(userAdjustment) {
+        var facts = execBuildFacts();
+        if (!facts.paths.length) { execPushMsg('ai', 'Define groups/roles and enter actuals first.'); return; }
+        var contract = 'Respond with ONLY a JSON object (no prose, no code fences) in exactly this shape: '
+            + '{"allocations":[{"id":"<path id>","recommendedHC":<number>,"reason":"<short>"}],'
+            + '"moves":[{"from":"<path name>","to":"<path name>","hc":<number>,"reason":"<short>"}],'
+            + '"rulesApplied":[{"ruleId":"<learned rule id, or empty for role rules>","rule":"<which rule>","effect":"<how it changed the allocation>","costHC":<number, HC away from the unconstrained optimum, 0 if free>}],'
+            + '"ruleProposals":[{"text":"<durable rule worth remembering>","scope":"<site or exact path name>","source":"<the operator words that imply it>"}],'
+            + '"conflicts":[{"ruleId":"<learned rule id>","ruleText":"<the rule>","question":"<what the operator said that contradicts it>"}],'
+            + '"risks":["<CPT/throughput risks, VTO/VET notes>"],'
+            + '"commentary":"<2-3 sentence plain-English summary>"}';
+        var guidance = 'You are the labor optimizer for an Amazon sort center. Use ONLY the numbers in the facts; do not invent figures. '
+            + 'Reallocate the AVAILABLE actual HC across paths to best hit each MHE hourly goal and protect the nearest CPT. '
+            + 'Keep total recommendedHC approximately equal to totalActualHC (reallocate, do not conjure people); if there is a clear surplus or shortfall, say so under risks as VTO/VET. '
+            + 'CONSTRAINTS: honor (a) each path\'s operator-authored "rules" string, (b) every entry in facts.learnedRules (durable operator rules from past sorts), and (c) facts.tonightOnly (tonight-only constraints). '
+            + 'For every rule that actually changes your allocation, add a rulesApplied entry citing its ruleId (learned rules) and estimate costHC — how many HC the constraint moves you away from the unconstrained optimum (0 if it costs nothing). Do not hide rule costs. '
+            + 'MEMORY: if the operator\'s message states a durable preference (words like always/never/standing/every sort), add it to ruleProposals — do NOT treat tonight-scoped asks (tonight, today, this sort) as durable; put those in your reasoning only. '
+            + 'IMMUNE SYSTEM: if the operator\'s message contradicts a learnedRule, do NOT silently pick a side — list it under conflicts and, for this response, follow the operator\'s latest instruction. '
+            + 'Every allocation MUST use an "id" from the facts.paths list.';
+        var histStr = execAiHistory.slice(-6).map(function(m) { return (m.role === 'user' ? 'Operator: ' : 'AI: ') + m.text; }).join('\n');
+        var context = guidance + '\n\n=== FACTS (JSON) ===\n' + JSON.stringify(facts) + (histStr ? ('\n\n=== RECENT ===\n' + histStr) : '') + '\n\n=== OUTPUT FORMAT ===\n' + contract;
+        var question = userAdjustment && userAdjustment.trim()
+            ? userAdjustment.trim()
+            : 'Optimize the current allocation now.';
+        if (userAdjustment && userAdjustment.trim()) execPushMsg('user', userAdjustment.trim());
+        execPushMsg('typing', 'Optimizing\u2026');
+        execAiCall(context, question);
+    }
+
+    function execAiCall(context, question) {
+        var idx = 0;
+        (function attempt() {
+            var url = AI_SERVER_URLS[idx];
+            if (!url) { execReplaceTyping('All AI servers unavailable. Make sure a DevSpace AI server is running.'); return; }
+            GM_xmlhttpRequest({
+                method: 'POST', url: url,
+                headers: { 'Content-Type': 'application/json' },
+                data: JSON.stringify({ context: context, question: question }),
+                timeout: 120000,
+                onload: function(resp) {
+                    if (resp.status === 401 || resp.status === 403) { idx++; attempt(); return; }
+                    var text = '';
+                    try { var d = JSON.parse(resp.responseText); text = d.response || d.error || ''; } catch (e) { text = resp.responseText || ''; }
+                    var decision = execParseDecision(text);
+                    if (decision) { execRenderDecision(decision); }
+                    else { execReplaceTyping(text ? text.slice(0, 1200) : 'No response.'); }
+                },
+                onerror: function() { idx++; attempt(); },
+                ontimeout: function() { idx++; attempt(); }
+            });
+        })();
+    }
+
+    function execParseDecision(text) {
+        if (!text) return null;
+        var s = String(text).replace(/```json/gi, '').replace(/```/g, '').trim();
+        var a = s.indexOf('{'), b = s.lastIndexOf('}');
+        if (a === -1 || b === -1 || b <= a) return null;
+        try {
+            var obj = JSON.parse(s.slice(a, b + 1));
+            if (!obj || !Array.isArray(obj.allocations)) return null;
+            return obj;
+        } catch (e) { return null; }
+    }
+
+    function execRenderDecision(decision) {
+        // Fill the Optimized HC column
+        var validIds = {};
+        Object.keys(execActualMap).forEach(function(k) { validIds[k] = true; });
+        var recSum = 0, hadInvalid = false;
+        var body = document.getElementById('he-exec-table');
+        (decision.allocations || []).forEach(function(al) {
+            if (!al || al.id == null) return;
+            if (!validIds[al.id]) { hadInvalid = true; return; }
+            var rec = parseFloat(al.recommendedHC);
+            if (isNaN(rec)) return;
+            recSum += rec;
+            if (!body) return;
+            var span = body.querySelector('[data-opt-key="' + al.id.replace(/"/g, '\\"') + '"]');
+            if (span) {
+                var act = execActualMap[al.id];
+                var col = (act == null) ? 'var(--he-text)' : (rec > act + 0.5 ? '#1a7f37' : (rec < act - 0.5 ? '#c2410c' : 'var(--he-muted)'));
+                span.textContent = Math.round(rec * 10) / 10;
+                span.style.color = col;
+                span.style.fontWeight = '700';
+                if (al.reason) span.parentNode.title = al.reason;
+            }
+        });
+        // Build the AI panel card
+        var h = '';
+        if (decision.commentary) h += '<div style="margin-bottom:8px;line-height:1.5">' + execEsc(decision.commentary) + '</div>';
+        if (Array.isArray(decision.moves) && decision.moves.length) {
+            h += '<div style="font-weight:700;margin:8px 0 4px;color:var(--he-text)">Moves</div>';
+            decision.moves.forEach(function(m) {
+                h += '<div style="padding:4px 6px;border-left:3px solid #1f6feb;background:var(--he-bg);border-radius:4px;margin-bottom:4px">'
+                    + '<b>' + execEsc(m.from) + '</b> \u2192 <b>' + execEsc(m.to) + '</b> &nbsp;<span style="color:#1f6feb;font-weight:700">' + execEsc(m.hc) + ' HC</span>'
+                    + (m.reason ? '<div style="color:var(--he-muted);font-size:11px">' + execEsc(m.reason) + '</div>' : '') + '</div>';
+            });
+        }
+        if (Array.isArray(decision.rulesApplied) && decision.rulesApplied.length) {
+            h += '<div style="font-weight:700;margin:8px 0 4px;color:var(--he-text)">Rules applied</div>';
+            decision.rulesApplied.forEach(function(x) {
+                // Tolerate both the old string form and the new object form.
+                if (typeof x === 'string') { h += '<div style="color:#22a06b;font-size:11px">\u2713 ' + execEsc(x) + '</div>'; return; }
+                var cost = parseFloat(x.costHC);
+                var costTxt = (!isNaN(cost) && cost > 0)
+                    ? ' <span style="color:#d13438;font-weight:700">(costs ~' + (Math.round(cost * 10) / 10) + ' HC vs optimum)</span>'
+                    : ' <span style="color:var(--he-muted)">(no cost)</span>';
+                h += '<div style="color:#22a06b;font-size:11px">\u2713 ' + execEsc(x.rule || '') + (x.effect ? ' \u2014 ' + execEsc(x.effect) : '') + costTxt + '</div>';
+                if (x.ruleId) bumpRuleCounter(x.ruleId, 'bindCount');
+            });
+        }
+        // Immune system: contradictions between what the operator said and memory
+        if (Array.isArray(decision.conflicts) && decision.conflicts.length) {
+            h += '<div style="font-weight:700;margin:8px 0 4px;color:#d13438">\u26A0 Conflicts with learned rules</div>';
+            decision.conflicts.forEach(function(c, ci) {
+                var cid = 'he-conf-' + Date.now() + '-' + ci;
+                h += '<div id="' + cid + '" style="padding:6px 8px;border:1px solid #d13438;border-radius:6px;margin-bottom:6px;font-size:11px;background:var(--he-bg)">'
+                    + '<div style="color:var(--he-text)">Rule: \u201C' + execEsc(c.ruleText || '') + '\u201D</div>'
+                    + (c.question ? '<div style="color:var(--he-muted)">You said: ' + execEsc(c.question) + '</div>' : '')
+                    + '<div style="margin-top:5px;display:flex;gap:6px">'
+                    + '<button class="he-conf-tonight" data-box="' + cid + '" style="padding:3px 8px;background:var(--he-border);border:1px solid var(--he-border2);border-radius:4px;color:var(--he-text);font-size:10px;cursor:pointer">Override tonight only</button>'
+                    + '<button class="he-conf-retire" data-box="' + cid + '" data-rule="' + execEsc(c.ruleId || '') + '" style="padding:3px 8px;background:#d13438;border:none;border-radius:4px;color:#fff;font-size:10px;cursor:pointer">Retire the rule</button>'
+                    + '</div></div>';
+            });
+        }
+        // Memory: durable rules the AI heard in your words — confirm to save
+        if (Array.isArray(decision.ruleProposals) && decision.ruleProposals.length) {
+            h += '<div style="font-weight:700;margin:8px 0 4px;color:#1f6feb">\uD83D\uDCA1 Remember this?</div>';
+            decision.ruleProposals.forEach(function(p, pi) {
+                if (!p || !p.text) return;
+                var pid = 'he-prop-' + Date.now() + '-' + pi;
+                h += '<div id="' + pid + '" style="padding:6px 8px;border:1px solid #1f6feb;border-radius:6px;margin-bottom:6px;font-size:11px;background:var(--he-bg)">'
+                    + '<div style="color:var(--he-text)">\u201C' + execEsc(p.text) + '\u201D <span style="color:var(--he-muted)">(' + execEsc(p.scope || 'site') + ')</span></div>'
+                    + (p.source ? '<div style="color:var(--he-muted)">From: ' + execEsc(p.source) + '</div>' : '')
+                    + '<div style="margin-top:5px;display:flex;gap:6px">'
+                    + '<button class="he-prop-save" data-box="' + pid + '" data-text="' + execEsc(p.text) + '" data-scope="' + execEsc(p.scope || 'site') + '" data-source="' + execEsc(p.source || '') + '" style="padding:3px 8px;background:#1f6feb;border:none;border-radius:4px;color:#fff;font-size:10px;cursor:pointer">Save rule</button>'
+                    + '<button class="he-prop-tonight" data-box="' + pid + '" data-text="' + execEsc(p.text) + '" style="padding:3px 8px;background:var(--he-border);border:1px solid var(--he-border2);border-radius:4px;color:var(--he-text);font-size:10px;cursor:pointer">Tonight only</button>'
+                    + '<button class="he-prop-dismiss" data-box="' + pid + '" style="padding:3px 8px;background:none;border:1px solid var(--he-border);border-radius:4px;color:var(--he-muted);font-size:10px;cursor:pointer">Dismiss</button>'
+                    + '</div></div>';
+            });
+        }
+        if (Array.isArray(decision.risks) && decision.risks.length) {
+            h += '<div style="font-weight:700;margin:8px 0 4px;color:var(--he-text)">Risks</div>';
+            h += decision.risks.map(function(x) { return '<div style="color:#d13438;font-size:11px">\u26A0 ' + execEsc(x) + '</div>'; }).join('');
+        }
+        var totalActual = Object.keys(execActualMap).reduce(function(s, k) { return s + (execActualMap[k] || 0); }, 0);
+        if (recSum > 0 && Math.abs(recSum - totalActual) > 1) {
+            h += '<div style="margin-top:8px;color:#d13438;font-size:11px">\u26A0 Optimizer total ' + Math.round(recSum) + ' HC vs actual ' + Math.round(totalActual) + ' HC (net ' + (recSum > totalActual ? '+' : '') + Math.round(recSum - totalActual) + ').</div>';
+        }
+        if (hadInvalid) h += '<div style="margin-top:6px;color:#d13438;font-size:11px">\u26A0 Some allocations referenced unknown paths and were ignored.</div>';
+        execReplaceTyping(h || 'No structured decision returned.');
+        execAiHistory.push({ role: 'ai', text: decision.commentary || 'Optimized.' });
+    }
+
+    function execEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    function execPushMsg(kind, text) {
+        var box = document.getElementById('he-exec-ai-messages');
+        if (!box) return;
+        if (kind === 'typing') {
+            var t = document.createElement('div');
+            t.id = 'he-exec-typing';
+            t.style.cssText = 'color:var(--he-muted);font-style:italic;padding:6px 0';
+            t.textContent = text;
+            box.appendChild(t);
+        } else {
+            if (kind === 'user') execAiHistory.push({ role: 'user', text: text });
+            var d = document.createElement('div');
+            d.style.cssText = 'margin:6px 0;padding:6px 8px;border-radius:6px;background:' + (kind === 'user' ? 'var(--he-bg)' : 'var(--he-border2)') + ';color:var(--he-text)';
+            d.innerHTML = (kind === 'user' ? '<b>You:</b> ' : '') + execEsc(text);
+            box.appendChild(d);
+        }
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function execReplaceTyping(html) {
+        var t = document.getElementById('he-exec-typing');
+        if (t) t.remove();
+        var box = document.getElementById('he-exec-ai-messages');
+        if (!box) return;
+        var d = document.createElement('div');
+        d.style.cssText = 'margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--he-border2);color:var(--he-text);font-size:12px';
+        d.innerHTML = html;
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+        execWireMemoryButtons(box);
+    }
+
+    // Delegated handler for Save rule / Tonight only / Dismiss / conflict buttons.
+    function execWireMemoryButtons(box) {
+        if (box._heMemWired) return;
+        box._heMemWired = true;
+        box.addEventListener('click', function(e) {
+            var btn = e.target.closest ? e.target.closest('button') : null;
+            if (!btn) return;
+            var boxEl = btn.getAttribute('data-box') ? document.getElementById(btn.getAttribute('data-box')) : null;
+            function resolveCard(msg, color) {
+                if (boxEl) boxEl.innerHTML = '<div style="color:' + (color || 'var(--he-muted)') + ';font-size:11px">' + msg + '</div>';
+            }
+            if (btn.classList.contains('he-prop-save')) {
+                addLearnedRule(btn.getAttribute('data-text'), btn.getAttribute('data-scope'), btn.getAttribute('data-source'));
+                resolveCard('\u2713 Rule saved to memory. It will apply to every future optimization (manage under Settings \u2192 Learned Rules).', '#22a06b');
+            } else if (btn.classList.contains('he-prop-tonight')) {
+                execSessionNotes.push(btn.getAttribute('data-text'));
+                resolveCard('\u2713 Applied for tonight only \u2014 forgotten when you close the panel.', '#1f6feb');
+            } else if (btn.classList.contains('he-prop-dismiss')) {
+                resolveCard('Dismissed.');
+            } else if (btn.classList.contains('he-conf-tonight')) {
+                resolveCard('\u2713 Overridden for tonight; the rule stays in memory (override counted).', '#1f6feb');
+                // count the override against the rule so repeat overrides surface it
+                var rid1 = btn.getAttribute('data-rule');
+                if (!rid1) { var sib = btn.parentNode.querySelector('.he-conf-retire'); rid1 = sib && sib.getAttribute('data-rule'); }
+                if (rid1) bumpRuleCounter(rid1, 'overrideCount');
+            } else if (btn.classList.contains('he-conf-retire')) {
+                var rid = btn.getAttribute('data-rule');
+                var r = getLearnedRules().find(function(x) { return x.id === rid; });
+                if (r) { r.status = 'retired'; saveSettings(); }
+                resolveCard('\u2713 Rule retired \u2014 it will no longer constrain the optimizer.', '#d13438');
+            }
+        });
+    }
+
+
 
     function openFormulaModal(gi, ri, role) {
         var existing = document.getElementById('he-formula-modal');
@@ -3766,8 +4428,18 @@
                 });
                 document.getElementById('he-tab-' + tab.getAttribute('data-tab')).style.display = 'flex';
                 if (tab.getAttribute('data-tab') === 'plan') renderPlanTab();
+                if (tab.getAttribute('data-tab') === 'execute') renderExecuteTab();
             });
         });
+
+        // Execute tab: Optimize button + AI chat send
+        var _optBtn = document.getElementById('he-exec-optimize');
+        if (_optBtn) _optBtn.addEventListener('click', function() { execRunOptimizer(null); });
+        var _execSend = document.getElementById('he-exec-ai-send');
+        var _execInp = document.getElementById('he-exec-ai-input');
+        function _execDoSend() { if (!_execInp) return; var q = (_execInp.value || '').trim(); if (!q) return; _execInp.value = ''; execRunOptimizer(q); }
+        if (_execSend) _execSend.addEventListener('click', _execDoSend);
+        if (_execInp) _execInp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); _execDoSend(); } });
 
         // Settings items hover + click
         var settingItems = document.querySelectorAll('.he-setting-item');
@@ -3929,6 +4601,30 @@
             html += '</div>';
             html += '<button id="he-sort-add" style="padding:5px 12px;background:#1f6feb;border:none;border-radius:4px;color:#fff;font-size:11px;cursor:pointer">+ Add Sort</button>';
             return html;
+        if (settingId === 'learned-rules') {
+            var lr = getLearnedRules();
+            if (!lr.length) return '<div style="color:var(--he-muted);font-size:12px;padding:10px 0">No learned rules yet. When you correct the Execute AI (e.g. \u201Cnever pull waterspiders\u201D), it will propose rules to remember here.</div>';
+            var h2 = '<div style="max-height:340px;overflow-y:auto">';
+            lr.forEach(function(r) {
+                var retired = r.status !== 'active';
+                var health = '';
+                if (!retired && (r.overrideCount || 0) >= 3) health = '<div style="color:#d13438;font-size:10px">\u26A0 Overridden ' + r.overrideCount + ' times \u2014 consider retiring or revising.</div>';
+                else if (!retired && (r.bindCount || 0) === 0) health = '<div style="color:var(--he-muted);font-size:10px">Never bound an optimization yet.</div>';
+                h2 += '<div style="padding:8px 10px;border:1px solid var(--he-border);border-radius:6px;margin-bottom:6px;' + (retired ? 'opacity:0.5;' : '') + '">'
+                    + '<div style="color:var(--he-text);font-size:12px">\u201C' + execEsc(r.text) + '\u201D</div>'
+                    + '<div style="color:var(--he-muted);font-size:10px;margin-top:3px">Scope: ' + execEsc(r.scope) + ' \u00B7 Learned ' + execEsc(r.learnedAt) + (r.source ? ' from \u201C' + execEsc(r.source) + '\u201D' : '') + '</div>'
+                    + '<div style="color:var(--he-muted);font-size:10px">Applied ' + (r.bindCount || 0) + '\u00D7' + (r.lastBoundAt ? ' (last ' + r.lastBoundAt + ')' : '') + ' \u00B7 Overridden ' + (r.overrideCount || 0) + '\u00D7' + (retired ? ' \u00B7 RETIRED' : '') + '</div>'
+                    + health
+                    + '<div style="margin-top:5px;display:flex;gap:6px">'
+                    + (retired
+                        ? '<button class="he-lr-restore" data-id="' + r.id + '" style="padding:2px 8px;background:var(--he-border);border:1px solid var(--he-border2);border-radius:4px;color:var(--he-text);font-size:10px;cursor:pointer">Restore</button>'
+                        : '<button class="he-lr-retire" data-id="' + r.id + '" style="padding:2px 8px;background:none;border:1px solid #d13438;border-radius:4px;color:#d13438;font-size:10px;cursor:pointer">Retire</button>')
+                    + '<button class="he-lr-delete" data-id="' + r.id + '" style="padding:2px 8px;background:none;border:1px solid var(--he-border);border-radius:4px;color:var(--he-muted);font-size:10px;cursor:pointer">Delete</button>'
+                    + '</div></div>';
+            });
+            h2 += '</div>';
+            return h2;
+        }
         }
         if (settingId === 'engineer-rates') {
             if (!engineSettings.engineerRates || !engineSettings._erSeeded) {
@@ -4056,6 +4752,30 @@
             saveSettings();
         }
         // Presets don't use the Save button — they have their own buttons
+    }
+
+    function attachLearnedRuleHandlers() {
+        function findRule(btn) {
+            var id = btn.getAttribute('data-id');
+            return getLearnedRules().find(function(x) { return x.id === id; });
+        }
+        document.querySelectorAll('.he-lr-retire').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var r = findRule(btn); if (r) { r.status = 'retired'; saveSettings(); openSettingModal('learned-rules'); }
+            });
+        });
+        document.querySelectorAll('.he-lr-restore').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var r = findRule(btn); if (r) { r.status = 'active'; saveSettings(); openSettingModal('learned-rules'); }
+            });
+        });
+        document.querySelectorAll('.he-lr-delete').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = btn.getAttribute('data-id');
+                engineSettings.learnedRules = getLearnedRules().filter(function(x) { return x.id !== id; });
+                saveSettings(); openSettingModal('learned-rules');
+            });
+        });
     }
 
     function attachPresetHandlers() {
@@ -4221,7 +4941,8 @@
             'mhe-type-list': 'MHE Type List',
             'mhe-type-attrs': 'MHE Type Attributes',
             'volume-mix': 'Volume Mix',
-            'engineer-rates': 'Engineer Rates'
+            'engineer-rates': 'Engineer Rates',
+            'learned-rules': 'Learned Rules'
         };
 
         var modal = document.createElement('div');
@@ -4248,6 +4969,7 @@
         document.getElementById('he-modal-save').addEventListener('click', function() { handleSettingSave(settingId); modal.remove(); });
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         if (settingId === 'presets') attachPresetHandlers();
+        if (settingId === 'learned-rules') attachLearnedRuleHandlers();
         if (settingId === 'plan-mode') {
             var pkgBtn = document.getElementById('he-pkg-breakdown-btn');
             if (pkgBtn) pkgBtn.addEventListener('click', function(e) {
@@ -4377,6 +5099,8 @@
     function init() {
         console.log('[Hydra Engine] v' + ENGINE_VERSION + ' initializing...');
         createPanel();
+
+
         console.log('[Hydra Engine] Ready');
     }
 
