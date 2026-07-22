@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.17
+// @version      2.18
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -12508,7 +12508,13 @@ if (k === 'eta') {
         if (!tableWrap) return;
         updateChaseFilterBanner();
         if (obActiveTab === 'obvrids')    { sync1DFilterDropdown(); renderOBVridsTable(targetEl);      return; }
-        if (obActiveTab === 'cptdetails') { obSortKey = 'cpt'; obSortDir = 1; renderOBCptDetailsTable(targetEl); return; }
+        if (obActiveTab === 'cptdetails') {
+            // Default sort only when arriving with a key this table doesn't have —
+            // do NOT reset on every render or header-click sorting is clobbered.
+            var _cdKeys = { route:1, cpt:1, expected:1, inTransit:1, atYard:1, atDock:1, received:1, diverted:1, stacked:1, staged:1, loaded:1, onPrem:1 };
+            if (!_cdKeys[obSortKey]) { obSortKey = 'cpt'; obSortDir = 1; }
+            renderOBCptDetailsTable(targetEl); return;
+        }
         if (obActiveTab === 'cptperf') { renderCptPerfTable(targetEl); return; }
         if (obActiveTab === 'wsbuffer')    { renderOBWSBufferTable(targetEl);   return; }
         if (obActiveTab === 'diverted')    { renderOBDivertedTable(targetEl);      return; }
@@ -17187,7 +17193,7 @@ if (k === 'eta') {
         aiInit();
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
-            var CURRENT_VERSION = '2.17';
+            var CURRENT_VERSION = '2.18';
             var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
             var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
             GM_xmlhttpRequest({
