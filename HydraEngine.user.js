@@ -3056,19 +3056,26 @@
         return vol2 * pct / 100;
     }
 
-    // Fluid / containerized volume, per plan mode:
+    // Fluid / containerized volume, per plan mode (mirrors ibSizeTotal):
+    //  - simple:  Sort Volume Goal x Settings Fluid/Containerized %
     //  - scaling: exported count scaled by the same factor as package sizes
     //             (Sort Volume Goal / data pull total)
-    //  - exact/simple: the stored (exported or hand-entered) count as-is
+    //  - exact:   the exported count as-is
     function ibFcVolume(key) {
         var pv = engineSettings.planVars || {};
-        var raw = parseFloat(pv[key]) || 0;
-        if ((engineSettings.planMode || 'simple') === 'scaling') {
+        var mode = engineSettings.planMode || 'simple';
+        if (mode === 'scaling') {
             var vol = parseFloat(pv.sortVolumeGoal) || 0;
             var tot = ibDataPullTotal();
+            var raw = parseFloat(pv[key]) || 0;
             return tot > 0 ? vol * (raw / tot) : 0;
         }
-        return raw;
+        if (mode === 'exact') return parseFloat(pv[key]) || 0;
+        // simple: hardcoded % from Settings > Package Breakdown
+        var fc = engineSettings.fcBreakdown || {};
+        var fcKey = (key === 'fluidVolume') ? 'fluid' : 'containerized';
+        var pct = parseFloat(fc[fcKey]) || 0;
+        return (parseFloat(pv.sortVolumeGoal) || 0) * pct / 100;
     }
 
     // Total volume routed to an MHE = sum over sizes of size total x that MHE's
@@ -3440,6 +3447,8 @@
         PLAN_MISC_FIELDS.forEach(function(f) {
             if ((f.key === 'fluidVolume' || f.key === 'containerizedVolume') && engineSettings.planMode === 'scaling') {
                 html += _kpiRO(f.label, Math.round(ibFcVolume(f.key)).toLocaleString(), 'Exported count scaled to Sort Volume Goal');
+            } else if ((f.key === 'fluidVolume' || f.key === 'containerizedVolume') && (engineSettings.planMode || 'simple') === 'simple') {
+                html += _kpiRO(f.label, Math.round(ibFcVolume(f.key)).toLocaleString(), 'Sort Volume Goal x Settings Fluid/Containerized %');
             } else if (f.key === 'problemSolve') {
                 var psPct = parseFloat(pv.problemSolvePct) || 0;
                 html += _kpiRO(f.label, Math.round(ibEffectiveVolume() * psPct / 100).toLocaleString(), 'Total volume x Problem Solve %');
@@ -4904,6 +4913,16 @@
             html += '</div>';
         });
         html += '<div id="he-pkg-total" style="margin-top:10px;padding:8px 10px;border-radius:4px;font-size:12px;font-weight:600;text-align:right"></div>';
+        // Fluid / Containerized split (own pair, not part of the size sum)
+        if (!engineSettings.fcBreakdown) engineSettings.fcBreakdown = { fluid: '', containerized: '' };
+        var fc = engineSettings.fcBreakdown;
+        html += '<div style="border-top:1px solid var(--he-border);margin-top:12px;padding-top:10px;margin-bottom:8px;color:var(--he-muted);font-size:11px">Fluid / Containerized split (% of total volume, used in Simple mode):</div>';
+        [{ key: 'fluid', label: 'Fluid' }, { key: 'containerized', label: 'Containerized' }].forEach(function(f) {
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+            html += '<span style="font-size:12px;color:var(--he-text)">' + f.label + '</span>';
+            html += '<div style="display:flex;align-items:center;gap:4px"><input id="he-fc-' + f.key + '" type="number" value="' + (fc[f.key] || '') + '" placeholder="%" style="width:60px;padding:5px 8px;background:var(--he-bg);border:1px solid var(--he-border);border-radius:4px;color:var(--he-text);font-size:12px;text-align:right;-moz-appearance:textfield;appearance:textfield"><span style="color:var(--he-muted);font-size:11px">%</span></div>';
+            html += '</div>';
+        });
 
         var modal = document.createElement('div');
         modal.id = 'he-pkg-modal';
@@ -4963,6 +4982,11 @@
             fields.forEach(function(f) {
                 var el = document.getElementById('he-pkg-' + f.key);
                 if (el) engineSettings.packageBreakdown[f.key] = el.value.trim();
+            });
+            if (!engineSettings.fcBreakdown) engineSettings.fcBreakdown = {};
+            ['fluid', 'containerized'].forEach(function(k) {
+                var el = document.getElementById('he-fc-' + k);
+                if (el) engineSettings.fcBreakdown[k] = el.value.trim();
             });
             saveSettings();
             modal.remove();
