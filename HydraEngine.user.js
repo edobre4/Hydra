@@ -3439,6 +3439,13 @@
             inp.addEventListener('change', function() {
                 var key = inp.getAttribute('data-key');
                 engineSettings.planVars[key] = inp.value.trim();
+                // Changing the plan Sort Length cascades to every MHE's sort length
+                if (key === 'sortLength') {
+                    if (!engineSettings.mheSortLength) engineSettings.mheSortLength = {};
+                    (engineSettings.mheTypes || []).forEach(function(mhe) {
+                        engineSettings.mheSortLength[mhe] = inp.value.trim();
+                    });
+                }
                 saveSettings();
                 renderPlanTable();
                 // Re-render the panel so computed fields (Operational Length,
