@@ -3067,7 +3067,7 @@
     // source of truth for which variables exist.
     function getFormulaVariableGroups() {
         var groups = [];
-        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'jackpotPct', 'jackpotVolume'] });
+        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume'] });
         groups.push({ label: 'Sizes (total pkgs)', vars: FORMULA_SIZE_VARS.map(function(s) { return s.v; }) });
         (engineSettings.mheTypes || []).forEach(function(mhe) {
             var slug = mhe.replace(/\s+/g, '-');
@@ -3098,6 +3098,7 @@
         if (varName === 'engRate') return 0; // substituted per-role in evaluateRoleFormula
         // Problem Solve / Jackpot (mirror the Sort Details & KPIs computations)
         if (varName === 'problemSolvePct') return parseFloat(pv.problemSolvePct) || 0;
+        if (varName === 'problemSolveVolume') return ibEffectiveVolume() * (parseFloat(pv.problemSolvePct) || 0) / 100;
         if (varName === 'jackpotPct') return parseFloat(pv.jackpotPct) || 0;
         if (varName === 'jackpotVolume') return ibEffectiveVolume() * (parseFloat(pv.jackpotPct) || 0) / 100;
         // Total packages per size (xs, s, m, l, xl, nc, ncp)
