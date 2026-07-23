@@ -3095,7 +3095,7 @@
     // source of truth for which variables exist.
     function getFormulaVariableGroups() {
         var groups = [];
-        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume'] });
+        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume', 'crossdockContainers'] });
         groups.push({ label: 'Sizes (total pkgs)', vars: FORMULA_SIZE_VARS.map(function(s) { return s.v; }) });
         (engineSettings.mheTypes || []).forEach(function(mhe) {
             var slug = mhe.replace(/\s+/g, '-');
@@ -3132,6 +3132,8 @@
         // Fluid / containerized volume (from Export To Plan; scales in scaling mode)
         if (varName === 'fluidVolume') return ibFcVolume('fluidVolume');
         if (varName === 'containerizedVolume') return ibFcVolume('containerizedVolume');
+        // Crossdock containers (manual Plan input)
+        if (varName === 'crossdockContainers') return parseFloat(pv.crossdockContainers) || 0;
         // Total packages per size (xs, s, m, l, xl, nc, ncp)
         for (var si = 0; si < FORMULA_SIZE_VARS.length; si++) {
             if (FORMULA_SIZE_VARS[si].v === varName) return ibSizeTotal(FORMULA_SIZE_VARS[si].bd);
@@ -3300,6 +3302,7 @@
     var PLAN_MISC_FIELDS = [
         { key: 'fluidVolume', label: 'Fluid Volume' },
         { key: 'containerizedVolume', label: 'Containerized Volume' },
+        { key: 'crossdockContainers', label: 'Crossdock Containers' },
         { key: 'problemSolvePct', label: 'Problem Solve %' },
         { key: 'problemSolve', label: 'Problem Solve' },
         { key: 'jackpotPct', label: 'Jackpot %' },
