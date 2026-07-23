@@ -3095,7 +3095,7 @@
     // source of truth for which variables exist.
     function getFormulaVariableGroups() {
         var groups = [];
-        groups.push({ label: 'General', vars: ['volume', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume', 'crossdockContainers'] });
+        groups.push({ label: 'General', vars: ['volume', 'sortLength', 'engRate', 'sortNonConGoal', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume', 'crossdockContainers'] });
         groups.push({ label: 'Sizes (total pkgs)', vars: FORMULA_SIZE_VARS.map(function(s) { return s.v; }) });
         (engineSettings.mheTypes || []).forEach(function(mhe) {
             var slug = mhe.replace(/\s+/g, '-');
@@ -3123,6 +3123,7 @@
         var pv = engineSettings.planVars || {};
         if (varName === 'volume') return ibEffectiveVolume();
         if (varName === 'sortLength') return ibOperationalLength();
+        if (varName === 'sortNonConGoal') return ibSortNonConGoal();
         if (varName === 'engRate') return 0; // substituted per-role in evaluateRoleFormula
         // Problem Solve / Jackpot (mirror the Sort Details & KPIs computations)
         if (varName === 'problemSolvePct') return parseFloat(pv.problemSolvePct) || 0;
