@@ -1161,6 +1161,7 @@
     function exportSelectedToPlan() {
         if (ibSelectedIds.size === 0) return;
         var sums = { extraSmall:0, small:0, medium:0, large:0, extraLarge:0, nonCon:0, nonConPlus:0 };
+        var fluidSum = 0, ctzdSum = 0;
         (ibTableData || []).forEach(function(r) {
             if (!ibSelectedIds.has(r.vrid)) return;
             sums.extraSmall += r.extraSmall || 0;
@@ -1170,6 +1171,8 @@
             sums.extraLarge += r.extraLarge || 0;
             sums.nonCon     += r.ncOnly || 0;
             sums.nonConPlus += r.ncPlus || 0;
+            fluidSum += r.fluid || 0;
+            ctzdSum  += r.containerized || 0;
         });
         var total = sums.extraSmall + sums.small + sums.medium + sums.large + sums.extraLarge + sums.nonCon + sums.nonConPlus;
         if (!engineSettings.planVars) engineSettings.planVars = {};
@@ -1177,6 +1180,9 @@
         // user plans to unload). Used by Scaling (for mix %) and Exact (counts).
         engineSettings.planVars.volumeMixPackages = sums;
         engineSettings.planVars.sortVolumeGoal = String(total);
+        // Fluid vs containerized split from the selected trailers
+        engineSettings.planVars.fluidVolume = String(fluidSum);
+        engineSettings.planVars.containerizedVolume = String(ctzdSum);
         saveSettings();
         // Switch to Engine → Plan so the result is visible
         var engTab = document.querySelector('.he-view-tab.eng-tab');
@@ -3067,7 +3073,7 @@
     // source of truth for which variables exist.
     function getFormulaVariableGroups() {
         var groups = [];
-        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume'] });
+        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume'] });
         groups.push({ label: 'Sizes (total pkgs)', vars: FORMULA_SIZE_VARS.map(function(s) { return s.v; }) });
         (engineSettings.mheTypes || []).forEach(function(mhe) {
             var slug = mhe.replace(/\s+/g, '-');
@@ -3101,6 +3107,9 @@
         if (varName === 'problemSolveVolume') return ibEffectiveVolume() * (parseFloat(pv.problemSolvePct) || 0) / 100;
         if (varName === 'jackpotPct') return parseFloat(pv.jackpotPct) || 0;
         if (varName === 'jackpotVolume') return ibEffectiveVolume() * (parseFloat(pv.jackpotPct) || 0) / 100;
+        // Fluid / containerized volume (from Export To Plan, editable in Plan)
+        if (varName === 'fluidVolume') return parseFloat(pv.fluidVolume) || 0;
+        if (varName === 'containerizedVolume') return parseFloat(pv.containerizedVolume) || 0;
         // Total packages per size (xs, s, m, l, xl, nc, ncp)
         for (var si = 0; si < FORMULA_SIZE_VARS.length; si++) {
             if (FORMULA_SIZE_VARS[si].v === varName) return ibSizeTotal(FORMULA_SIZE_VARS[si].bd);
@@ -3267,6 +3276,8 @@
         { key: 'vtoVet', label: 'VTO / VET' }
     ];
     var PLAN_MISC_FIELDS = [
+        { key: 'fluidVolume', label: 'Fluid Volume' },
+        { key: 'containerizedVolume', label: 'Containerized Volume' },
         { key: 'problemSolvePct', label: 'Problem Solve %' },
         { key: 'problemSolve', label: 'Problem Solve' },
         { key: 'jackpotPct', label: 'Jackpot %' },
