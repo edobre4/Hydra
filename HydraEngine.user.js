@@ -3056,6 +3056,21 @@
         return vol2 * pct / 100;
     }
 
+    // Fluid / containerized volume, per plan mode:
+    //  - scaling: exported count scaled by the same factor as package sizes
+    //             (Sort Volume Goal / data pull total)
+    //  - exact/simple: the stored (exported or hand-entered) count as-is
+    function ibFcVolume(key) {
+        var pv = engineSettings.planVars || {};
+        var raw = parseFloat(pv[key]) || 0;
+        if ((engineSettings.planMode || 'simple') === 'scaling') {
+            var vol = parseFloat(pv.sortVolumeGoal) || 0;
+            var tot = ibDataPullTotal();
+            return tot > 0 ? vol * (raw / tot) : 0;
+        }
+        return raw;
+    }
+
     // Total volume routed to an MHE = sum over sizes of size total x that MHE's
     // Volume Mix %. Used by Volume Targets and the {MHE}-hourly formula vars.
     function ibMheVolume(mhe) {
@@ -3107,9 +3122,9 @@
         if (varName === 'problemSolveVolume') return ibEffectiveVolume() * (parseFloat(pv.problemSolvePct) || 0) / 100;
         if (varName === 'jackpotPct') return parseFloat(pv.jackpotPct) || 0;
         if (varName === 'jackpotVolume') return ibEffectiveVolume() * (parseFloat(pv.jackpotPct) || 0) / 100;
-        // Fluid / containerized volume (from Export To Plan, editable in Plan)
-        if (varName === 'fluidVolume') return parseFloat(pv.fluidVolume) || 0;
-        if (varName === 'containerizedVolume') return parseFloat(pv.containerizedVolume) || 0;
+        // Fluid / containerized volume (from Export To Plan; scales in scaling mode)
+        if (varName === 'fluidVolume') return ibFcVolume('fluidVolume');
+        if (varName === 'containerizedVolume') return ibFcVolume('containerizedVolume');
         // Total packages per size (xs, s, m, l, xl, nc, ncp)
         for (var si = 0; si < FORMULA_SIZE_VARS.length; si++) {
             if (FORMULA_SIZE_VARS[si].v === varName) return ibSizeTotal(FORMULA_SIZE_VARS[si].bd);
@@ -3423,7 +3438,9 @@
         // Misc inputs (Problem Solve / Jackpot / Non-Con)
         html += '<table style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:14px">';
         PLAN_MISC_FIELDS.forEach(function(f) {
-            if (f.key === 'problemSolve') {
+            if ((f.key === 'fluidVolume' || f.key === 'containerizedVolume') && engineSettings.planMode === 'scaling') {
+                html += _kpiRO(f.label, Math.round(ibFcVolume(f.key)).toLocaleString(), 'Exported count scaled to Sort Volume Goal');
+            } else if (f.key === 'problemSolve') {
                 var psPct = parseFloat(pv.problemSolvePct) || 0;
                 html += _kpiRO(f.label, Math.round(ibEffectiveVolume() * psPct / 100).toLocaleString(), 'Total volume x Problem Solve %');
             } else if (f.key === 'jackpotVolume') {
