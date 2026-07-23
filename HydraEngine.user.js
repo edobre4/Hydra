@@ -4358,10 +4358,11 @@
         document.getElementById('he-formula-close').addEventListener('click', function() { modal.remove(); });
         document.getElementById('he-formula-cancel').addEventListener('click', function() { modal.remove(); });
         document.getElementById('he-formula-clear').addEventListener('click', function() {
-            engineSettings.groups[gi].roles[ri].formula = '';
-            saveSettings();
-            modal.remove();
-            renderGroups();
+            // Clear the editor in place - does not save or close; Save commits it.
+            input.innerHTML = '';
+            var errDiv = document.getElementById('he-formula-error');
+            if (errDiv) errDiv.remove();
+            input.focus();
         });
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.getElementById('he-formula-save').addEventListener('click', function() {
