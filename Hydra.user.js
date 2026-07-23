@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.19
+// @version      2.20
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
@@ -1149,6 +1149,7 @@
     var AUTO_CHUTE_MODE   = 'cpt';
     var acUtilMode        = false; // Chute Matrix: show container utilization % instead of CPT counts
     var acUtilHighOnly    = false; // Chute Matrix util mode: only show chutes at >= 90% utilization
+    var obWindowHours     = 12;    // OB VRIDs pull search window: 12 (SSP default view) or 24 (explicit date range)
     var AUTO_CHUTE_MIN    = 10;
     var AUTO_CHUTE_SEP1   = '';   // separator between filter and lane (default: none)
     var AUTO_CHUTE_SEP2   = '';  // separator between lane and slot (default: -)
@@ -3394,7 +3395,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             customStackedThreshold: (Array.isArray(CUSTOM_STACKED_THRESHOLD) ? CUSTOM_STACKED_THRESHOLD.join(',') : CUSTOM_STACKED_THRESHOLD),
                 customStagedFilter: (Array.isArray(CUSTOM_STAGED_FILTER) ? CUSTOM_STAGED_FILTER.join(',') : CUSTOM_STAGED_FILTER),
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
-            autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly,
+            autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
             cptWindows:  cptWindows.map(function(w) { return Object.assign({}, w); }),
@@ -3526,6 +3527,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
         if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
         if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
+        if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
         if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
         if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
         if (s.autoChuteSep2 !== undefined) AUTO_CHUTE_SEP2 = s.autoChuteSep2;
@@ -4098,7 +4100,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 customStagedFilter: (Array.isArray(CUSTOM_STAGED_FILTER) ? CUSTOM_STAGED_FILTER.join(',') : CUSTOM_STAGED_FILTER),
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
                 autoChuteFilter: AUTO_CHUTE_FILTER,
-                autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly,
+                autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
                 autoChuteSep2:   AUTO_CHUTE_SEP2,
@@ -4263,6 +4265,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
             if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
             if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
+            if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
             if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
             if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
             if (s.autoChuteSep2 !== undefined) AUTO_CHUTE_SEP2 = s.autoChuteSep2;
@@ -4687,6 +4690,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<label>End (days):</label>' +
                                 '<input type="number" id="hydra-end-input" style="width:70px" value="0" min="0" max="30" step="1" placeholder="0">' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">days forward (0 = today)</span>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row">' +
+                                '<label>OB VRIDs window:</label>' +
+                                '<select id="hydra-ob-window" style="background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:4px 8px;font-size:12px">' +
+                                    '<option value="12">12 hours (SSP default)</option>' +
+                                    '<option value="24">24 hours</option>' +
+                                '</select>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">how far ahead the OB pull searches</span>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
@@ -8624,6 +8635,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function pullOBDock(nodeId) {
         var url = 'https://trans-logistics.amazon.com/ssp/dock/ob/fetchdata?entity=getDefaultOutboundDockView&nodeId=' + nodeId;
+        // 24h window: use the parameterized dock view (same response shape) with
+        // an explicit date range instead of SSP's default ~12h view.
+        if (obWindowHours > 12) {
+            var _obStart = Date.now() - 4 * 3600000; // keep recent departures visible like the default view
+            var _obEnd = Date.now() + obWindowHours * 3600000;
+            url = 'https://trans-logistics.amazon.com/ssp/dock/hrz/ob/fetchdata?entity=getOutboundDockView'
+                + '&nodeId=' + nodeId
+                + '&startDate=' + _obStart
+                + '&endDate=' + _obEnd
+                + '&loadCategories=outboundScheduled%2CoutboundInProgress%2CoutboundReadyToDepart%2CoutboundDeparted'
+                + '&shippingPurposeType=TRANSSHIPMENT%2CNON-TRANSSHIPMENT';
+        }
         return gmFetchRaw(url).then(function(text) {
             var data = JSON.parse(text);
             var loads = (data && data.ret && data.ret.aaData) ? data.ret.aaData : [];
@@ -15302,6 +15325,17 @@ if (k === 'eta') {
             if (obActiveTab === 'linearchutes' && typeof renderOBCustomStackedTable === 'function') renderOBCustomStackedTable();
             else if (typeof renderChuteMatrix === 'function') renderChuteMatrix();
         });
+
+        // OB VRIDs search window (Settings > Search Window)
+        var _obWinSel = document.getElementById('hydra-ob-window');
+        if (_obWinSel) {
+            _obWinSel.value = String(obWindowHours);
+            _obWinSel.addEventListener('change', function() {
+                obWindowHours = parseInt(this.value) || 12;
+                try { saveAllSettings(); } catch (ex) {}
+                setStatus('OB search window: ' + obWindowHours + 'h \u2014 click Refresh to apply.');
+            });
+        }
 
         // Auto refresh
         document.getElementById('hydra-auto-btn').addEventListener('click', toggleAutoRefresh);
