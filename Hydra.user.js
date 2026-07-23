@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.20
+// @version      2.21
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
@@ -1255,8 +1255,11 @@
     // Dock Door Panel state
 var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') || 'dark'; } catch(e){ return 'dark'; } })();
     function applyTheme(t){
-        hydraTheme = (t === 'light') ? 'light' : 'dark';
-        try { document.documentElement.classList.toggle('hydra-light', hydraTheme === 'light'); } catch(e){}
+        hydraTheme = (t === 'light' || t === 'plain') ? t : 'dark';
+        try {
+            document.documentElement.classList.toggle('hydra-light', hydraTheme === 'light' || hydraTheme === 'plain');
+            document.documentElement.classList.toggle('hydra-plain', hydraTheme === 'plain');
+        } catch(e){}
         try { localStorage.setItem('hydra_theme', hydraTheme); } catch(e){}
     }
         var dockDoorEnabled = false;
@@ -1505,6 +1508,26 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         'html.hydra-light [style*="color:#4caf50"]{color:#2e8b46 !important}',
         'html.hydra-light [style*="color:#ef5350"]{color:#d32f2f !important}',
         'html.hydra-light [style*="color:#ff4444"]{color:#d32f2f !important}',
+        // Plain theme: white bg, black text, NO color coding anywhere.
+        // Builds on hydra-light vars, then (1) neutralizes every accent CSS
+        // variable and (2) grayscales the whole UI (kills inline heat cells,
+        // route pills, badges, progress bars, and renders the logo B&W).
+        'html.hydra-plain{' +
+            '--h-text:#000000;--h-text2:#000000;--h-muted:#333333;--h-muted2:#444444;--h-muted3:#555555;' +
+            '--h-bg2:#ffffff;--h-row-alt:#f5f5f5;--h-row-alt-rgba:rgba(245,245,245,1);--h-row-rgba3:rgba(245,245,245,1);' +
+            '--h-border:#bbbbbb;--h-border2:#999999;' +
+            '--h-ob-accent:#000000;--h-ps-accent:#000000;--h-ps-accent2:#000000;' +
+            '--h-blue:#000000;--h-link-blue:#000000;--h-link-blue2:#000000;--h-copy-btn:#555555;' +
+            '--h-pa-text:#000000;--h-pa-ok:#000000;--h-vc-title:#000000;' +
+            '--h-cpt-green:#333333;--h-cpt-blue:#333333;' +
+            '--h-ind-ok-bg:#eeeeee;--h-ind-fail-bg:#dddddd;' +
+            '--h-badge-green:#eeeeee;--h-badge-blue:#eeeeee;--h-badge-amber:#eeeeee;--h-badge-purple:#eeeeee;--h-badge-lgreen:#eeeeee;--h-badge-indigo:#eeeeee;--h-badge-gold:#eeeeee;' +
+            '--h-sel-ib:#e0e0e0;--h-sel-ob:#e0e0e0;--h-sel-ps:#e0e0e0;' +
+            '--h-pop-head-ib:#f0f0f0;--h-pop-head-ps:#f0f0f0;--h-pop-sub-ib:#f7f7f7;--h-pop-sub-ps:#f7f7f7;--h-pop-search-ps:#f7f7f7;' +
+            '--h-lane-th-hover:#e8e8e8;--h-danger-bg:#eeeeee;--h-danger-border:#999999;' +
+        '}',
+        'html.hydra-plain #hydra-panel,html.hydra-plain #hydra-fab{filter:grayscale(1)}',
+        'html.hydra-plain #hydra-panel{background:#ffffff !important}',
         // FAB
         '#hydra-fab{position:fixed;top:6px;right:18px;z-index:99999;background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:2px solid transparent;border-radius:8px;padding:0;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);display:inline-flex;align-items:center;justify-content:center;transition:all .2s;line-height:0}',
         '#hydra-fab:hover{transform:scale(1.06);box-shadow:0 4px 18px rgba(0,0,0,.6),0 0 18px rgba(255,48,48,0.6),0 0 18px rgba(32,200,240,0.55);filter:brightness(1.08)}',
@@ -2102,7 +2125,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var styleEl = document.createElement('style');
     styleEl.textContent = css;
     document.head.appendChild(styleEl);
-    try { document.documentElement.classList.toggle('hydra-light', hydraTheme === 'light'); } catch(e){}
+    try {
+        document.documentElement.classList.toggle('hydra-light', hydraTheme === 'light' || hydraTheme === 'plain');
+        document.documentElement.classList.toggle('hydra-plain', hydraTheme === 'plain');
+    } catch(e){}
 
     // ═══════════════════════════════════════════════════════════════════════════
     // SECTION 10: UTILITY FUNCTIONS
@@ -4618,6 +4644,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<select id="hydra-theme-select" style="background:var(--h-bg2,var(--h-bg2, #16202c));border:1px solid var(--h-border,var(--h-border, #2a3a4c));border-radius:4px;color:var(--h-text,var(--h-text, #e8eaf0));padding:4px 8px;font-size:12px">' +
                                     '<option value="dark">Dark</option>' +
                                     '<option value="light">Light</option>' +
+                                    '<option value="plain">Plain (B&amp;W, no color coding)</option>' +
                                 '</select>' +
                             '</div>' +
                             '<div class="hydra-settings-row">' +
