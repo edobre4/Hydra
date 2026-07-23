@@ -2599,7 +2599,7 @@
                 collectGroupsFromDOM();
                 var gi = parseInt(btn.getAttribute('data-gi'));
                 if (!engineSettings.groups[gi].roles) engineSettings.groups[gi].roles = [];
-                engineSettings.groups[gi].roles.push({ name: '', formula: '', rate: '', geRoles: '', aiRules: '', station: '', locked: true, area: '', variable: '', connected: false, source: { type: '', flowId: '', split: '' }, output: { flowId: newFlowId(), label: '' } });
+                engineSettings.groups[gi].roles.push({ name: '', formula: '', rate: '', geRoles: '', aiRules: '', station: '', locked: true, area: '', connected: false, source: { type: '', flowId: '', split: '' }, output: { flowId: newFlowId(), label: '' } });
                 saveSettings(); renderGroups();
             });
         });
@@ -3095,7 +3095,7 @@
     // source of truth for which variables exist.
     function getFormulaVariableGroups() {
         var groups = [];
-        groups.push({ label: 'General', vars: ['volume', 'Variable', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume', 'crossdockContainers'] });
+        groups.push({ label: 'General', vars: ['volume', 'sortLength', 'engRate', 'problemSolvePct', 'problemSolveVolume', 'jackpotPct', 'jackpotVolume', 'fluidVolume', 'containerizedVolume', 'crossdockContainers'] });
         groups.push({ label: 'Sizes (total pkgs)', vars: FORMULA_SIZE_VARS.map(function(s) { return s.v; }) });
         (engineSettings.mheTypes || []).forEach(function(mhe) {
             var slug = mhe.replace(/\s+/g, '-');
@@ -3213,9 +3213,6 @@
             var val;
             if (v === 'engRate') {
                 val = parseFloat(role && role.rate) || 0;
-            } else if (v === 'Variable') {
-                // The role's own Variable column (blank => 1x).
-                val = (role && role.variable !== undefined && role.variable !== '') ? (parseFloat(role.variable) || 0) : 1;
             } else {
                 val = resolveFormulaVarValue(v);
             }
@@ -3240,8 +3237,6 @@
                 var engRate = parseFloat(r.rate) || 0;
                 var planRate = (r.planRate !== undefined && r.planRate !== '') ? parseFloat(r.planRate) : engRate;
                 if (isNaN(planRate)) planRate = engRate;
-                var variable = (r.variable !== undefined && r.variable !== '') ? parseFloat(r.variable) : 1;
-                if (isNaN(variable)) variable = 1;
                 var rawTotal = evaluateRoleFormula(r.formula, r);
                 var total = isNaN(rawTotal) ? 0 : rawTotal;
                 var hourly = (opLen > 0) ? total / opLen : 0;
@@ -3536,7 +3531,6 @@
         var textLight = 'var(--he-text)';
         var textMuted = 'var(--he-muted)';
         var textDarkOnLight = '#1a1a1a';
-        var orangeBg = '#f4b183';
         var blueBg = '#9dc3e6';
 
         var td = function(content, opts) {
@@ -3555,7 +3549,7 @@
 
         // Super-header row (Volume / Rate / Planned / SARG) - shown once at the very top
         html += '<tr>';
-        html += td('Bottoms Up Planner - Grouped by Area', {bg: 'var(--he-border)', color: textLight, bold: true, align: 'left', colspan: 2, extra: 'text-decoration:underline;'});
+        html += td('Bottoms Up Planner - Grouped by Area', {bg: 'var(--he-border)', color: textLight, bold: true, align: 'left', extra: 'text-decoration:underline;'});
         html += td('Volume', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
         html += td('Rate', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 3, extra: 'text-decoration:underline;'});
         html += td('Planned', {bg: 'var(--he-border)', color: textLight, bold: true, colspan: 2, extra: 'text-decoration:underline;'});
@@ -3568,10 +3562,9 @@
             var gOpLength = ibOpLengthFor(resolveGroupMhe(g));
             // Group name banner (colored, over the Process Path column only;
             // rest of the row left blank), then the column-label row.
-            html += '<tr>' + td(g.name || 'Unnamed Group', {bg: color, color: hdrFg, bold: true, align: 'left'}) + td('', {colspan: 9}) + '</tr>';
+            html += '<tr>' + td(g.name || 'Unnamed Group', {bg: color, color: hdrFg, bold: true, align: 'left'}) + td('', {colspan: 8}) + '</tr>';
             html += '<tr>';
             html += td('Process Path', {bg: color, color: hdrFg, bold: true, align: 'left'});
-            html += td('Variable', {bg: color, color: hdrFg, bold: true});
             html += td('Total', {bg: color, color: hdrFg, bold: true});
             html += td('Hourly', {bg: color, color: hdrFg, bold: true});
             html += td('Engineer', {bg: color, color: hdrFg, bold: true});
@@ -3589,9 +3582,6 @@
                 var engRate = parseFloat(r.rate) || 0;
                 var planRate = (r.planRate !== undefined && r.planRate !== '') ? parseFloat(r.planRate) : engRate;
                 if (isNaN(planRate)) planRate = engRate;
-                var variable = (r.variable !== undefined && r.variable !== '') ? parseFloat(r.variable) : 1;
-                if (isNaN(variable)) variable = 1;
-                var hasVariable = (r.variable !== undefined && r.variable !== '');
 
                 var rawTotal = evaluateRoleFormula(r.formula, r);
                 var total = isNaN(rawTotal) ? NaN : rawTotal;
@@ -3613,7 +3603,6 @@
 
                 html += '<tr class="he-plan-row">';
                 html += td(name, {color: textLight, align: 'left'});
-                html += td('<input type="text" class="he-plan-variable" data-gi="' + gi + '" data-ri="' + ri + '" value="' + (r.variable || '') + '" placeholder="" style="width:50px;padding:2px 4px;background:transparent;border:1px solid transparent;color:' + textDarkOnLight + ';font-size:11px;text-align:center">', {bg: hasVariable ? orangeBg : bgDark});
                 html += td(fmt(total), {bg: bgGray, color: textDarkOnLight});
                 html += td(fmt(hourly), {bg: bgGray, color: textDarkOnLight});
                 html += td(fmt(engRate), {bg: blueBg, color: textDarkOnLight});
@@ -3628,7 +3617,7 @@
         html += '</table>';
         container.innerHTML = html;
 
-        // Wire up Plan rate / Variable inputs
+        // Wire up Plan rate inputs
         container.querySelectorAll('.he-plan-rate').forEach(function(inp) {
             inp.addEventListener('change', function() {
                 var gi = parseInt(inp.getAttribute('data-gi'));
@@ -3636,18 +3625,6 @@
                 var val = inp.value.trim();
                 if (engineSettings.groups[gi] && engineSettings.groups[gi].roles[ri]) {
                     engineSettings.groups[gi].roles[ri].planRate = val;
-                    saveSettings();
-                    renderPlanTable();
-                }
-            });
-        });
-        container.querySelectorAll('.he-plan-variable').forEach(function(inp) {
-            inp.addEventListener('change', function() {
-                var gi = parseInt(inp.getAttribute('data-gi'));
-                var ri = parseInt(inp.getAttribute('data-ri'));
-                var val = inp.value.trim();
-                if (engineSettings.groups[gi] && engineSettings.groups[gi].roles[ri]) {
-                    engineSettings.groups[gi].roles[ri].variable = val;
                     saveSettings();
                     renderPlanTable();
                 }
