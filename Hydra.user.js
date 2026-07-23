@@ -4644,7 +4644,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<select id="hydra-theme-select" style="background:var(--h-bg2,var(--h-bg2, #16202c));border:1px solid var(--h-border,var(--h-border, #2a3a4c));border-radius:4px;color:var(--h-text,var(--h-text, #e8eaf0));padding:4px 8px;font-size:12px">' +
                                     '<option value="dark">Dark</option>' +
                                     '<option value="light">Light</option>' +
-                                    '<option value="plain">Plain (B&amp;W, no color coding)</option>' +
+                                    '<option value="plain">Plain</option>' +
                                 '</select>' +
                             '</div>' +
                             '<div class="hydra-settings-row">' +
