@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.23
+// @version      2.24
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
@@ -5683,6 +5683,71 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return map;
     }
 
+    // ── Door dwell (time since trailer was put on its current dock door) ──
+    // Extracted from the YMS yard state. The exact timestamp field name isn't
+    // documented, so try a chain of likely candidates on the asset and its
+    // sub-objects; values may be epoch ms, epoch s, or ISO strings.
+    var _dwellDiagLogged = false;
+    function _toEpochMs(v) {
+        if (v === null || v === undefined || v === '') return null;
+        if (typeof v === 'number') {
+            if (v > 1e12 && v < 4e12) return v;            // epoch ms
+            if (v > 1e9 && v < 4e9) return v * 1000;       // epoch s
+            return null;
+        }
+        if (typeof v === 'string') {
+            var n = Date.parse(v);
+            return isNaN(n) ? _toEpochMs(parseFloat(v)) : n;
+        }
+        return null;
+    }
+    function _assetDoorSinceMs(a) {
+        var cands = [
+            a.locationArrivalTime, a.locationStartTime, a.dwellStartTime,
+            a.lastMoveCompletionTime, a.parkedTime, a.parkingTime,
+            a.locationUpdateTime, a.lastUpdatedTime, a.lastUpdated,
+            a.updateTimestamp, a.updatedAt,
+            a.visitDetails && a.visitDetails.locationArrivalTime,
+            a.trailerHandoverStatus && a.trailerHandoverStatus.tdrTime
+        ];
+        for (var i = 0; i < cands.length; i++) {
+            var ms = _toEpochMs(cands[i]);
+            // Sanity: must be in the past, within the last 7 days
+            if (ms && ms <= Date.now() && (Date.now() - ms) < 7 * 86400000) return ms;
+        }
+        return null;
+    }
+    // VRID -> epoch ms the trailer landed on its current DD location.
+    function buildDoorDwellMapFromYms() {
+        var map = {};
+        if (!yardStateData || !Array.isArray(yardStateData)) return map;
+        for (var i = 0; i < yardStateData.length; i++) {
+            var loc = yardStateData[i];
+            if (!loc || !loc.code || loc.code.indexOf('DD') !== 0) continue;
+            var assets = Array.isArray(loc.yardAssets) ? loc.yardAssets : [];
+            for (var j = 0; j < assets.length; j++) {
+                var a = assets[j];
+                if (!a || !a.load || !Array.isArray(a.load.identifiers)) continue;
+                var vrid = null;
+                for (var k = 0; k < a.load.identifiers.length; k++) {
+                    var idf = a.load.identifiers[k];
+                    if (idf && idf.type === 'VR_ID' && idf.identifier) { vrid = idf.identifier; break; }
+                }
+                if (!vrid) continue;
+                var since = _assetDoorSinceMs(a);
+                if (since) {
+                    map[vrid] = since;
+                } else if (!_dwellDiagLogged) {
+                    // Field discovery aid: dump one DD asset so the timestamp
+                    // field can be identified from the console.
+                    _dwellDiagLogged = true;
+                    try { console.log('[Hydra Dwell DIAG] no timestamp candidate matched. DD asset sample:', JSON.stringify(a).slice(0, 2000)); } catch (e) {}
+                }
+            }
+        }
+        return map;
+    }
+
     // Build a VRID -> { from: locationCode, to: doorNum } map for pending moves to dock doors.
     // Scans all YMS locations looking for movements where targetLocation is a DD.
     function buildPendingMovesMap() {
@@ -5722,7 +5787,13 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     function enrichRowsWithTdrStatus(rows) {
         if (!rows || !rows.length) return rows;
         var tmap = buildTdrStatusMapFromYms();
-        if (!Object.keys(tmap).length) return rows;
+        // Door dwell: when did the trailer land on its current dock door
+        var dmap = buildDoorDwellMapFromYms();
+        for (var _d = 0; _d < rows.length; _d++) {
+            var _dr = rows[_d];
+            if (_dr && _dr.vrid && dmap[_dr.vrid]) _dr.doorSinceMs = dmap[_dr.vrid];
+        }
+        if (!Object.keys(tmap).length && !Object.keys(dmap).length) return rows;
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i];
             if (!r || !r.vrid) continue;
@@ -10763,7 +10834,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             // Use millisecond values for time columns
             if (_sortKey === 'sat') { av = a.satMs; bv = b.satMs; }
             if (_sortKey === 'aat') { av = a.aatMs; bv = b.aatMs; }
-            if (_sortKey === 'dwell') { av = a.aatMs ? (Date.now() - a.aatMs) : -1; bv = b.aatMs ? (Date.now() - b.aatMs) : -1; }
+            if (_sortKey === 'dwell') { av = a.doorSinceMs ? (Date.now() - a.doorSinceMs) : -1; bv = b.doorSinceMs ? (Date.now() - b.doorSinceMs) : -1; }
             if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
             if (_sortKey === 'criticalPull') { av = a.criticalPullMs; bv = b.criticalPullMs; }
             if (_sortKey === 'progress') {
@@ -10883,12 +10954,14 @@ if (k === 'eta') {
                     return '<td style="color:' + etaColor + '">' + etaTxt + '</td>';
                 }
                 if (k === 'dwell') {
-                    // Dwell = time on site since actual arrival (AAT). Blank until arrived.
-                    if (!r.aatMs || r.aatMs > Date.now()) return '<td>—</td>';
-                    var dwMin = Math.round((Date.now() - r.aatMs) / 60000);
+                    // Door dwell = time since the trailer was put on its current
+                    // dock door (from YMS yard state). Blank if not on a door or
+                    // YMS hasn't been pulled yet.
+                    if (!r.doorSinceMs || r.doorSinceMs > Date.now()) return '<td>—</td>';
+                    var dwMin = Math.round((Date.now() - r.doorSinceMs) / 60000);
                     var dwTxt = dwMin >= 60 ? Math.floor(dwMin / 60) + 'h ' + (dwMin % 60) + 'm' : dwMin + 'm';
                     var dwColor = dwMin > 240 ? '#ff4444' : dwMin > 120 ? '#ff9800' : '#4caf50';
-                    return '<td style="color:' + dwColor + ';font-weight:600" title="On site since ' + (r.aat || '') + '">' + dwTxt + '</td>';
+                    return '<td style="color:' + dwColor + ';font-weight:600" title="On door since ' + msToLocal(r.doorSinceMs) + '">' + dwTxt + '</td>';
                 }
                 if (k === 'location') {
                     // Door column with visual cues:
