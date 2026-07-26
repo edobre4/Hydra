@@ -10916,6 +10916,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     var sum = data.reduce(function(s, r) {
                         return s + ((r.obRouteCounts && r.obRouteCounts[rt]) || 0);
                     }, 0);
+                    if (sum === 0) return '<td style="color:var(--h-dim2, #3a4a5a)">0</td>';
                     return '<td>' + sum.toLocaleString() + '</td>';
                 }).join('');
             }
@@ -10936,6 +10937,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 if (k === 'obRoutes') {
                     return obRoutesForCols.map(function(rt) {
                         var n = (r.obRouteCounts && r.obRouteCounts[rt]) || 0;
+                        if (n === 0) return '<td style="color:var(--h-dim2, #3a4a5a)">0</td>';
                         return '<td>' + n.toLocaleString() + '</td>';
                     }).join('');
                 }
