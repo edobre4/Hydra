@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.22
+// @version      2.23
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
@@ -417,6 +417,7 @@
         { key: 'projFinish', label: 'Proj Finish', type: 'str' },
         { key: 'sat', label: 'SAT', type: 'str' },
         { key: 'aat', label: 'AAT', type: 'str' },
+        { key: 'dwell', label: 'Dwell', type: 'num' },
         { key: 'eta', label: 'ETA', type: 'str' },
         { key: 'obRoutes', label: 'OB Routes', type: 'obRoutes' },
     ];
@@ -10762,6 +10763,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             // Use millisecond values for time columns
             if (_sortKey === 'sat') { av = a.satMs; bv = b.satMs; }
             if (_sortKey === 'aat') { av = a.aatMs; bv = b.aatMs; }
+            if (_sortKey === 'dwell') { av = a.aatMs ? (Date.now() - a.aatMs) : -1; bv = b.aatMs ? (Date.now() - b.aatMs) : -1; }
             if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
             if (_sortKey === 'criticalPull') { av = a.criticalPullMs; bv = b.criticalPullMs; }
             if (_sortKey === 'progress') {
@@ -10879,6 +10881,14 @@ if (k === 'eta') {
                     var etaTxt = formatEtaCountdown(r.etaMs);
                     var etaColor = r.etaMs < Date.now() ? '#ef5350' : 'var(--h-text, #e8eaf0)';
                     return '<td style="color:' + etaColor + '">' + etaTxt + '</td>';
+                }
+                if (k === 'dwell') {
+                    // Dwell = time on site since actual arrival (AAT). Blank until arrived.
+                    if (!r.aatMs || r.aatMs > Date.now()) return '<td>—</td>';
+                    var dwMin = Math.round((Date.now() - r.aatMs) / 60000);
+                    var dwTxt = dwMin >= 60 ? Math.floor(dwMin / 60) + 'h ' + (dwMin % 60) + 'm' : dwMin + 'm';
+                    var dwColor = dwMin > 240 ? '#ff4444' : dwMin > 120 ? '#ff9800' : '#4caf50';
+                    return '<td style="color:' + dwColor + ';font-weight:600" title="On site since ' + (r.aat || '') + '">' + dwTxt + '</td>';
                 }
                 if (k === 'location') {
                     // Door column with visual cues:
