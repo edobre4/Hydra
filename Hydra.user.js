@@ -5703,12 +5703,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
     function _assetDoorSinceMs(a) {
         var cands = [
+            // Confirmed from live YMS response (epoch seconds w/ fraction):
+            a.datetimeOfArrivalAtLocation,
+            // Fallbacks in case the schema shifts:
             a.locationArrivalTime, a.locationStartTime, a.dwellStartTime,
             a.lastMoveCompletionTime, a.parkedTime, a.parkingTime,
             a.locationUpdateTime, a.lastUpdatedTime, a.lastUpdated,
             a.updateTimestamp, a.updatedAt,
-            a.visitDetails && a.visitDetails.locationArrivalTime,
-            a.trailerHandoverStatus && a.trailerHandoverStatus.tdrTime
+            a.visitDetails && a.visitDetails.locationArrivalTime
         ];
         for (var i = 0; i < cands.length; i++) {
             var ms = _toEpochMs(cands[i]);
