@@ -1542,10 +1542,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // view switcher (Inbound/Outbound tabs + Hydra logo keep full color).
         // The FAB is deliberately NOT filtered or overridden.
         'html.hydra-plain #hydra-panel{background:#ffffff !important;border:1px solid #000}',
-        'html.hydra-plain #hydra-panel *:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(img):not(canvas){color:#000 !important;background-image:none !important;text-shadow:none !important;box-shadow:none !important}',
+        'html.hydra-plain #hydra-panel *:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(span[style*="border-radius"]):not(.route-yellow):not(.route-green):not(.route-orange):not(.route-blue):not(img):not(canvas){color:#000 !important;background-image:none !important;text-shadow:none !important;box-shadow:none !important}',
         'html.hydra-plain #hydra-settings-overlay *,html.hydra-plain #hydra-route-overlay *,html.hydra-plain #hydra-pa-overlay *:not(img),html.hydra-plain .hydra-modal *,html.hydra-plain #hydra-ps-popup *,html.hydra-plain #hydra-move-modal *{color:#000 !important;background-image:none !important}',
         'html.hydra-plain #hydra-settings-overlay input,html.hydra-plain #hydra-settings-overlay select,html.hydra-plain #hydra-settings-overlay button,html.hydra-plain #hydra-pa-overlay input,html.hydra-plain #hydra-pa-overlay button{background:#fff !important;color:#000 !important;border:1px solid #000 !important}',
-        'html.hydra-plain #hydra-panel [style*="background"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(.prog-bar):not(input):not(select):not(button):not(textarea){background-color:#fff !important}',
+        'html.hydra-plain #hydra-panel [style*="background"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(span[style*="border-radius"]):not(.route-yellow):not(.route-green):not(.route-orange):not(.route-blue):not(.prog-bar):not(input):not(select):not(button):not(textarea){background-color:#fff !important}',
         // Functional exceptions, kept strictly black & white:
         // Plain: zeros stay visually muted (WS Buffer, Diverted, OB routes, totals).
         // Matches elements inline-styled with the dim var; extra :not()s raise
