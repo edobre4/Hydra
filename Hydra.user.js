@@ -5144,7 +5144,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         loadIdList: batch,
                         segmentToMeasureTypeList: { measureType: 'COUNT' },
                         containerTypeFilter: ['PALLET', 'GAYLORD', 'BAG', 'CART', 'PACKAGE'],
-                        additionalPropertyNameList: ['is_enclosed', 'is_part_of_crossdock'],
+                        additionalPropertyNameList: ['is_enclosed'],
                         basePropertyNameList: ['container_type', 'sort_center_id'],
                     });
                     var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
@@ -5206,7 +5206,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Step 3b: summarise container detail
     var _ctnXdDiagLogged = false;
     function ibSummarizeContainers(detail) {
-        var containers = 0, fluid = 0, containerized = 0, ctnXd = 0, _sawXdProp = false, _sampleCtn = null;
+        var containers = 0, fluid = 0, containerized = 0;
         var segs = [
             detail.unmanifestedLoadedCount,
             detail.preFacilityCounts,
@@ -5220,23 +5220,65 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var qty = Number(c.flowUnitsMap.COUNT) || 0;
                 var ct  = c.propertyMap && c.propertyMap.container_type;
                 var enc = c.propertyMap && c.propertyMap.is_enclosed;
-                if (ct === 'GAYLORD' || ct === 'PALLET' || ct === 'CART' || ct === 'BAG') {
-                    containers += qty;
-                    if (!_sampleCtn) _sampleCtn = c;
-                    var xd = c.propertyMap && c.propertyMap.is_part_of_crossdock;
-                    if (xd !== undefined && xd !== null) _sawXdProp = true;
-                    if (xd === true || xd === 'true') ctnXd += qty;
-                }
+                if (ct === 'GAYLORD' || ct === 'PALLET' || ct === 'CART' || ct === 'BAG') containers += qty;
                 if (ct === 'PACKAGE') { if (enc === false || enc === 'false') fluid += qty; else containerized += qty; }
             });
         });
-        // Field discovery aid: if VISTA never returns the crossdock flag on
-        // container-type entities, dump one sample so we can pick a fallback.
-        if (containers > 0 && !_sawXdProp && !_ctnXdDiagLogged) {
-            _ctnXdDiagLogged = true;
-            try { console.log('[Hydra CtnXD DIAG] is_part_of_crossdock missing on containers. Sample:', JSON.stringify(_sampleCtn).slice(0, 1500)); } catch (e) {}
+        return { containers: containers, fluid: fluid, containerized: containerized };
+    }
+
+    // Step 2c: XD container counts. Isolated call so a failure can never
+    // break the main container counts. Uses the package call's request shape
+    // (HIGH_LEVEL_LOGICAL_COUNT) which accepts is_part_of_crossdock.
+    function ibGetContainerXdCounts(nodeId, loadIdObjs) {
+        if (!loadIdObjs.length) return Promise.resolve({});
+        var out = {}, searchMs = Date.now();
+        var chains = [];
+        for (var i = 0; i < loadIdObjs.length; i += BATCH_SIZE) {
+            (function(batch) {
+                chains.push(function() {
+                    var jsonObj = JSON.stringify({
+                        nodeId: nodeId,
+                        searchTime: searchMs,
+                        entity: 'getInboundCounts',
+                        testmode: false,
+                        sortPlanDuration: 0,
+                        segmentToMeasureTypeList: { segmentId: 'HIGH_LEVEL_LOGICAL_COUNT', measureType: 'COUNT' },
+                        containerTypeFilter: ['PALLET', 'GAYLORD', 'BAG', 'CART'],
+                        loadIdList: batch,
+                        additionalPropertyNameList: ['container_type', 'is_part_of_crossdock'],
+                    });
+                    var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+                    return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getInboundCounts', 'POST', body)
+                        .then(function(d) {
+                            var rows = (d && d.ret && d.ret.getInboundCountsOutput && d.ret.getInboundCountsOutput.loadLevelDetailList) || [];
+                            rows.forEach(function(e) {
+                                var tot = 0, xd = 0, saw = false, sample = null;
+                                var segs = [e.unmanifestedLoadedCount, e.preFacilityCounts, e.unmanifestedSlamCount, e.unmanifestedPreSlamCount];
+                                segs.forEach(function(seg) {
+                                    if (!seg) return;
+                                    (Array.isArray(seg) ? seg : [seg]).forEach(function(c) {
+                                        if (!c || !c.flowUnitsMap) return;
+                                        var qty = Number(c.flowUnitsMap.COUNT) || 0;
+                                        tot += qty;
+                                        if (!sample) sample = c;
+                                        var f = c.propertyMap && c.propertyMap.is_part_of_crossdock;
+                                        if (f !== undefined && f !== null) saw = true;
+                                        if (f === true || f === 'true') xd += qty;
+                                    });
+                                });
+                                if (tot > 0 && !saw && !_ctnXdDiagLogged) {
+                                    _ctnXdDiagLogged = true;
+                                    try { console.log('[Hydra CtnXD DIAG] flag missing on container counts. Sample:', JSON.stringify(sample).slice(0, 1500)); } catch (ex) {}
+                                }
+                                out[e.loadId] = { ctnXd: xd, ctnTot: tot };
+                            });
+                        })
+                        .catch(function(e2) { console.warn('[Hydra CtnXD] batch failed (S/XD columns stay blank):', e2 && e2.message ? e2.message : e2); });
+                });
+            })(loadIdObjs.slice(i, i + BATCH_SIZE));
         }
-        return { containers: containers, fluid: fluid, containerized: containerized, ctnXd: ctnXd, ctnS: Math.max(0, containers - ctnXd) };
+        return chains.reduce(function(p, fn) { return p.then(fn); }, Promise.resolve()).then(function() { return out; });
     }
 
     // Main IB fetch + build — called by doRefresh()
@@ -5521,6 +5563,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var _pkgTrace = hydraTraceStart('ibGetPackageCounts');
             var _ctnTrace = hydraTraceStart('ibGetContainerCounts');
             var pkgP = ibGetPackageCounts(node, loadIdObjs).then(function(x){ hydraTraceEnd(_pkgTrace, { rows: x.length }); return x; }, function(e){ hydraTraceFail(_pkgTrace, e); throw e; });
+            var ctnXdP = ibGetContainerXdCounts(node, loadIdObjs);
             var ctnP = ibGetContainerCounts(node, loadIdObjs).then(function(x){ hydraTraceEnd(_ctnTrace, { rows: x.length }); return x; }, function(e){ hydraTraceFail(_ctnTrace, e); throw e; });
             // NOTE: ETAs are NOT started here. fetchETAs() is sequential and would
             // saturate the request pool, delaying the fast pkg/ctn calls. We start
@@ -5536,7 +5579,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             }
             // Phase 1: resolve as soon as FAST data (packages + containers + PA) is
             // ready. ETAs (slow ~5s) are fetched separately and patched in later.
-            return Promise.all([pkgP, ctnP, paP]).then(function(results) {
+            return Promise.all([pkgP, ctnP, paP, ctnXdP]).then(function(results) {
                 hydraTraceEnd(_countsTrace);
                 var pkgMap = {}, ctnMap = {}, etaMap = {}, paMap = results[2] || {};
                 // Reset dock-panel PA overlay each refresh
@@ -5557,6 +5600,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 })();
                 if (_nextWin) results[0].forEach(function(e) { nextCptMap[e.loadId] = ibSummarizePackages(e, _nextWin.start, _nextWin.end).cptCount; });
                 results[1].forEach(function(e) { ctnMap[e.loadId] = ibSummarizeContainers(e); });
+                // Merge XD container counts (isolated call; may be empty on failure)
+                var _xdMap = results[3] || {};
+                Object.keys(ctnMap).forEach(function(lid) {
+                    var x = _xdMap[lid];
+                    var m = ctnMap[lid];
+                    m.ctnXd = x ? x.ctnXd : 0;
+                    m.ctnS = Math.max(0, m.containers - m.ctnXd);
+                });
 
                 return loads.map(function(l) {
                     var pkg = pkgMap[l.loadId] || { total: 0, remaining: 0, crossdock: 0, nc: 0, cptCount: 0, ncCpt: 0, extraSmall: 0, small: 0, medium: 0, large: 0, extraLarge: 0 };
