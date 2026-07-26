@@ -418,6 +418,7 @@
         { key: 'sat', label: 'SAT', type: 'str' },
         { key: 'aat', label: 'AAT', type: 'str' },
         { key: 'dwell', label: 'Dwell', type: 'num' },
+        { key: 'yardDwell', label: 'Yard Dwell', type: 'num' },
         { key: 'eta', label: 'ETA', type: 'str' },
         { key: 'obRoutes', label: 'OB Routes', type: 'obRoutes' },
     ];
@@ -5719,13 +5720,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         }
         return null;
     }
-    // VRID -> epoch ms the trailer landed on its current DD location.
-    function buildDoorDwellMapFromYms() {
-        var map = {};
-        if (!yardStateData || !Array.isArray(yardStateData)) return map;
+    // { door: {vrid -> epoch ms on current DD location},
+    //   yard: {vrid -> epoch ms of yard check-in (any location)} }
+    function buildDwellMapsFromYms() {
+        var maps = { door: {}, yard: {} };
+        if (!yardStateData || !Array.isArray(yardStateData)) return maps;
         for (var i = 0; i < yardStateData.length; i++) {
             var loc = yardStateData[i];
-            if (!loc || !loc.code || loc.code.indexOf('DD') !== 0) continue;
+            if (!loc || !loc.code) continue;
+            var isDoor = loc.code.indexOf('DD') === 0;
             var assets = Array.isArray(loc.yardAssets) ? loc.yardAssets : [];
             for (var j = 0; j < assets.length; j++) {
                 var a = assets[j];
@@ -5736,9 +5739,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     if (idf && idf.type === 'VR_ID' && idf.identifier) { vrid = idf.identifier; break; }
                 }
                 if (!vrid) continue;
+                var yardMs = _toEpochMs(a.datetimeOfArrivalInYard);
+                if (yardMs && yardMs <= Date.now()) maps.yard[vrid] = yardMs;
+                if (!isDoor) continue;
                 var since = _assetDoorSinceMs(a);
                 if (since) {
-                    map[vrid] = since;
+                    maps.door[vrid] = since;
                 } else if (!_dwellDiagLogged) {
                     // Field discovery aid: dump one DD asset so the timestamp
                     // field can be identified from the console.
@@ -5747,7 +5753,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }
             }
         }
-        return map;
+        return maps;
     }
 
     // Build a VRID -> { from: locationCode, to: doorNum } map for pending moves to dock doors.
@@ -5789,13 +5795,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     function enrichRowsWithTdrStatus(rows) {
         if (!rows || !rows.length) return rows;
         var tmap = buildTdrStatusMapFromYms();
-        // Door dwell: when did the trailer land on its current dock door
-        var dmap = buildDoorDwellMapFromYms();
+        // Dwell: door arrival + yard check-in timestamps per VRID
+        var dmaps = buildDwellMapsFromYms();
         for (var _d = 0; _d < rows.length; _d++) {
             var _dr = rows[_d];
-            if (_dr && _dr.vrid && dmap[_dr.vrid]) _dr.doorSinceMs = dmap[_dr.vrid];
+            if (!_dr || !_dr.vrid) continue;
+            if (dmaps.door[_dr.vrid]) _dr.doorSinceMs = dmaps.door[_dr.vrid];
+            if (dmaps.yard[_dr.vrid]) _dr.yardSinceMs = dmaps.yard[_dr.vrid];
         }
-        if (!Object.keys(tmap).length && !Object.keys(dmap).length) return rows;
+        if (!Object.keys(tmap).length && !Object.keys(dmaps.door).length && !Object.keys(dmaps.yard).length) return rows;
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i];
             if (!r || !r.vrid) continue;
@@ -10837,6 +10845,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (_sortKey === 'sat') { av = a.satMs; bv = b.satMs; }
             if (_sortKey === 'aat') { av = a.aatMs; bv = b.aatMs; }
             if (_sortKey === 'dwell') { av = a.doorSinceMs ? (Date.now() - a.doorSinceMs) : -1; bv = b.doorSinceMs ? (Date.now() - b.doorSinceMs) : -1; }
+            if (_sortKey === 'yardDwell') { av = a.yardSinceMs ? (Date.now() - a.yardSinceMs) : -1; bv = b.yardSinceMs ? (Date.now() - b.yardSinceMs) : -1; }
             if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
             if (_sortKey === 'criticalPull') { av = a.criticalPullMs; bv = b.criticalPullMs; }
             if (_sortKey === 'progress') {
@@ -10964,6 +10973,15 @@ if (k === 'eta') {
                     var dwTxt = dwMin >= 60 ? Math.floor(dwMin / 60) + 'h ' + (dwMin % 60) + 'm' : dwMin + 'm';
                     var dwColor = dwMin > 240 ? '#ff4444' : dwMin > 120 ? '#ff9800' : '#4caf50';
                     return '<td style="color:' + dwColor + ';font-weight:600" title="On door since ' + msToLocal(r.doorSinceMs) + '">' + dwTxt + '</td>';
+                }
+                if (k === 'yardDwell') {
+                    // Yard dwell = time since yard check-in (from YMS). Blank if
+                    // the trailer isn't in the yard state yet.
+                    if (!r.yardSinceMs || r.yardSinceMs > Date.now()) return '<td>—</td>';
+                    var ydMin = Math.round((Date.now() - r.yardSinceMs) / 60000);
+                    var ydTxt = ydMin >= 60 ? Math.floor(ydMin / 60) + 'h ' + (ydMin % 60) + 'm' : ydMin + 'm';
+                    var ydColor = ydMin > 480 ? '#ff4444' : ydMin > 240 ? '#ff9800' : '#4caf50';
+                    return '<td style="color:' + ydColor + ';font-weight:600" title="In yard since ' + msToLocal(r.yardSinceMs) + '">' + ydTxt + '</td>';
                 }
                 if (k === 'location') {
                     // Door column with visual cues:
