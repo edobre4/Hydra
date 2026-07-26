@@ -414,6 +414,8 @@
         { key: 'noncon', label: 'Non-Con', type: 'num' },
         { key: 'ncCpt', label: 'NC CPT', type: 'num' },
         { key: 'containers', label: 'Containers', type: 'num' },
+        { key: 'containersS', label: 'Containers (S)', type: 'num' },
+        { key: 'containersXD', label: 'Containers (XD)', type: 'num' },
         { key: 'fluid', label: 'Fluid', type: 'num' },
         { key: 'containerized', label: 'Containerized', type: 'num' },
         { key: 'projFinish', label: 'Proj Finish', type: 'str' },
@@ -5142,7 +5144,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         loadIdList: batch,
                         segmentToMeasureTypeList: { measureType: 'COUNT' },
                         containerTypeFilter: ['PALLET', 'GAYLORD', 'BAG', 'CART', 'PACKAGE'],
-                        additionalPropertyNameList: ['is_enclosed'],
+                        additionalPropertyNameList: ['is_enclosed', 'is_part_of_crossdock'],
                         basePropertyNameList: ['container_type', 'sort_center_id'],
                     });
                     var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
@@ -5202,8 +5204,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     // Step 3b: summarise container detail
+    var _ctnXdDiagLogged = false;
     function ibSummarizeContainers(detail) {
-        var containers = 0, fluid = 0, containerized = 0;
+        var containers = 0, fluid = 0, containerized = 0, ctnXd = 0, _sawXdProp = false, _sampleCtn = null;
         var segs = [
             detail.unmanifestedLoadedCount,
             detail.preFacilityCounts,
@@ -5217,11 +5220,23 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var qty = Number(c.flowUnitsMap.COUNT) || 0;
                 var ct  = c.propertyMap && c.propertyMap.container_type;
                 var enc = c.propertyMap && c.propertyMap.is_enclosed;
-                if (ct === 'GAYLORD' || ct === 'PALLET' || ct === 'CART' || ct === 'BAG') containers += qty;
+                if (ct === 'GAYLORD' || ct === 'PALLET' || ct === 'CART' || ct === 'BAG') {
+                    containers += qty;
+                    if (!_sampleCtn) _sampleCtn = c;
+                    var xd = c.propertyMap && c.propertyMap.is_part_of_crossdock;
+                    if (xd !== undefined && xd !== null) _sawXdProp = true;
+                    if (xd === true || xd === 'true') ctnXd += qty;
+                }
                 if (ct === 'PACKAGE') { if (enc === false || enc === 'false') fluid += qty; else containerized += qty; }
             });
         });
-        return { containers: containers, fluid: fluid, containerized: containerized };
+        // Field discovery aid: if VISTA never returns the crossdock flag on
+        // container-type entities, dump one sample so we can pick a fallback.
+        if (containers > 0 && !_sawXdProp && !_ctnXdDiagLogged) {
+            _ctnXdDiagLogged = true;
+            try { console.log('[Hydra CtnXD DIAG] is_part_of_crossdock missing on containers. Sample:', JSON.stringify(_sampleCtn).slice(0, 1500)); } catch (e) {}
+        }
+        return { containers: containers, fluid: fluid, containerized: containerized, ctnXd: ctnXd, ctnS: Math.max(0, containers - ctnXd) };
     }
 
     // Main IB fetch + build — called by doRefresh()
@@ -5546,7 +5561,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 return loads.map(function(l) {
                     var pkg = pkgMap[l.loadId] || { total: 0, remaining: 0, crossdock: 0, nc: 0, cptCount: 0, ncCpt: 0, extraSmall: 0, small: 0, medium: 0, large: 0, extraLarge: 0 };
                     pkg.nextCptCount = nextCptMap[l.loadId] || 0;
-                    var ctn = ctnMap[l.loadId] || { containers: 0, fluid: 0, containerized: 0 };
+                    var ctn = ctnMap[l.loadId] || { containers: 0, fluid: 0, containerized: 0, ctnS: 0, ctnXd: 0 };
 
                     // Door: strip leading "DD"
                     var rd = (l.location && l.location.locationId != null) ? String(l.location.locationId) : '';
@@ -5610,6 +5625,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         large:         pkg.large,
                         extraLarge:    pkg.extraLarge,
                         containers:    ctn.containers,
+                        containersS:   ctn.ctnS || 0,
+                        containersXD:  ctn.ctnXd || 0,
                         fluid:         ctn.fluid,
                         containerized: ctn.containerized,
                         sat:           l.sat  ? msToLocal(l.sat)  : '—',
@@ -10913,11 +10930,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         }).join('') + '</tr>';
 
         // Totals
-        var totals = { total: 0, sortable: 0, crossdock: 0, cpt: 0, cptPlus: 0, noncon: 0, ncCpt: 0, nextCpt: 0, containers: 0, fluid: 0, containerized: 0 };
+        var totals = { total: 0, sortable: 0, crossdock: 0, cpt: 0, cptPlus: 0, noncon: 0, ncCpt: 0, nextCpt: 0, containers: 0, containersS: 0, containersXD: 0, fluid: 0, containerized: 0 };
         data.forEach(function(r) {
             totals.total += r.total || 0; totals.sortable += r.sortable || 0; totals.crossdock += r.crossdock || 0;
             totals.cpt += r.cpt || 0; totals.cptPlus += r.cptPlus || 0; totals.noncon += r.noncon || 0; totals.ncCpt += r.ncCpt || 0; totals.nextCpt += r.nextCpt || 0; totals.containers += r.containers || 0;
             totals.fluid += r.fluid || 0; totals.containerized += r.containerized || 0;
+            totals.containersS += r.containersS || 0; totals.containersXD += r.containersXD || 0;
         });
 
         // Calculate percentage totals
