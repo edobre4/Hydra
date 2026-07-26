@@ -3,6 +3,8 @@
 // @version      2.24
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
+// @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
+// @downloadURL  https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ob*
@@ -17364,6 +17366,36 @@ if (k === 'eta') {
         }
 
         aiInit();
+        // Version check — notify user if newer version exists on code.amazon.com
+        (function checkForUpdate() {
+            var CURRENT_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '2.24';
+            var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
+            var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
+            function _cmpVer(x, y) {
+                var xa = String(x).split('.'), ya = String(y).split('.');
+                for (var i = 0; i < Math.max(xa.length, ya.length); i++) {
+                    var xi = parseInt(xa[i] || '0', 10), yi = parseInt(ya[i] || '0', 10);
+                    if (xi !== yi) return xi - yi;
+                }
+                return 0;
+            }
+            GM_xmlhttpRequest({
+                method: 'GET', url: META_URL, timeout: 10000,
+                onload: function(resp) {
+                    if (resp.status !== 200) return;
+                    var m = resp.responseText.match(/@version\s+(\S+)/);
+                    if (!m) return;
+                    var remote = m[1];
+                    if (_cmpVer(remote, CURRENT_VERSION) > 0) {
+                        var banner = document.createElement('div');
+                        banner.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:999999;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff;padding:8px 20px;border-radius:0 0 8px 8px;font:700 13px -apple-system,sans-serif;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+                        banner.innerHTML = '⚡ Hydra v' + remote + ' available (you have v' + CURRENT_VERSION + ') <a href="' + UPDATE_URL + '" target="_blank" style="color:#ffd700;text-decoration:underline">Click to update</a> <button style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 4px">&times;</button>';
+                        banner.querySelector('button').addEventListener('click', function() { banner.remove(); });
+                        document.body.appendChild(banner);
+                    }
+                }
+            });
+        })();
         console.log('[Hydra] Ready');
     }
 

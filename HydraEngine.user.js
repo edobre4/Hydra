@@ -3,6 +3,8 @@
 // @version      0.5
 // @description  AI-powered pipeline optimization engine for NASC sort centers
 // @author       eddobrev
+// @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.meta.js?raw=1
+// @downloadURL  https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.user.js?raw=1
 // @match        https://admin.faststart.ats.amazon.dev/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        GM_xmlhttpRequest
@@ -5144,6 +5146,35 @@
 
     function init() {
         console.log('[Hydra Engine] v' + ENGINE_VERSION + ' initializing...');
+        // Version check — notify user if a newer version exists on code.amazon.com
+        (function checkForUpdate() {
+            var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.user.js?raw=1';
+            var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/HydraEngine.meta.js?raw=1';
+            function _cmpVer(x, y) {
+                var xa = String(x).split('.'), ya = String(y).split('.');
+                for (var i = 0; i < Math.max(xa.length, ya.length); i++) {
+                    var xi = parseInt(xa[i] || '0', 10), yi = parseInt(ya[i] || '0', 10);
+                    if (xi !== yi) return xi - yi;
+                }
+                return 0;
+            }
+            GM_xmlhttpRequest({
+                method: 'GET', url: META_URL, timeout: 10000,
+                onload: function(resp) {
+                    if (resp.status !== 200) return;
+                    var m = resp.responseText.match(/@version\s+(\S+)/);
+                    if (!m) return;
+                    var remote = m[1];
+                    if (_cmpVer(remote, ENGINE_VERSION) > 0) {
+                        var banner = document.createElement('div');
+                        banner.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:999999;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff;padding:8px 20px;border-radius:0 0 8px 8px;font:700 13px -apple-system,sans-serif;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+                        banner.innerHTML = '⚡ Hydra Engine v' + remote + ' available (you have v' + ENGINE_VERSION + ') <a href="' + UPDATE_URL + '" target="_blank" style="color:#ffd700;text-decoration:underline">Click to update</a> <button style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 4px">&times;</button>';
+                        banner.querySelector('button').addEventListener('click', function() { banner.remove(); });
+                        document.body.appendChild(banner);
+                    }
+                }
+            });
+        })();
         createPanel();
 
 
