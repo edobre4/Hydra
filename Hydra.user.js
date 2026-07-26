@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.21
+// @version      2.22
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
@@ -1536,7 +1536,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '#hydra-panel{position:fixed;top:40px;right:18px;z-index:99998;width:min(1520px,calc(100vw - 36px));max-height:calc(100vh - 58px);height:calc(100vh - 58px);border-radius:10px;box-shadow:0 6px 32px rgba(0,0,0,.55);display:none;flex-direction:column;font-family:"Amazon Ember",Arial,sans-serif;font-size:13px;color:var(--h-text, #e8eaf0)}',
         '#hydra-panel.open{display:flex}',
         '#hydra-panel:fullscreen{top:0;left:0;width:100vw;max-height:100vh;height:100vh;border-radius:0;border:none}',
-        '#hydra-panel:fullscreen #hydra-settings-overlay,#hydra-panel:fullscreen .hydra-modal{position:absolute;top:0;left:0;width:100%;height:100%;z-index:999999}',
+        '#hydra-panel:fullscreen #hydra-settings-overlay,#hydra-panel:fullscreen #hydra-pa-overlay,#hydra-panel:fullscreen .hydra-modal{position:absolute;top:0;left:0;width:100%;height:100%;z-index:999999}',
         '#hydra-panel.ib-view{background:linear-gradient(135deg, var(--h-chip-bg, #1a1a1a) 0%, var(--h-grey25, #252525) 50%, var(--h-panel-grad-end, #1f1f1f) 100%);border:1px solid #cc1040}',
         '#hydra-panel.ob-view{background:linear-gradient(135deg, var(--h-chip-bg, #1a1a1a) 0%, var(--h-grey25, #252525) 50%, var(--h-panel-grad-end, #1f1f1f) 100%);border:1px solid #0a6e8a}',
 
@@ -2782,6 +2782,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function openPaAssignPopup(vrid, currentDoor) {
         var ov = ensurePaAssignModal();
+        // Fullscreen fix: the browser only renders descendants of the
+        // fullscreened element (#hydra-panel / Hydra Vision), so re-parent the
+        // popup into it while fullscreen is active.
+        var _paHost = document.fullscreenElement || document.body;
+        if (ov.parentNode !== _paHost) _paHost.appendChild(ov);
         document.getElementById('hydra-pa-title').textContent = 'Pre-assign Door \u2014 ' + vrid;
         var curEl = document.getElementById('hydra-pa-current');
         curEl.textContent = currentDoor ? ('Currently pre-assigned to: ' + currentDoor) : 'No current pre-assignment';
@@ -15845,6 +15850,8 @@ if (k === 'eta') {
                 if (pov && pov.parentNode !== panel) panel.appendChild(pov);
                 var mov = document.getElementById('hydra-move-modal');
                 if (mov && mov.parentNode !== panel) panel.appendChild(mov);
+                var pao = document.getElementById('hydra-pa-overlay');
+                if (pao && pao.parentNode !== panel) panel.appendChild(pao);
                 panel.requestFullscreen();
             } else {
                 document.exitFullscreen();
@@ -15861,6 +15868,8 @@ if (k === 'eta') {
                 if (pov && pov.parentNode !== document.body) document.body.appendChild(pov);
                 var mov = document.getElementById('hydra-move-modal');
                 if (mov && mov.parentNode !== document.body) document.body.appendChild(mov);
+                var pao = document.getElementById('hydra-pa-overlay');
+                if (pao && pao.parentNode !== document.body) document.body.appendChild(pao);
                 var fsb = document.getElementById('hydra-fs-btn');
                 if (fsb) { fsb.innerHTML = '&#x26F6;'; fsb.title = 'Fullscreen'; }
             } else {
