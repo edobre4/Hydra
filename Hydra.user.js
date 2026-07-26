@@ -1547,6 +1547,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         'html.hydra-plain #hydra-settings-overlay input,html.hydra-plain #hydra-settings-overlay select,html.hydra-plain #hydra-settings-overlay button,html.hydra-plain #hydra-pa-overlay input,html.hydra-plain #hydra-pa-overlay button{background:#fff !important;color:#000 !important;border:1px solid #000 !important}',
         'html.hydra-plain #hydra-panel [style*="background"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(.prog-bar):not(input):not(select):not(button):not(textarea){background-color:#fff !important}',
         // Functional exceptions, kept strictly black & white:
+        // Plain: zeros stay visually muted (WS Buffer, Diverted, OB routes, totals).
+        // Matches elements inline-styled with the dim var; extra :not()s raise
+        // specificity above the black-text catch-all.
+        'html.hydra-plain #hydra-panel [style*="--h-dim2"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *){color:#bbbbbb !important}',
         'html.hydra-plain #hydra-panel .prog-bar{background:#000 !important}',
         'html.hydra-plain #hydra-panel .prog-wrap{background:#fff !important;border:1px solid #000 !important}',
         'html.hydra-plain #hydra-panel .prog-label{color:#000 !important;mix-blend-mode:difference;filter:invert(1)}',
