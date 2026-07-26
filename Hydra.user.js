@@ -11443,7 +11443,7 @@ if (k === 'eta') {
                 if (col.key === 'route') return '<td>' + routePill(r.route, r.cpt) + '</td>';
                 if (col.key === 'cpt')   return '<td>' + (r.cpt || '\u2014') + '</td>';
                 if (col.key === 'total') return '<td style="font-weight:700">' + (r.total || 0).toLocaleString() + '</td>';
-                return '<td style="' + (function(){ var v=Number(r[col.key])||0; if(!v) return 'color:var(--h-dim2, #3a4a5a)'; var s='font-weight:700'; if(c) { s+=';background:'+c.bg+';color:'+c.text+';border-radius:3px;padding:1px 4px'; } return s; })() + '" data-route="' + (r.route||'') + '" data-cpt="' + (r.cpt||'') + '" data-lane="' + col.key + '" class="hydra-div-cell">' + (Number(r[col.key])||0) + '</td>';
+                return '<td data-route="' + (r.route||'') + '" data-cpt="' + (r.cpt||'') + '" data-lane="' + col.key + '" class="hydra-div-cell">' + (function(){ var v=Number(r[col.key])||0; if(!v) return '<span style="color:var(--h-dim2, #3a4a5a)">0</span>'; return (c ? '<span style="background:'+c.bg+';color:'+c.text+';padding:1px 6px;border-radius:3px;font-weight:700;font-size:11px;border:1px solid var(--h-prog-border, rgba(255,255,255,0.08))">' : '<span style="font-weight:700">') + v.toLocaleString() + '</span>'; })() + '</td>';
             }).join('') + '</tr>';
         }).join('');
         tableWrap.innerHTML = '<table id="hydra-table"><thead>' + headHtml + '</thead><tbody>' + totalsHtml + rowsHtml + '</tbody></table>';
