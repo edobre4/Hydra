@@ -1517,21 +1517,43 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // variable and (2) grayscales the whole UI (kills inline heat cells,
         // route pills, badges, progress bars, and renders the logo B&W).
         'html.hydra-plain{' +
-            '--h-text:#000000;--h-text2:#000000;--h-muted:#333333;--h-muted2:#444444;--h-muted3:#555555;' +
-            '--h-bg2:#ffffff;--h-row-alt:#f5f5f5;--h-row-alt-rgba:rgba(245,245,245,1);--h-row-rgba3:rgba(245,245,245,1);' +
-            '--h-border:#bbbbbb;--h-border2:#999999;' +
+            '--h-bg0:#ffffff;--h-bg1:#ffffff;--h-bg2:#ffffff;--h-bg3:#ffffff;--h-bg4:#ffffff;' +
+            '--h-text:#000000;--h-text2:#000000;--h-muted:#000000;--h-muted2:#000000;--h-muted3:#000000;' +
+            '--h-dim:#000000;--h-dim2:#000000;' +
+            '--h-border:#000000;--h-border2:#000000;' +
+            '--h-gray:#ffffff;--h-gray2:#ffffff;--h-gray3:#ffffff;' +
+            '--h-grey25:#ffffff;--h-grey27:#ffffff;--h-grey33:#ffffff;--h-grey40:#ffffff;--h-grey44:#ffffff;--h-grey66:#000000;' +
+            '--h-row:#ffffff;--h-row-alt:#ffffff;--h-row-rgba:rgba(255,255,255,1);--h-row-alt-rgba:rgba(255,255,255,1);--h-row-rgba2:rgba(255,255,255,1);--h-row-rgba3:rgba(255,255,255,1);' +
+            '--h-chip-bg:#ffffff;--h-chip-off:#000000;' +
             '--h-ob-accent:#000000;--h-ps-accent:#000000;--h-ps-accent2:#000000;' +
-            '--h-blue:#000000;--h-link-blue:#000000;--h-link-blue2:#000000;--h-copy-btn:#555555;' +
-            '--h-pa-text:#000000;--h-pa-ok:#000000;--h-vc-title:#000000;' +
-            '--h-cpt-green:#333333;--h-cpt-blue:#333333;' +
-            '--h-ind-ok-bg:#eeeeee;--h-ind-fail-bg:#dddddd;' +
-            '--h-badge-green:#eeeeee;--h-badge-blue:#eeeeee;--h-badge-amber:#eeeeee;--h-badge-purple:#eeeeee;--h-badge-lgreen:#eeeeee;--h-badge-indigo:#eeeeee;--h-badge-gold:#eeeeee;' +
-            '--h-sel-ib:#e0e0e0;--h-sel-ob:#e0e0e0;--h-sel-ps:#e0e0e0;' +
-            '--h-pop-head-ib:#f0f0f0;--h-pop-head-ps:#f0f0f0;--h-pop-sub-ib:#f7f7f7;--h-pop-sub-ps:#f7f7f7;--h-pop-search-ps:#f7f7f7;' +
-            '--h-lane-th-hover:#e8e8e8;--h-danger-bg:#eeeeee;--h-danger-border:#999999;' +
+            '--h-blue:#000000;--h-link-blue:#000000;--h-link-blue2:#000000;--h-copy-btn:#000000;' +
+            '--h-pa-text:#000000;--h-pa-ok:#000000;--h-vc-title:#000000;--h-vc-th:#ffffff;--h-vc-border:#000000;--h-vc-hover:#ffffff;' +
+            '--h-cpt-green:#000000;--h-cpt-blue:#000000;--h-doornum:#000000;' +
+            '--h-ind-ok-bg:#ffffff;--h-ind-fail-bg:#ffffff;' +
+            '--h-tabcount-bg:#ffffff;--h-tabcount-fg:#000000;--h-tabcount-border:#000000;--h-tabcount-ib-bg:#ffffff;--h-tabcount-ob-bg:#ffffff;--h-tabcount-ps-bg:#ffffff;' +
+            '--h-badge-green:#ffffff;--h-badge-blue:#ffffff;--h-badge-amber:#ffffff;--h-badge-purple:#ffffff;--h-badge-lgreen:#ffffff;--h-badge-indigo:#ffffff;--h-badge-gold:#ffffff;' +
+            '--h-sel-ib:#ffffff;--h-sel-ob:#ffffff;--h-sel-ps:#ffffff;' +
+            '--h-pop-head-ib:#ffffff;--h-pop-head-ps:#ffffff;--h-pop-sub-ib:#ffffff;--h-pop-sub-ps:#ffffff;--h-pop-search-ps:#ffffff;' +
+            '--h-settings-head:#ffffff;--h-prog-track:#ffffff;--h-panel-grad-end:#ffffff;--h-wrap-rgba:rgba(255,255,255,1);' +
+            '--h-disabled-bg:#ffffff;--h-disabled-fg:#000000;' +
+            '--h-lane-th-hover:#ffffff;--h-danger-bg:#ffffff;--h-danger-border:#000000;--h-prog-border:#000000;' +
         '}',
-        'html.hydra-plain #hydra-panel,html.hydra-plain #hydra-fab{filter:grayscale(1)}',
-        'html.hydra-plain #hydra-panel{background:#ffffff !important}',
+        // Plain: hard black-on-white for everything in the panel EXCEPT the
+        // view switcher (Inbound/Outbound tabs + Hydra logo keep full color).
+        // The FAB is deliberately NOT filtered or overridden.
+        'html.hydra-plain #hydra-panel{background:#ffffff !important;border:1px solid #000}',
+        'html.hydra-plain #hydra-panel *:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(img):not(canvas){color:#000 !important;background-image:none !important;text-shadow:none !important;box-shadow:none !important}',
+        'html.hydra-plain #hydra-settings-overlay *,html.hydra-plain #hydra-route-overlay *,html.hydra-plain #hydra-pa-overlay *:not(img),html.hydra-plain .hydra-modal *,html.hydra-plain #hydra-ps-popup *,html.hydra-plain #hydra-move-modal *{color:#000 !important;background-image:none !important}',
+        'html.hydra-plain #hydra-settings-overlay input,html.hydra-plain #hydra-settings-overlay select,html.hydra-plain #hydra-settings-overlay button,html.hydra-plain #hydra-pa-overlay input,html.hydra-plain #hydra-pa-overlay button{background:#fff !important;color:#000 !important;border:1px solid #000 !important}',
+        'html.hydra-plain #hydra-panel [style*="background"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.prog-bar):not(input):not(select):not(button):not(textarea){background-color:transparent !important}',
+        // Functional exceptions, kept strictly black & white:
+        'html.hydra-plain #hydra-panel .prog-bar{background:#000 !important}',
+        'html.hydra-plain #hydra-panel .prog-wrap{background:#fff !important;border:1px solid #000 !important}',
+        'html.hydra-plain #hydra-panel .prog-label{color:#000 !important;mix-blend-mode:difference;filter:invert(1)}',
+        'html.hydra-plain #hydra-panel .badge{background:#fff !important;border:1px solid #000 !important}',
+        'html.hydra-plain #hydra-panel tr.selected td{border-top:2px solid #000 !important;border-bottom:2px solid #000 !important}',
+        'html.hydra-plain #hydra-panel tr.data-row:hover td{outline:1px solid #000;outline-offset:-1px}',
+        'html.hydra-plain #hydra-panel input,html.hydra-plain #hydra-panel select,html.hydra-plain #hydra-panel textarea,html.hydra-plain #hydra-panel button{background:#fff !important;color:#000 !important;border:1px solid #000 !important}',
         // FAB
         '#hydra-fab{position:fixed;top:6px;right:18px;z-index:99999;background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:2px solid transparent;border-radius:8px;padding:0;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);display:inline-flex;align-items:center;justify-content:center;transition:all .2s;line-height:0}',
         '#hydra-fab:hover{transform:scale(1.06);box-shadow:0 4px 18px rgba(0,0,0,.6),0 0 18px rgba(255,48,48,0.6),0 0 18px rgba(32,200,240,0.55);filter:brightness(1.08)}',
