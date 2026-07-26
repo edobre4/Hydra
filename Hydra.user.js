@@ -1542,10 +1542,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // view switcher (Inbound/Outbound tabs + Hydra logo keep full color).
         // The FAB is deliberately NOT filtered or overridden.
         'html.hydra-plain #hydra-panel{background:#ffffff !important;border:1px solid #000}',
-        'html.hydra-plain #hydra-panel *:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(img):not(canvas){color:#000 !important;background-image:none !important;text-shadow:none !important;box-shadow:none !important}',
+        'html.hydra-plain #hydra-panel *:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(img):not(canvas){color:#000 !important;background-image:none !important;text-shadow:none !important;box-shadow:none !important}',
         'html.hydra-plain #hydra-settings-overlay *,html.hydra-plain #hydra-route-overlay *,html.hydra-plain #hydra-pa-overlay *:not(img),html.hydra-plain .hydra-modal *,html.hydra-plain #hydra-ps-popup *,html.hydra-plain #hydra-move-modal *{color:#000 !important;background-image:none !important}',
         'html.hydra-plain #hydra-settings-overlay input,html.hydra-plain #hydra-settings-overlay select,html.hydra-plain #hydra-settings-overlay button,html.hydra-plain #hydra-pa-overlay input,html.hydra-plain #hydra-pa-overlay button{background:#fff !important;color:#000 !important;border:1px solid #000 !important}',
-        'html.hydra-plain #hydra-panel [style*="background"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.prog-bar):not(input):not(select):not(button):not(textarea){background-color:#fff !important}',
+        'html.hydra-plain #hydra-panel [style*="background"]:not(#hydra-view-switcher):not(#hydra-view-switcher *):not(.hydra-plain-exempt):not(.hydra-plain-exempt *):not(.prog-bar):not(input):not(select):not(button):not(textarea){background-color:#fff !important}',
         // Functional exceptions, kept strictly black & white:
         'html.hydra-plain #hydra-panel .prog-bar{background:#000 !important}',
         'html.hydra-plain #hydra-panel .prog-wrap{background:#fff !important;border:1px solid #000 !important}',
@@ -12041,6 +12041,9 @@ if (k === 'eta') {
     function renderOBArMezzTable(targetEl) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
         if (!wrap) return;
+        // AR Mezz relies on color coding (rate heat, WIP, overlays) - exempt
+        // it from the Plain theme's black & white overrides.
+        wrap.classList.add('hydra-plain-exempt');
         // Cleanup old tooltip
         if (wrap._armezzTip) { wrap._armezzTip.remove(); wrap._armezzTip = null; }
         if (wrap._armezzAssignBar) { wrap._armezzAssignBar.remove(); wrap._armezzAssignBar = null; }
@@ -12697,6 +12700,8 @@ if (k === 'eta') {
             if (!_cdKeys[obSortKey]) { obSortKey = 'cpt'; obSortDir = 1; }
             renderOBCptDetailsTable(targetEl); return;
         }
+        var _wrapEx = targetEl || document.getElementById('hydra-table-wrap');
+        if (_wrapEx && obActiveTab !== 'armezz') _wrapEx.classList.remove('hydra-plain-exempt');
         if (obActiveTab === 'cptperf') { renderCptPerfTable(targetEl); return; }
         if (obActiveTab === 'wsbuffer')    { renderOBWSBufferTable(targetEl);   return; }
         if (obActiveTab === 'diverted')    { renderOBDivertedTable(targetEl);      return; }
