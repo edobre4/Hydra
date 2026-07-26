@@ -5204,7 +5204,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     // Step 3b: summarise container detail
-    var _ctnXdDiagLogged = false;
     function ibSummarizeContainers(detail) {
         var containers = 0, fluid = 0, containerized = 0;
         var segs = [
@@ -5225,60 +5224,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             });
         });
         return { containers: containers, fluid: fluid, containerized: containerized };
-    }
-
-    // Step 2c: XD container counts. Isolated call so a failure can never
-    // break the main container counts. Uses the package call's request shape
-    // (HIGH_LEVEL_LOGICAL_COUNT) which accepts is_part_of_crossdock.
-    function ibGetContainerXdCounts(nodeId, loadIdObjs) {
-        if (!loadIdObjs.length) return Promise.resolve({});
-        var out = {}, searchMs = Date.now();
-        var chains = [];
-        for (var i = 0; i < loadIdObjs.length; i += BATCH_SIZE) {
-            (function(batch) {
-                chains.push(function() {
-                    var jsonObj = JSON.stringify({
-                        nodeId: nodeId,
-                        searchTime: searchMs,
-                        entity: 'getInboundCounts',
-                        testmode: false,
-                        sortPlanDuration: 0,
-                        segmentToMeasureTypeList: { segmentId: 'HIGH_LEVEL_LOGICAL_COUNT', measureType: 'COUNT' },
-                        containerTypeFilter: ['PALLET', 'GAYLORD', 'BAG', 'CART'],
-                        loadIdList: batch,
-                        additionalPropertyNameList: ['container_type', 'is_part_of_crossdock'],
-                    });
-                    var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
-                    return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getInboundCounts', 'POST', body)
-                        .then(function(d) {
-                            var rows = (d && d.ret && d.ret.getInboundCountsOutput && d.ret.getInboundCountsOutput.loadLevelDetailList) || [];
-                            rows.forEach(function(e) {
-                                var tot = 0, xd = 0, saw = false, sample = null;
-                                var segs = [e.unmanifestedLoadedCount, e.preFacilityCounts, e.unmanifestedSlamCount, e.unmanifestedPreSlamCount];
-                                segs.forEach(function(seg) {
-                                    if (!seg) return;
-                                    (Array.isArray(seg) ? seg : [seg]).forEach(function(c) {
-                                        if (!c || !c.flowUnitsMap) return;
-                                        var qty = Number(c.flowUnitsMap.COUNT) || 0;
-                                        tot += qty;
-                                        if (!sample) sample = c;
-                                        var f = c.propertyMap && c.propertyMap.is_part_of_crossdock;
-                                        if (f !== undefined && f !== null) saw = true;
-                                        if (f === true || f === 'true') xd += qty;
-                                    });
-                                });
-                                if (tot > 0 && !saw && !_ctnXdDiagLogged) {
-                                    _ctnXdDiagLogged = true;
-                                    try { console.log('[Hydra CtnXD DIAG] flag missing on container counts. Sample:', JSON.stringify(sample).slice(0, 1500)); } catch (ex) {}
-                                }
-                                out[e.loadId] = { ctnXd: xd, ctnTot: tot };
-                            });
-                        })
-                        .catch(function(e2) { console.warn('[Hydra CtnXD] batch failed (S/XD columns stay blank):', e2 && e2.message ? e2.message : e2); });
-                });
-            })(loadIdObjs.slice(i, i + BATCH_SIZE));
-        }
-        return chains.reduce(function(p, fn) { return p.then(fn); }, Promise.resolve()).then(function() { return out; });
     }
 
     // Main IB fetch + build — called by doRefresh()
@@ -5391,6 +5336,43 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     // ── OB Routes enrichment: fetch lane breakdown per VRID (gated on column visibility) ──
+    // XD container split: containers whose destination lane is another site
+    // are crossdock; the rest are sortable. Reuses the proven per-trailer
+    // getCountsByLocation/CONTAINERIZATION_COUNT call (same as OB routes).
+    // Only XD-bearing trailers are fetched; others are all-sortable by definition.
+    function enrichRowsWithXdContainers(rows) {
+        if (!ibVisibleCols.has('containersXD') && !ibVisibleCols.has('containersS')) return Promise.resolve(rows);
+        if (!rows || !rows.length) return Promise.resolve(rows);
+        var nodeId = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var targets = rows.filter(function(r){ return r && r.loadId && (r.crossdock || 0) > 0 && (r.containers || 0) > 0; });
+        if (!targets.length) return Promise.resolve(rows);
+        var CONCURRENCY = 5;
+        var idx = 0, active = 0;
+        return new Promise(function(resolve) {
+            function next() {
+                if (idx >= targets.length && active === 0) { resolve(rows); return; }
+                while (active < CONCURRENCY && idx < targets.length) {
+                    var r = targets[idx++];
+                    active++;
+                    fetchLaneContainerDataForVrid(r.loadId, r.status)
+                        .then(function(captured){ return function(laneData) {
+                            var xd = 0;
+                            (laneData || []).forEach(function(ln){
+                                if (ln.dest && ln.dest !== nodeId) xd += Number(ln.total) || 0;
+                            });
+                            captured.containersXD = Math.min(xd, captured.containers || 0);
+                            captured.containersS = Math.max(0, (captured.containers || 0) - captured.containersXD);
+                        };}(r))
+                        .catch(function(captured){ return function(err) {
+                            console.warn('[Hydra CtnXD] lane fetch failed for', captured.vrid, err && err.message ? err.message : err);
+                        };}(r))
+                        .then(function(){ active--; next(); });
+                }
+            }
+            next();
+        });
+    }
+
     function enrichRowsWithObRoutes(rows) {
         // Only fetch when the obRoutes column is currently visible
         if (!ibVisibleCols.has('obRoutes')) return Promise.resolve(rows);
@@ -5563,7 +5545,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var _pkgTrace = hydraTraceStart('ibGetPackageCounts');
             var _ctnTrace = hydraTraceStart('ibGetContainerCounts');
             var pkgP = ibGetPackageCounts(node, loadIdObjs).then(function(x){ hydraTraceEnd(_pkgTrace, { rows: x.length }); return x; }, function(e){ hydraTraceFail(_pkgTrace, e); throw e; });
-            var ctnXdP = ibGetContainerXdCounts(node, loadIdObjs);
             var ctnP = ibGetContainerCounts(node, loadIdObjs).then(function(x){ hydraTraceEnd(_ctnTrace, { rows: x.length }); return x; }, function(e){ hydraTraceFail(_ctnTrace, e); throw e; });
             // NOTE: ETAs are NOT started here. fetchETAs() is sequential and would
             // saturate the request pool, delaying the fast pkg/ctn calls. We start
@@ -5579,7 +5560,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             }
             // Phase 1: resolve as soon as FAST data (packages + containers + PA) is
             // ready. ETAs (slow ~5s) are fetched separately and patched in later.
-            return Promise.all([pkgP, ctnP, paP, ctnXdP]).then(function(results) {
+            return Promise.all([pkgP, ctnP, paP]).then(function(results) {
                 hydraTraceEnd(_countsTrace);
                 var pkgMap = {}, ctnMap = {}, etaMap = {}, paMap = results[2] || {};
                 // Reset dock-panel PA overlay each refresh
@@ -5600,19 +5581,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 })();
                 if (_nextWin) results[0].forEach(function(e) { nextCptMap[e.loadId] = ibSummarizePackages(e, _nextWin.start, _nextWin.end).cptCount; });
                 results[1].forEach(function(e) { ctnMap[e.loadId] = ibSummarizeContainers(e); });
-                // Merge XD container counts (isolated call; may be empty on failure)
-                var _xdMap = results[3] || {};
-                Object.keys(ctnMap).forEach(function(lid) {
-                    var x = _xdMap[lid];
-                    var m = ctnMap[lid];
-                    m.ctnXd = x ? x.ctnXd : 0;
-                    m.ctnS = Math.max(0, m.containers - m.ctnXd);
-                });
 
                 return loads.map(function(l) {
                     var pkg = pkgMap[l.loadId] || { total: 0, remaining: 0, crossdock: 0, nc: 0, cptCount: 0, ncCpt: 0, extraSmall: 0, small: 0, medium: 0, large: 0, extraLarge: 0 };
                     pkg.nextCptCount = nextCptMap[l.loadId] || 0;
-                    var ctn = ctnMap[l.loadId] || { containers: 0, fluid: 0, containerized: 0, ctnS: 0, ctnXd: 0 };
+                    var ctn = ctnMap[l.loadId] || { containers: 0, fluid: 0, containerized: 0 };
 
                     // Door: strip leading "DD"
                     var rd = (l.location && l.location.locationId != null) ? String(l.location.locationId) : '';
@@ -5676,8 +5649,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         large:         pkg.large,
                         extraLarge:    pkg.extraLarge,
                         containers:    ctn.containers,
-                        containersS:   ctn.ctnS || 0,
-                        containersXD:  ctn.ctnXd || 0,
+                        containersS:   ctn.containers,
+                        containersXD:  0,
                         fluid:         ctn.fluid,
                         containerized: ctn.containerized,
                         sat:           l.sat  ? msToLocal(l.sat)  : '—',
@@ -5719,7 +5692,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         // the previous dataset until the caller swaps it in below).
                         applyIbEtas(etaMap || {}, rows);
                     }, function(e){ hydraTraceFail(_etaTraceD, e); });
-                    var _obrPD = enrichRowsWithObRoutes(rows).then(function(){ return enrichRowsWithCptPlus(rows); }).then(null, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus:', e); });
+                    var _obrPD = enrichRowsWithObRoutes(rows).then(function(){ return enrichRowsWithCptPlus(rows); }).then(function(){ return enrichRowsWithXdContainers(rows); }).then(null, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
                     var _yrdPD = fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(null, function(e){ console.warn('[Hydra] yard/TDR:', e); });
                     return Promise.all([_etaPD, _obrPD, _yrdPD]).then(function(){ return rows; });
                 }
@@ -5734,7 +5707,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     setStatus('\u2714 ' + _n + ' inbound loads (ETAs loaded) \u2014 ' + new Date().toLocaleTimeString());
                 }, function(e){ hydraTraceFail(_etaTrace, e); });
                 // OB routes -> CPT+ -> patch after each
-                enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus:', e); });
+                enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); return enrichRowsWithXdContainers(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
                 // Yard state -> TDR status -> patch
                 fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] yard/TDR:', e); });
                 return rows;
