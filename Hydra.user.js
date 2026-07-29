@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.28
+// @version      2.29
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -12310,7 +12310,11 @@ if (k === 'eta') {
             totalWip += wip;
         });
 
-        totalAssoc = uniqueAssocs.size;
+        function isWsRole(lg) { return /waterspider/i.test(arMezzAssignedRole[lg] || ''); }
+        // Scanners = unique associates seen at build chutes, excluding
+        // RightStation-assigned waterspiders (they get their own card).
+        totalAssoc = 0;
+        uniqueAssocs.forEach(function(lg) { if (!isWsRole(lg)) totalAssoc++; });
         totalProcessed = totalScans; // processed = total scans across all windows
         var avgScanRate = totalAssoc > 0 ? Math.round(totalScans * (60 / arMezzMinutes) / totalAssoc) : 0;
 
@@ -12371,14 +12375,6 @@ if (k === 'eta') {
         // Header stat cards
         html += '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:stretch;flex-wrap:wrap;margin-left:152px">';
         var fiveMinFlow = Math.round(totalAssoc * avgScanRate / 12);
-        var stats = [
-            { label: 'Associates', value: totalAssoc, color: '#4ade80' },
-            { label: 'Avg Scan Rate', value: avgScanRate + ' JPH', color: '#4ade80' },
-            { label: '5m Flow', value: fiveMinFlow.toLocaleString(), color: '#22d3ee' },
-            { label: 'Diverted', value: totalDiverted.toLocaleString(), color: '#60a5fa' },
-            { label: 'Processed', value: totalProcessed.toLocaleString(), color: '#a78bfa' },
-            { label: 'WIP', value: totalWip.toLocaleString(), color: '#fbbf24' },
-        ];
         // Waterspiders card: counted from RightStation ASSIGNMENTS (waterspiders
         // don't sign into their station, so sign-in data always reads zero).
         // Cross-referenced with build-chute scan data to flag misplacements.
@@ -12387,7 +12383,15 @@ if (k === 'eta') {
             return lg + ' \u2014 ' + arMezzAssignedRole[lg] + (globalAssocScans[lg] ? ' \u2014 \u26a0 scanning at a build chute' : '');
         }).join('\n');
         if (!wsTitle) wsTitle = staffingAssignments ? 'No associates assigned to Waterspider in RightStation' : 'Staffing assignments not loaded yet \u2014 refresh';
-        stats.push({ label: 'Waterspiders', value: wsAssigned.length, color: '#f472b6', title: wsTitle });
+        var stats = [
+            { label: 'Scanners', value: totalAssoc, color: '#4ade80' },
+            { label: 'Waterspiders', value: wsAssigned.length, color: '#f472b6', title: wsTitle },
+            { label: 'Avg Scan Rate', value: avgScanRate + ' JPH', color: '#4ade80' },
+            { label: '5m Flow', value: fiveMinFlow.toLocaleString(), color: '#22d3ee' },
+            { label: 'Diverted', value: totalDiverted.toLocaleString(), color: '#60a5fa' },
+            { label: 'Processed', value: totalProcessed.toLocaleString(), color: '#a78bfa' },
+            { label: 'WIP', value: totalWip.toLocaleString(), color: '#fbbf24' },
+        ];
         stats.forEach(function(s) {
             html += '<div' + (s.title ? ' title="' + encodeHtmlAttr(s.title) + '"' : '') + ' style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:8px;padding:10px 16px;min-width:100px;text-align:center">';
             html += '<div style="font-size:10px;color:var(--h-muted,#aab4c0);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">' + s.label + '</div>';
@@ -12517,7 +12521,10 @@ if (k === 'eta') {
                     var isRate = false;
                     if (arMezzShowRates && cd && (cd.scanning || cd.idle)) { cellDisplay = cd.assoc ? cd.assoc.scanRate : Math.round((cd.scans || 0) * (60 / arMezzMinutes)); isRate = true; }
                     var bg = '', color = 'color:var(--h-muted,#7a8a9a)';
-                    if (cd && cd.scanning) { bg = 'background:#166534'; color = 'color:#4ade80'; }
+                    if (cd && cd.scanning) {
+                        if (cd.assoc && isWsRole(cd.assoc.login)) { bg = 'background:#1e3a8a'; color = 'color:#60a5fa'; }
+                        else { bg = 'background:#166534'; color = 'color:#4ade80'; }
+                    }
                     else if (cd && cd.idle) { bg = 'background:#ca8a04'; color = 'color:#000'; }
                     else if (cellWip >= 100) { bg = 'background:#7f1d1d'; color = 'color:#f87171'; }
                     else if (cellWip > 0) { color = 'color:var(--h-text,#e8eaf0)'; }
@@ -12558,7 +12565,10 @@ if (k === 'eta') {
         var allChutes = [];
         for (var ll = 1; ll <= maxLane; ll++) { if (grid[ll]) for (var cc = 1; cc <= maxChute; cc++) { var ccc = grid[ll][cc]; if (ccc && ccc.chuteId) allChutes.push(ccc); } }
         var top5 = allChutes.filter(function(c){return c.wip > 0;}).sort(function(a,b){return b.wip - a.wip;}).slice(0,5);
-        var bot5 = allChutes.filter(function(c){return c.scanning;}).sort(function(a,b){return a.wip - b.wip;}).slice(0,5);
+        // Low 5 Scanners: active non-waterspider scanners with the worst rates
+        var bot5 = allChutes.filter(function(c){
+            return c.scanning && c.assoc && c.assoc.login && !isWsRole(c.assoc.login);
+        }).sort(function(a,b){ return (a.assoc.scanRate || 0) - (b.assoc.scanRate || 0); }).slice(0,5);
 
         html += '<div style="min-width:160px;padding-left:16px;font-size:11px">';
         html += '<div style="font-weight:700;color:#22d3ee;margin-bottom:6px;font-size:12px">Top 5 WIP</div>';
@@ -12576,7 +12586,7 @@ if (k === 'eta') {
             html += '</div>';
         });
 
-        html += '<div style="font-weight:700;color:#22d3ee;margin:16px 0 6px;font-size:12px">Low 5 WIP (Active)</div>';
+        html += '<div style="font-weight:700;color:#22d3ee;margin:16px 0 6px;font-size:12px">Low 5 Scanners</div>';
         html += '<div style="display:flex;gap:6px;font-size:9px;color:var(--h-muted,#7a8a9a);padding:0 6px;margin-bottom:3px"><span style="min-width:42px">Chute</span><span style="min-width:24px;text-align:right">WIP</span><span style="min-width:24px;text-align:right">JPH</span><span>AA</span></div>';
         bot5.forEach(function(c) {
             var rate = c.assoc ? c.assoc.scanRate : 0;
@@ -12591,6 +12601,7 @@ if (k === 'eta') {
         html += '<div style="margin-top:16px;font-size:10px;color:var(--h-muted,#7a8a9a)">';
         html += '<div style="font-weight:700;color:#22d3ee;margin-bottom:4px;font-size:11px">Legend</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;background:#166534;border-radius:2px"></span> Scanning</div>';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;background:#1e3a8a;border-radius:2px"></span> Waterspider scanning</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;background:#ca8a04;border-radius:2px"></span> Idle (&gt;5 min)</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;background:#7f1d1d;border-radius:2px"></span> WIP \u2265 100</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><span style="display:inline-block;width:14px;height:10px;background:transparent;border-radius:2px"></span> No activity</div>';
