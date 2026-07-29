@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.25
+// @version      2.26
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -12133,6 +12133,10 @@ if (k === 'eta') {
         // AR Mezz relies on color coding (rate heat, WIP, overlays) - exempt
         // it from the Plain theme's black & white overrides.
         wrap.classList.add('hydra-plain-exempt');
+        // Always rebuild the assigned-role map at render time: the main Refresh
+        // path fetches staffing + arMezz data in parallel and paints without
+        // going through the dropdown handler where this was previously hooked.
+        rebuildAssignedRoleMap();
         // Cleanup old tooltip
         if (wrap._armezzTip) { wrap._armezzTip.remove(); wrap._armezzTip = null; }
         if (wrap._armezzAssignBar) { wrap._armezzAssignBar.remove(); wrap._armezzAssignBar = null; }
