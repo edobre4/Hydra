@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.27
+// @version      2.28
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -11930,37 +11930,42 @@ if (k === 'eta') {
         });
     }
 
-    // One-time schema probe: waterspider assignments carry processSegmentId
-    // but no workstationId, so we need the segment GUID -> name mapping.
-    // Both queries are guesses; GraphQL error messages (with 'did you mean'
-    // suggestions) are logged too since they reveal the actual schema.
-    var _hydraSegProbeDone = false;
-    function _hydraProbeSegments(nodeId) {
-        if (_hydraSegProbeDone) return;
-        _hydraSegProbeDone = true;
+    // Process segment GUID -> name map (e.g. 'AR Waterspider'). Confirmed
+    // schema: getProcessSegments(nodeId) { processSegmentId processSegmentName }.
+    // Needed because process-level assignments carry no workstationId.
+    var processSegmentNames = null;
+    function fetchProcessSegments(nodeId) {
+        if (processSegmentNames) return Promise.resolve(processSegmentNames);
         var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
         var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
-        var probes = [
-            { name: 'getProcessSegments', q: 'query GetProcessSegments($nodeId: String!) { getProcessSegments(nodeId: $nodeId) { processSegmentId processSegmentName name workstationType __typename } }' },
-            { name: 'workstations+segment', q: 'query getWorkstationDataWindow($nodeId: String!, $minutes: Int!) { workstationDataWindow(nodeId: $nodeId, minutes: $minutes) { workstationData { workstation { workstationId workstationAlias workstationType processSegmentId } } } }' }
-        ];
-        GM_xmlhttpRequest({
-            method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
-            onload: function(r1) {
-                var csrf = (r1.responseText || '').trim();
-                if (!csrf || r1.status !== 200) return;
-                probes.forEach(function(p) {
+        var query = 'query GetProcessSegments($nodeId: String!) { getProcessSegments(nodeId: $nodeId) { processSegmentId processSegmentName } }';
+        return new Promise(function(resolve) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+                onload: function(r1) {
+                    var csrf = (r1.responseText || '').trim();
+                    if (!csrf || r1.status !== 200) { resolve({}); return; }
                     GM_xmlhttpRequest({
                         method: 'POST', url: wattBase + '/graphql',
                         headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
-                        data: JSON.stringify({ query: p.q, variables: { nodeId: nodeId, minutes: 5 } }),
+                        data: JSON.stringify({ query: query, operationName: 'GetProcessSegments', variables: { nodeId: nodeId } }),
                         withCredentials: true,
                         onload: function(r2) {
-                            try { console.log('[Hydra WS PROBE] ' + p.name + ':', (r2.responseText || '').slice(0, 1200)); } catch (e) {}
-                        }
+                            try {
+                                var j = JSON.parse(r2.responseText);
+                                var list = (j.data && j.data.getProcessSegments) || [];
+                                var map = {};
+                                list.forEach(function(p) { if (p.processSegmentId) map[p.processSegmentId] = p.processSegmentName || ''; });
+                                processSegmentNames = map;
+                                console.log('[Hydra WS] process segments loaded: ' + Object.keys(map).length);
+                                resolve(map);
+                            } catch(e) { resolve({}); }
+                        },
+                        onerror: function() { resolve({}); }
                     });
-                });
-            }
+                },
+                onerror: function() { resolve({}); }
+            });
         });
     }
 
@@ -11980,6 +11985,9 @@ if (k === 'eta') {
 
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        // Ensure the segment-name map is available before assignments resolve,
+        // so process-level roles classify on first render. Cached after once.
+        fetchProcessSegments(node);
         var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
         var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
         var query = 'query GetStaffingAssignments($nodeId: String!) {\n  getStaffingAssignments(nodeId: $nodeId) {\n    nodeId\n    associateId\n    workstationId\n    processSegmentId\n    source\n    locked\n    lastUpdateUser\n    updatedTime\n    associate {\n      associateId\n      fullName\n      __typename\n    }\n    __typename\n  }\n}';
@@ -11997,8 +12005,10 @@ if (k === 'eta') {
                         onload: function(r2) {
                             try {
                                 var j = JSON.parse(r2.responseText);
-                                staffingAssignments = j.data.getStaffingAssignments || []; _hydraLogStaffingSegments(staffingAssignments); _hydraProbeSegments(node);
-                                resolve(staffingAssignments);
+                                staffingAssignments = j.data.getStaffingAssignments || []; _hydraLogStaffingSegments(staffingAssignments);
+                                // Resolve only after segment names are available so
+                                // process-level roles classify on the first paint.
+                                fetchProcessSegments(node).then(function() { resolve(staffingAssignments); });
                             } catch(e) { reject(new Error('Staffing parse: ' + e.message)); }
                         },
                         onerror: function() { reject(new Error('Staffing fetch failed')); }
@@ -12144,17 +12154,25 @@ if (k === 'eta') {
         arMezzData.forEach(function(ws) {
             if (ws.workstation && ws.workstation.workstationId) typeByGuid[ws.workstation.workstationId] = ws.workstation.workstationType;
         });
-        var matched = 0, unmatched = 0, sampleUnmatched = null;
+        var matched = 0, unmatched = 0, bySegment = 0, sampleUnmatched = null;
         staffingAssignments.forEach(function(a) {
-            if (!a.associateId || !a.workstationId) return;
-            var t = typeByGuid[a.workstationId];
-            if (t) { arMezzAssignedRole[a.associateId] = t; matched++; }
-            else { unmatched++; if (!sampleUnmatched) sampleUnmatched = a.workstationId; }
+            if (!a.associateId) return;
+            if (a.workstationId) {
+                var t = typeByGuid[a.workstationId];
+                if (t) { arMezzAssignedRole[a.associateId] = t; matched++; }
+                else { unmatched++; if (!sampleUnmatched) sampleUnmatched = a.workstationId; }
+                return;
+            }
+            // Process-level assignment (no workstation): resolve segment name
+            if (a.processSegmentId && processSegmentNames && processSegmentNames[a.processSegmentId]) {
+                arMezzAssignedRole[a.associateId] = processSegmentNames[a.processSegmentId];
+                bySegment++;
+            }
         });
         // DIAG: show whether staffing workstationIds join to workstationDataWindow GUIDs
         try {
-            var wsCount = Object.keys(arMezzAssignedRole).filter(function(k){ return arMezzAssignedRole[k] === 'WATERSPIDER'; }).length;
-            console.log('[Hydra WS DIAG] staffing rows=' + staffingAssignments.length + ' matched=' + matched + ' unmatched=' + unmatched
+            var wsCount = Object.keys(arMezzAssignedRole).filter(function(k){ return /waterspider/i.test(arMezzAssignedRole[k]); }).length;
+            console.log('[Hydra WS DIAG] staffing rows=' + staffingAssignments.length + ' matched=' + matched + ' unmatched=' + unmatched + ' bySegment=' + bySegment
                 + ' waterspiders=' + wsCount
                 + ' | sample staffing workstationId=' + JSON.stringify(sampleUnmatched)
                 + ' | sample dataWindow workstationId=' + JSON.stringify((arMezzData[0] && arMezzData[0].workstation && arMezzData[0].workstation.workstationId) || null));
@@ -12364,9 +12382,9 @@ if (k === 'eta') {
         // Waterspiders card: counted from RightStation ASSIGNMENTS (waterspiders
         // don't sign into their station, so sign-in data always reads zero).
         // Cross-referenced with build-chute scan data to flag misplacements.
-        var wsAssigned = Object.keys(arMezzAssignedRole).filter(function(lg) { return arMezzAssignedRole[lg] === 'WATERSPIDER'; });
+        var wsAssigned = Object.keys(arMezzAssignedRole).filter(function(lg) { return /waterspider/i.test(arMezzAssignedRole[lg]); });
         var wsTitle = wsAssigned.map(function(lg) {
-            return lg + (globalAssocScans[lg] ? ' \u2014 \u26a0 scanning at a build chute' : '');
+            return lg + ' \u2014 ' + arMezzAssignedRole[lg] + (globalAssocScans[lg] ? ' \u2014 \u26a0 scanning at a build chute' : '');
         }).join('\n');
         if (!wsTitle) wsTitle = staffingAssignments ? 'No associates assigned to Waterspider in RightStation' : 'Staffing assignments not loaded yet \u2014 refresh';
         stats.push({ label: 'Waterspiders', value: wsAssigned.length, color: '#f472b6', title: wsTitle });
@@ -12656,7 +12674,7 @@ if (k === 'eta') {
                 var _role = arMezzAssignedRole[cd.assoc.login];
                 if (_role) {
                     var _roleNice = _role.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, function(ch){ return ch.toUpperCase(); });
-                    var _mismatch = _role !== 'CONTAINER_BUILD';
+                    var _mismatch = !/container.?build/i.test(_role);
                     h += '<div style="font-size:10px;font-weight:700;color:' + (_mismatch ? '#f472b6' : '#60a5fa') + '">' + (_mismatch ? '\u26a0 Assigned: ' : 'Assigned: ') + _roleNice + '</div>';
                 }
                 h += '<div style="color:#4ade80;font-size:11px">' + cd.assoc.scanRate + ' JPH</div>';
