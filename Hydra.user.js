@@ -11931,6 +11931,18 @@ if (k === 'eta') {
     }
 
     var staffingAssignments = null; // cached getStaffingAssignments response
+    // DISCOVERY: summarize processSegmentId values once per fetch, to identify
+    // the waterspider / container-build segment names in RightStation data.
+    function _hydraLogStaffingSegments(list) {
+        try {
+            var segs = {};
+            (list || []).forEach(function(a) {
+                var k = a.processSegmentId || '(none)';
+                segs[k] = (segs[k] || 0) + 1;
+            });
+            console.log('[Hydra ArMezz DIAG] staffing processSegmentId counts:', JSON.stringify(segs));
+        } catch (e) {}
+    }
 
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
@@ -11951,7 +11963,7 @@ if (k === 'eta') {
                         onload: function(r2) {
                             try {
                                 var j = JSON.parse(r2.responseText);
-                                staffingAssignments = j.data.getStaffingAssignments || [];
+                                staffingAssignments = j.data.getStaffingAssignments || []; _hydraLogStaffingSegments(staffingAssignments);
                                 resolve(staffingAssignments);
                             } catch(e) { reject(new Error('Staffing parse: ' + e.message)); }
                         },
@@ -12100,6 +12112,20 @@ if (k === 'eta') {
             return;
         }
 
+        // DISCOVERY: log the full workstation-type inventory once per session,
+        // to identify how waterspider vs container build stations are typed.
+        if (!window._hydraWsTypeDiagLogged) {
+            window._hydraWsTypeDiagLogged = true;
+            try {
+                var _types = {};
+                arMezzData.forEach(function(ws) {
+                    var t = (ws.workstation && ws.workstation.workstationType) || '(none)';
+                    if (!_types[t]) _types[t] = [];
+                    if (_types[t].length < 5) _types[t].push(ws.workstation.workstationAlias);
+                });
+                console.log('[Hydra ArMezz DIAG] workstation types:', JSON.stringify(_types));
+            } catch (e) {}
+        }
         var grid = {};
         var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0;
         var laneRe = /Lane\s+(\d+)\s+Chute\s+(\d+)/i;
