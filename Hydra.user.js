@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      2.26
+// @version      2.27
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
@@ -11930,6 +11930,40 @@ if (k === 'eta') {
         });
     }
 
+    // One-time schema probe: waterspider assignments carry processSegmentId
+    // but no workstationId, so we need the segment GUID -> name mapping.
+    // Both queries are guesses; GraphQL error messages (with 'did you mean'
+    // suggestions) are logged too since they reveal the actual schema.
+    var _hydraSegProbeDone = false;
+    function _hydraProbeSegments(nodeId) {
+        if (_hydraSegProbeDone) return;
+        _hydraSegProbeDone = true;
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var probes = [
+            { name: 'getProcessSegments', q: 'query GetProcessSegments($nodeId: String!) { getProcessSegments(nodeId: $nodeId) { processSegmentId processSegmentName name workstationType __typename } }' },
+            { name: 'workstations+segment', q: 'query getWorkstationDataWindow($nodeId: String!, $minutes: Int!) { workstationDataWindow(nodeId: $nodeId, minutes: $minutes) { workstationData { workstation { workstationId workstationAlias workstationType processSegmentId } } } }' }
+        ];
+        GM_xmlhttpRequest({
+            method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+            onload: function(r1) {
+                var csrf = (r1.responseText || '').trim();
+                if (!csrf || r1.status !== 200) return;
+                probes.forEach(function(p) {
+                    GM_xmlhttpRequest({
+                        method: 'POST', url: wattBase + '/graphql',
+                        headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                        data: JSON.stringify({ query: p.q, variables: { nodeId: nodeId, minutes: 5 } }),
+                        withCredentials: true,
+                        onload: function(r2) {
+                            try { console.log('[Hydra WS PROBE] ' + p.name + ':', (r2.responseText || '').slice(0, 1200)); } catch (e) {}
+                        }
+                    });
+                });
+            }
+        });
+    }
+
     var staffingAssignments = null; // cached getStaffingAssignments response
     // DISCOVERY: summarize processSegmentId values once per fetch, to identify
     // the waterspider / container-build segment names in RightStation data.
@@ -11963,7 +11997,7 @@ if (k === 'eta') {
                         onload: function(r2) {
                             try {
                                 var j = JSON.parse(r2.responseText);
-                                staffingAssignments = j.data.getStaffingAssignments || []; _hydraLogStaffingSegments(staffingAssignments);
+                                staffingAssignments = j.data.getStaffingAssignments || []; _hydraLogStaffingSegments(staffingAssignments); _hydraProbeSegments(node);
                                 resolve(staffingAssignments);
                             } catch(e) { reject(new Error('Staffing parse: ' + e.message)); }
                         },
