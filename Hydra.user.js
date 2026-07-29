@@ -12102,16 +12102,29 @@ if (k === 'eta') {
     var arMezzAssignedRole = {};
     function rebuildAssignedRoleMap() {
         arMezzAssignedRole = {};
-        if (!staffingAssignments || !arMezzData) return;
+        if (!staffingAssignments || !arMezzData) {
+            console.log('[Hydra WS DIAG] role map skipped: staffing=' + (staffingAssignments ? staffingAssignments.length : 'null') + ' arMezzData=' + (arMezzData ? arMezzData.length : 'null'));
+            return;
+        }
         var typeByGuid = {};
         arMezzData.forEach(function(ws) {
             if (ws.workstation && ws.workstation.workstationId) typeByGuid[ws.workstation.workstationId] = ws.workstation.workstationType;
         });
+        var matched = 0, unmatched = 0, sampleUnmatched = null;
         staffingAssignments.forEach(function(a) {
             if (!a.associateId || !a.workstationId) return;
             var t = typeByGuid[a.workstationId];
-            if (t) arMezzAssignedRole[a.associateId] = t;
+            if (t) { arMezzAssignedRole[a.associateId] = t; matched++; }
+            else { unmatched++; if (!sampleUnmatched) sampleUnmatched = a.workstationId; }
         });
+        // DIAG: show whether staffing workstationIds join to workstationDataWindow GUIDs
+        try {
+            var wsCount = Object.keys(arMezzAssignedRole).filter(function(k){ return arMezzAssignedRole[k] === 'WATERSPIDER'; }).length;
+            console.log('[Hydra WS DIAG] staffing rows=' + staffingAssignments.length + ' matched=' + matched + ' unmatched=' + unmatched
+                + ' waterspiders=' + wsCount
+                + ' | sample staffing workstationId=' + JSON.stringify(sampleUnmatched)
+                + ' | sample dataWindow workstationId=' + JSON.stringify((arMezzData[0] && arMezzData[0].workstation && arMezzData[0].workstation.workstationId) || null));
+        } catch (e) {}
     }
 
     function renderOBArMezzTable(targetEl) {
