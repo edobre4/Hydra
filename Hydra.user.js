@@ -12144,24 +12144,6 @@ if (k === 'eta') {
                 console.log('[Hydra ArMezz DIAG] workstation types:', JSON.stringify(_types));
             } catch (e) {}
         }
-        // Waterspiders: associates signed into WATERSPIDER-type workstations.
-        // Same workstationDataWindow payload - zero extra API calls.
-        var wsSpiders = {}; // login -> { station, scans, lastScan }
-        arMezzData.forEach(function(ws) {
-            if (!ws.workstation || ws.workstation.workstationType !== 'WATERSPIDER') return;
-            (ws.workstationStates || []).forEach(function(st) {
-                if (!st.associateData || !st.associateData.perAssociateData) return;
-                st.associateData.perAssociateData.forEach(function(a) {
-                    if (!a.associateId || a.signedIn === false) return;
-                    var cur = wsSpiders[a.associateId] || { station: ws.workstation.workstationAlias, scans: 0, lastScan: 0 };
-                    cur.scans += a.scanCount || 0;
-                    var t = a.lastScanTime ? new Date(a.lastScanTime).getTime() : 0;
-                    if (t > cur.lastScan) { cur.lastScan = t; cur.station = ws.workstation.workstationAlias; }
-                    wsSpiders[a.associateId] = cur;
-                });
-            });
-        });
-        var wsSpiderLogins = Object.keys(wsSpiders);
         var grid = {};
         var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0;
         var laneRe = /Lane\s+(\d+)\s+Chute\s+(\d+)/i;
@@ -12327,12 +12309,16 @@ if (k === 'eta') {
             { label: 'Diverted', value: totalDiverted.toLocaleString(), color: '#60a5fa' },
             { label: 'Processed', value: totalProcessed.toLocaleString(), color: '#a78bfa' },
             { label: 'WIP', value: totalWip.toLocaleString(), color: '#fbbf24' },
-            { label: 'Waterspiders', value: wsSpiderLogins.length, color: '#f472b6', title: wsSpiderLogins.map(function(lg) {
-                var w = wsSpiders[lg];
-                var ago = w.lastScan ? Math.round((Date.now() - w.lastScan) / 60000) + 'm ago' : 'no scans';
-                return lg + ' \u2014 ' + w.station + ' (' + ago + ')';
-            }).join('\n') || 'No associates signed into Waterspider stations' },
         ];
+        // Waterspiders card: counted from RightStation ASSIGNMENTS (waterspiders
+        // don't sign into their station, so sign-in data always reads zero).
+        // Cross-referenced with build-chute scan data to flag misplacements.
+        var wsAssigned = Object.keys(arMezzAssignedRole).filter(function(lg) { return arMezzAssignedRole[lg] === 'WATERSPIDER'; });
+        var wsTitle = wsAssigned.map(function(lg) {
+            return lg + (globalAssocScans[lg] ? ' \u2014 \u26a0 scanning at a build chute' : '');
+        }).join('\n');
+        if (!wsTitle) wsTitle = staffingAssignments ? 'No associates assigned to Waterspider in RightStation' : 'Staffing assignments not loaded yet \u2014 refresh';
+        stats.push({ label: 'Waterspiders', value: wsAssigned.length, color: '#f472b6', title: wsTitle });
         stats.forEach(function(s) {
             html += '<div' + (s.title ? ' title="' + encodeHtmlAttr(s.title) + '"' : '') + ' style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:8px;padding:10px 16px;min-width:100px;text-align:center">';
             html += '<div style="font-size:10px;color:var(--h-muted,#aab4c0);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">' + s.label + '</div>';
@@ -12559,7 +12545,12 @@ if (k === 'eta') {
             arMezzMinutes = parseInt(this.value, 10);
             arMezzData = null;
             wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px"><div>Refreshing...</div></div>';
-            fetchStaffingAssignments().then(function(){ rebuildAssignedRoleMap(); }).catch(function(e){ console.warn('[Hydra ArMezz] staffing fetch failed (role badges off):', e && e.message ? e.message : e); });
+            fetchStaffingAssignments().then(function(){
+                rebuildAssignedRoleMap();
+                // Staffing usually resolves after the grid renders - re-render so
+                // the Waterspiders card and role badges reflect assignments.
+                if (arMezzData && obActiveTab === 'armezz') renderOBArMezzTable(targetEl);
+            }).catch(function(e){ console.warn('[Hydra ArMezz] staffing fetch failed (role badges off):', e && e.message ? e.message : e); });
             fetchArMezzData().then(function() { rebuildAssignedRoleMap(); renderOBArMezzTable(targetEl); }).catch(function(e) {
                 wrap.innerHTML = '<div style="padding:20px;color:#ef5350">AR Mezz fetch failed: ' + (e.message || e) + '</div>';
             });
