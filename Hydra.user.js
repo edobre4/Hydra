@@ -12683,7 +12683,7 @@ if (k === 'eta') {
             } catch (e) {}
         }
         var grid = {};
-        var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0;
+        var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0, wsScans = 0;
         var laneRe = /Lane\s+(\d+)\s+Chute\s+(\d+)/i;
         var uniqueAssocs = new Set();
 
@@ -12749,8 +12749,14 @@ if (k === 'eta') {
                 if (st.incomingCount && st.incomingCount.value) totalDiverted += st.incomingCount.value;
                 if (st.associateData && st.associateData.perAssociateData) {
                     st.associateData.perAssociateData.forEach(function(a) {
-                        totalScans += (a.scanCount || 0);
-                        if (a.associateId) uniqueAssocs.add(a.associateId);
+                        var _sc = a.scanCount || 0;
+                        totalScans += _sc;
+                        if (a.associateId) {
+                            uniqueAssocs.add(a.associateId);
+                            // Track waterspider scans separately so the scan
+                            // rate reflects scanners only
+                            if (isWsRole(a.associateId)) wsScans += _sc;
+                        }
                     });
                 }
             });
@@ -12784,8 +12790,11 @@ if (k === 'eta') {
         // RightStation-assigned waterspiders (they get their own card).
         totalAssoc = 0;
         uniqueAssocs.forEach(function(lg) { if (!isWsRole(lg)) totalAssoc++; });
-        totalProcessed = totalScans; // processed = total scans across all windows
-        var avgScanRate = totalAssoc > 0 ? Math.round(totalScans * (60 / arMezzMinutes) / totalAssoc) : 0;
+        totalProcessed = totalScans; // processed = total scans across all windows (incl. waterspiders)
+        // Avg Scan Rate: scanners only — waterspider scans excluded from both
+        // the numerator (scans) and the denominator (headcount)
+        var scannerScans = Math.max(0, totalScans - wsScans);
+        var avgScanRate = totalAssoc > 0 ? Math.round(scannerScans * (60 / arMezzMinutes) / totalAssoc) : 0;
 
         // Build set of AMZL (CYC) chute mapIds from QBCC data
         var amzlChutes = {};
