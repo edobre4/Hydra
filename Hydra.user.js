@@ -2067,7 +2067,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.hydra-door-body.dd-incoming{color:var(--h-blue, #5090d0);font-size:calc(13px * var(--dd-scale))}',
         '.hydra-door-body.dd-outgoing{color:#ff7043;font-size:calc(13px * var(--dd-scale))}',
         '.hydra-door-cell.dd-empty-trailer{background:rgba(249,168,37,0.1)}',
-        '.dd-empty-owner{display:block;font-size:calc(7px * var(--dd-scale));font-weight:700;color:#f9a825;opacity:0.85;line-height:1;letter-spacing:-0.2px}',
+        '.dd-empty-owner{display:block;font-size:calc(7px * var(--dd-scale));font-weight:800;line-height:1.2;letter-spacing:0.3px;margin-top:1px;border-top:1px solid rgba(255,112,67,0.4);padding-top:1px}',
         '.dd-empty-owner.dd-owner-other{color:#ff7043}',
         '.hydra-door-cell.dd-moveable:hover{box-shadow:0 0 6px rgba(32,212,240,0.4);border-color:rgba(32,212,240,0.5)}',
         '.hydra-door-move-badge{position:absolute;top:1px;right:1px;font-size:7px;color:var(--h-ob-accent, #20d4f0);opacity:0.5;pointer-events:none;line-height:1}',
@@ -6447,9 +6447,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     else if (_eCodes.indexOf('DAMAGED_MODERATE') !== -1) _eTags.push('YELLOW TAG');
                 }
                 var _eBody = 'E';
-                if (_eOwner) {
-                    var _eOther = _eOwner.toUpperCase() !== 'AZNG';
-                    _eBody = 'E<span class="dd-empty-owner' + (_eOther ? ' dd-owner-other' : '') + '">' + escapeHtml(_eOwner) + '</span>';
+                if (_eOwner && _eOwner.toUpperCase() !== 'AZNG') {
+                    // Only call out non-AZNG owners — AZNG is the norm, and
+                    // 'E' + 'AZNG' side by side reads as one word.
+                    _eBody = 'E<span class="dd-empty-owner dd-owner-other">' + escapeHtml(_eOwner) + '</span>';
                 }
                 return { state: 'empty-trailer', cellClass: 'dd-empty-trailer', bodyClass: 'dd-empty', bodyHtml: _eBody, tdrStatus: tdrS, owner: _eOwner, tags: _eTags };
             }
