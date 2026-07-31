@@ -4639,7 +4639,22 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function completeUnloadTrailer(vrid, planId) {
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
-        var body = 'entity=setLoadStatusCompleteUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
+        // Get trailerId from YMS equipment map if available
+        var visitId = ymsVisitIdMap[vrid];
+        var trailerId = '';
+        var trailerNumber = '';
+        if (visitId && ymsEquipmentMap[visitId]) {
+            trailerId = ymsEquipmentMap[visitId].equipmentId || '';
+        }
+        var seals = encodeURIComponent(JSON.stringify([{stopName: nodeId, sealNum: null}]));
+        var body = 'entity=setLoadStatusComplete&nodeId=' + encodeURIComponent(nodeId)
+            + '&planId=' + encodeURIComponent(planId)
+            + '&vrId=' + encodeURIComponent(vrid)
+            + '&businessType=INBOUND'
+            + '&trailerId=' + encodeURIComponent(trailerId)
+            + '&trailerNumber=' + encodeURIComponent(trailerNumber)
+            + '&sealNum=null'
+            + '&seals=' + encodeURIComponent(seals);
         return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
             console.log('[Hydra] completeUnload SUCCESS for ' + vrid, data);
             // Update local row immediately
