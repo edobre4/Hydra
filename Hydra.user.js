@@ -5760,6 +5760,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     if (!unsafeWindow._hydraLoadKeysLogged) {
                         unsafeWindow._hydraLoadKeysLogged = true;
                         console.log('[Hydra] Vista load keys:', Object.keys(l).join(', '));
+                        console.log('[Hydra] Vista unloadPlan:', JSON.stringify(l.unloadPlan), 'sortPlan:', JSON.stringify(l.sortPlan), 'loadId:', l.loadId);
                     }
                     var pkg = pkgMap[l.loadId] || { total: 0, remaining: 0, crossdock: 0, nc: 0, cptCount: 0, ncCpt: 0, extraSmall: 0, small: 0, medium: 0, large: 0, extraLarge: 0 };
                     pkg.nextCptCount = nextCptMap[l.loadId] || 0;
@@ -5808,7 +5809,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     var row = {
                         vrid:          l.displayId || '—',
                         loadId:        l.loadId,
-                        planId:        l.planId || (l.plan && l.plan.identifier) || null,
+                        planId:        (function(up) {
+                                           if (!up) return null;
+                                           if (typeof up === 'string') return up;
+                                           return up.identifier || up.planId || up.id || null;
+                                       })(l.unloadPlan),
                         status:        l.status || '—',
                         displayStatus: (l.status === 'SCHEDULED' && etaMsVal) ? 'MANIFESTED' : (l.status || '—'),
                         location:      String(door),
