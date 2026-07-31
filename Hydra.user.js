@@ -12852,7 +12852,10 @@ if (k === 'eta') {
         var html = '<div style="display:flex;justify-content:center;width:100%"><div class="hydra-table" style="padding:16px 12px;font-size:12px">';
         // Header stat cards
         html += '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:stretch;flex-wrap:wrap;margin-left:152px">';
-        var fiveMinFlow = Math.round(totalAssoc * avgScanRate / 12);
+        // 5m Flow: actual observed throughput — ALL scans (scanners +
+        // waterspiders) scaled to a 5-minute window. Answers "how fast are we
+        // flowing", while Avg Scan Rate answers "how fast are scanners scanning".
+        var fiveMinFlow = Math.round(totalScans * (5 / arMezzMinutes));
         // Waterspiders card: counted from RightStation ASSIGNMENTS (waterspiders
         // don't sign into their station, so sign-in data always reads zero).
         // Cross-referenced with build-chute scan data to flag misplacements.
