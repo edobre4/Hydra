@@ -1284,6 +1284,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var ymsSecurityTokenAt   = 0;      // timestamp when token was fetched (ms)
     var ymsEquipmentMap      = {};     // visitId -> { equipmentId, equipmentVersion }
     var ymsVisitIdMap        = {};     // VRID -> visitId (extracted from yard state)
+    var ymsOwnerMap          = {};     // VRID -> trailer owner code (e.g. AZNG) from yard state
     var ymsMoveEnabled = (function(){ try { var v = localStorage.getItem('hydra_yms_moves'); if (v === 'false') return false; return true; } catch(e) { return true; } })();
     unsafeWindow.hydraUnlockMoves = function() { ymsMoveEnabled = true; try { localStorage.setItem('hydra_yms_moves', 'true'); } catch(e) {} console.log('[Hydra] YMS Moves UNLOCKED'); };
     unsafeWindow.hydraLockMoves = function() { ymsMoveEnabled = false; try { localStorage.setItem('hydra_yms_moves', 'false'); } catch(e) {} console.log('[Hydra] YMS Moves LOCKED'); };
@@ -2070,6 +2071,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.hydra-door-cell.dd-moveable:hover{box-shadow:0 0 6px rgba(32,212,240,0.4);border-color:rgba(32,212,240,0.5)}',
         '.hydra-door-move-badge{position:absolute;top:1px;right:1px;font-size:7px;color:var(--h-ob-accent, #20d4f0);opacity:0.5;pointer-events:none;line-height:1}',
         '.hydra-loc-move-badge{font-size:9px;color:var(--h-ob-accent, #20d4f0);opacity:0.55;pointer-events:none}',
+        'td.col-equip.equip-owner-other{color:#ff1744}',
+        'td.col-equip.equip-owner-other img{filter:brightness(0.65) sepia(1) saturate(12) hue-rotate(-45deg) brightness(1.5)}',
         'td.hydra-door-clickable:hover .hydra-loc-move-badge{opacity:1}',
         '.hydra-door-cell.dd-moveable:hover .hydra-door-move-badge{opacity:1}',
         '.hydra-door-cell.dd-unknown{opacity:0.4}',
@@ -5985,7 +5988,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             }
                         }
                     }
-                    if (vrid) ymsVisitIdMap[vrid] = String(a.visitId);
+                    if (vrid) {
+                        ymsVisitIdMap[vrid] = String(a.visitId);
+                        var _own = (a.owner && (a.owner.shortName || a.owner.code)) || '';
+                        if (_own) ymsOwnerMap[vrid] = _own;
+                    }
                     if (loc.code.indexOf('DD') === 0 && vrid) {
                         var tdr = a.trailerHandoverStatus && a.trailerHandoverStatus.tdrStatus;
                         if (tdr) map[vrid] = tdr;
@@ -6115,6 +6122,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (!_dr || !_dr.vrid) continue;
             if (dmaps.door[_dr.vrid]) _dr.doorSinceMs = dmaps.door[_dr.vrid];
             if (dmaps.yard[_dr.vrid]) _dr.yardSinceMs = dmaps.yard[_dr.vrid];
+            if (ymsOwnerMap[_dr.vrid]) _dr.trailerOwner = ymsOwnerMap[_dr.vrid];
         }
         if (!Object.keys(tmap).length && !Object.keys(dmaps.door).length && !Object.keys(dmaps.yard).length) return rows;
         for (var i = 0; i < rows.length; i++) {
@@ -11373,7 +11381,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         return '<td>' + n.toLocaleString() + '</td>';
                     }).join('');
                 }
-                if (k === 'equip') { var eq = equipCell(r.equipType); return '<td class="col-equip" title="' + eq.label + '">' + eq.html + '</td>'; }
+                if (k === 'equip') {
+                    var eq = equipCell(r.equipType);
+                    var _eqOwn = r.trailerOwner || '';
+                    var _eqOther = _eqOwn && _eqOwn.toUpperCase() !== 'AZNG';
+                    return '<td class="col-equip' + (_eqOther ? ' equip-owner-other' : '') + '" title="' + eq.label + (_eqOwn ? ' \u2014 ' + _eqOwn : '') + '">' + eq.html + '</td>';
+                }
                 if (k === 'vrid') return '<td class="vrid-cell"><span class="hydra-copy-id" data-copy="' + r.vrid + '" title="Click to copy">' + r.vrid + '</span></td>';
                 if (k === 'route') { var rc = routeColorClass(r); var ra = ' data-route-click="1" data-route-vrid="' + r.vrid + '" data-route-loadid="' + r.loadId + '" data-route-name="' + (r.route||'') + '" data-route-status="' + r.status + '"'; return '<td><span class="' + rc + '" title="' + (ROUTE_LABELS[rc] || '') + '" style="cursor:pointer"' + ra + '>' + (r.route || '—') + '</span></td>'; }
                 if (k === 'status') {
