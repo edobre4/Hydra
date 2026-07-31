@@ -1838,6 +1838,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.badge-STAGED{background:var(--h-badge-gold, #2a2a1a);color:#b8950a}',
         '.hydra-status-action{cursor:pointer;transition:all 0.15s}',
         '.hydra-status-action:hover{filter:brightness(1.4);box-shadow:0 0 6px rgba(255,255,255,0.3);transform:scale(1.05)}',
+        '#hydra-confirm-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483647;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}',
+        '#hydra-confirm-modal.active{display:flex}',
+        '#hydra-confirm-modal .confirm-box{background:var(--h-bg4, #1a2535);border:1px solid #2a5a8a;border-radius:10px;padding:20px 24px;width:300px;color:var(--h-text, #e8eaf0);font-size:13px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.5)}',
+        '#hydra-confirm-modal .confirm-msg{margin-bottom:16px;font-size:14px;font-weight:600}',
+        '#hydra-confirm-modal .confirm-btns{display:flex;gap:10px;justify-content:center}',
+        '#hydra-confirm-modal .confirm-ok{background:var(--h-ob-accent, #20d4f0);color:#000;border:none;border-radius:6px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer}',
+        '#hydra-confirm-modal .confirm-ok:hover{filter:brightness(1.1)}',
+        '#hydra-confirm-modal .confirm-cancel{background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0);border:1px solid var(--h-border2, #3a4a5c);border-radius:6px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer}',
+        '#hydra-confirm-modal .confirm-cancel:hover{border-color:#ff9900;color:#ff9900}',
 
         // Empty state
         '#hydra-empty{text-align:center;padding:40px;font-size:14px;width:100%;box-sizing:border-box}',
@@ -4576,6 +4585,35 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     // ── IB Dock: Start / Complete unload via SSP ──
+    function hydraConfirm(msg) {
+        return new Promise(function(resolve) {
+            var modal = document.getElementById('hydra-confirm-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'hydra-confirm-modal';
+                modal.innerHTML = '<div class="confirm-box"><div class="confirm-msg"></div><div class="confirm-btns"><button class="confirm-ok">OK</button><button class="confirm-cancel">Cancel</button></div></div>';
+                document.body.appendChild(modal);
+            }
+            modal.querySelector('.confirm-msg').textContent = msg;
+            modal.classList.add('active');
+            var ok = modal.querySelector('.confirm-ok');
+            var cancel = modal.querySelector('.confirm-cancel');
+            function cleanup(result) {
+                modal.classList.remove('active');
+                ok.removeEventListener('click', onOk);
+                cancel.removeEventListener('click', onCancel);
+                modal.removeEventListener('click', onBg);
+                resolve(result);
+            }
+            function onOk() { cleanup(true); }
+            function onCancel() { cleanup(false); }
+            function onBg(e) { if (e.target === modal) cleanup(false); }
+            ok.addEventListener('click', onOk);
+            cancel.addEventListener('click', onCancel);
+            modal.addEventListener('click', onBg);
+        });
+    }
+
     function startUnloadTrailer(vrid, planId) {
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
         var body = 'entity=setLoadStatusStartUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
@@ -11261,26 +11299,30 @@ if (k === 'eta') {
                 var vrid = el.dataset.vrid;
                 var loadId = el.dataset.loadid;
                 if (!action || !vrid || !loadId) return;
-                // Confirmation for complete
-                if (action === 'complete') {
-                    if (!confirm('Complete unload for ' + vrid + '?')) return;
+
+                function doAction() {
+                    var origText = el.textContent;
+                    el.textContent = action === 'start' ? 'Starting...' : 'Completing...';
+                    el.style.opacity = '0.6';
+                    el.style.pointerEvents = 'none';
+                    var fn = action === 'start' ? startUnloadTrailer : completeUnloadTrailer;
+                    fn(vrid, loadId).then(function() {
+                        // Success — table re-renders via the function
+                    }).catch(function(err) {
+                        console.error('[Hydra] ' + action + ' unload failed:', err);
+                        el.textContent = '\u2717 ' + origText;
+                        el.style.opacity = '1';
+                        el.style.pointerEvents = '';
+                        el.title = 'Failed: ' + err;
+                        setTimeout(function() { el.textContent = origText; el.title = action === 'start' ? 'Click to start unload' : 'Click to complete unload'; }, 3000);
+                    });
                 }
-                // Visual feedback
-                var origText = el.textContent;
-                el.textContent = action === 'start' ? 'Starting...' : 'Completing...';
-                el.style.opacity = '0.6';
-                el.style.pointerEvents = 'none';
-                var fn = action === 'start' ? startUnloadTrailer : completeUnloadTrailer;
-                fn(vrid, loadId).then(function() {
-                    // Success — table re-renders via the function
-                }).catch(function(err) {
-                    console.error('[Hydra] ' + action + ' unload failed:', err);
-                    el.textContent = '\u2717 ' + origText;
-                    el.style.opacity = '1';
-                    el.style.pointerEvents = '';
-                    el.title = 'Failed: ' + err;
-                    setTimeout(function() { el.textContent = origText; el.title = action === 'start' ? 'Click to start unload' : 'Click to complete unload'; }, 3000);
-                });
+
+                if (action === 'complete') {
+                    hydraConfirm('Complete unload for ' + vrid + '?').then(function(ok) { if (ok) doAction(); });
+                } else {
+                    doAction();
+                }
             });
         });
 
