@@ -6884,15 +6884,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             }
             // Move indicator: show small badge on cells where a trailer can be moved
             var moveIndicatorHtml = '';
-            if (ymsMoveEnabled && (s.state === 'loaded' || s.state === 'empty')) {
-                var _canMove = false;
-                if (s.state === 'loaded') {
-                    // Loaded trailer: moveable if NOT TDR'd in
-                    _canMove = !s.tdrStatus || s.tdrStatus === 'NoTDR';
-                } else if (s.state === 'empty') {
-                    // Empty trailer at door: always moveable
-                    _canMove = true;
-                }
+            if (ymsMoveEnabled && (s.state === 'loaded' || s.state === 'empty-trailer')) {
+                // Moveable if NOT TDR'd in (applies to loaded and empty trailers)
+                var _canMove = !s.tdrStatus || s.tdrStatus === 'NoTDR';
                 if (_canMove) {
                     cellCls += ' dd-moveable';
                     moveIndicatorHtml = '<span class="hydra-door-move-badge" title="Double-click to move">\u21BB</span>';
