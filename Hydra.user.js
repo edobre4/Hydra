@@ -11261,6 +11261,10 @@ if (k === 'eta') {
                 var vrid = el.dataset.vrid;
                 var loadId = el.dataset.loadid;
                 if (!action || !vrid || !loadId) return;
+                // Confirmation for complete
+                if (action === 'complete') {
+                    if (!confirm('Complete unload for ' + vrid + '?')) return;
+                }
                 // Visual feedback
                 var origText = el.textContent;
                 el.textContent = action === 'start' ? 'Starting...' : 'Completing...';
