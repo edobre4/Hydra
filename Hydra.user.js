@@ -11698,7 +11698,8 @@ if (k === 'eta') {
                     }
                 }
             } else {
-                if (!e.shiftKey) { ibSelectedIds.clear(); dataRows.forEach(function(r) { r.classList.remove('selected'); }); }
+                // Additive drag-select: new drags add to the existing selection.
+                // Deselect via single-click toggle or the Clear button.
                 for (var i = lo; i <= hi; i++) { ibSelectedIds.add(dataRows[i].dataset.vrid); dataRows[i].classList.add('selected'); }
                 lastClickIdx = hi;
             }
