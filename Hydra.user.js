@@ -4653,12 +4653,46 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return loadId;
     }
 
+    // Fetch the SSP IB dock view — the authoritative source for the planId,
+    // trailerId (YTR... format) and trailerNumber that the start/complete
+    // actions require. Cached for 30s; keyed by VRID.
+    var _ibDockViewCache = { at: 0, map: null };
+    function fetchIbDockViewInfo(vrid) {
+        if (_ibDockViewCache.map && (Date.now() - _ibDockViewCache.at) < 30000) {
+            return Promise.resolve(_ibDockViewCache.map[vrid] || null);
+        }
+        var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
+        var url = 'https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?entity=getDefaultInboundDockView&nodeId=' + encodeURIComponent(nodeId);
+        return gmFetchRaw(url).then(function(text) {
+            var data = JSON.parse(text);
+            var rows = (data && data.ret && data.ret.aaData) || [];
+            var map = {};
+            rows.forEach(function(e) {
+                if (!e || !e.load || !e.load.vrId) return;
+                map[e.load.vrId] = {
+                    planId: e.load.planId || null,
+                    trailerId: (e.trailer && e.trailer.trailerId) || '',
+                    trailerNumber: (e.trailer && e.trailer.trailerNumber) || ''
+                };
+            });
+            _ibDockViewCache = { at: Date.now(), map: map };
+            console.log('[Hydra] IB dock view loaded: ' + Object.keys(map).length + ' loads');
+            return map[vrid] || null;
+        }).catch(function(e) {
+            console.warn('[Hydra] IB dock view fetch failed:', e);
+            return null;
+        });
+    }
+
     function startUnloadTrailer(vrid, planId) {
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
-        planId = resolveIbPlanId(vrid, planId);
-        console.log('[Hydra startUnload] payload: vrid=' + vrid + ' planId=' + planId);
-        var body = 'entity=setLoadStatusStartUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
-        return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
+        return fetchIbDockViewInfo(vrid).then(function(info) {
+            if (info && info.planId) planId = info.planId;
+            else planId = resolveIbPlanId(vrid, planId);
+            console.log('[Hydra startUnload] payload: vrid=' + vrid + ' planId=' + planId);
+            var body = 'entity=setLoadStatusStartUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
+            return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body);
+        }).then(function(data) {
             var _err = sspActionError(data);
             if (_err) {
                 console.warn('[Hydra startUnload] FAILED:', _err);
@@ -4682,16 +4716,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function completeUnloadTrailer(vrid, planId) {
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
-        planId = resolveIbPlanId(vrid, planId);
-        // Get trailerId from YMS equipment map if available
-        var visitId = ymsVisitIdMap[vrid];
+        return fetchIbDockViewInfo(vrid).then(function(info) {
         var trailerId = '';
         var trailerNumber = '';
-        if (visitId && ymsEquipmentMap[visitId]) {
-            trailerId = ymsEquipmentMap[visitId].equipmentId || '';
-            trailerNumber = ymsEquipmentMap[visitId].trailerNumber || '';
+        if (info) {
+            // Authoritative: same values the SSP UI itself sends
+            if (info.planId) planId = info.planId;
+            trailerId = info.trailerId || '';
+            trailerNumber = info.trailerNumber || '';
+        } else {
+            planId = resolveIbPlanId(vrid, planId);
         }
         // Fallback: pull trailer info straight from the YMS yard asset
+        // (note: YMS equipmentId is a UUID, NOT the YTR-format trailerId SSP
+        // expects — only used as a last resort)
+        var visitId = ymsVisitIdMap[vrid];
         if ((!trailerId || !trailerNumber) && yardStateData && Array.isArray(yardStateData)) {
             outer:
             for (var yi = 0; yi < yardStateData.length; yi++) {
@@ -4744,6 +4783,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             }
             renderIBTabs(); renderIBTable(); renderDockDoorPanel();
             return data;
+        });
         });
     }
 
