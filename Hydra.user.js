@@ -1776,6 +1776,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // Sectioned All view (IB): section title band + per-section header rows
         '.ib-view #hydra-table.ib-sectioned tbody tr.totals-row td, .hydra-table.ib-sectioned tbody tr.totals-row td{position:static}',
         '.ib-section-title td{background:linear-gradient(90deg, rgba(204,16,64,0.30), rgba(35,35,35,0.55));color:#ff4070;font-weight:800;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:7px 12px;border-top:2px solid #cc1040;border-bottom:1px solid var(--h-border, #2a3a4c);text-align:left}',
+        '.ib-section-gap td{height:28px;background:transparent !important;border:none !important;padding:0 !important}',
         '.ib-section-count{display:inline-block;background:#3d1020;color:#ff4070;border:1px solid #ff4070;border-radius:8px;padding:0 7px;font-size:10px;font-weight:700;margin-left:6px}',
         '.hydra-table tbody tr.ib-section-head th{background:var(--h-gray3, #3a3a3a);color:#ff2855;padding:6px 12px;text-align:center;border-bottom:2px solid #cc1040;white-space:nowrap;font-weight:700;cursor:pointer}',
         '.hydra-table tbody tr.ib-section-head th:hover{background:#484848}',
@@ -11509,8 +11510,9 @@ if (k === 'eta') {
             // Sectioned All view: each section renders a title band, its own
             // sortable header row, a totals row, and its data rows.
             var _colCount = visArr.length + (ibVisibleCols.has('obRoutes') ? Math.max(0, obRoutesForCols.length - 1) : 0);
-            var _secHtml = _sections.map(function(s) {
-                return '<tr class="ib-section-title"><td colspan="' + _colCount + '">' + s.def.label +
+            var _secHtml = _sections.map(function(s, _si) {
+                return (_si > 0 ? '<tr class="ib-section-gap"><td colspan="' + _colCount + '"></td></tr>' : '') +
+                       '<tr class="ib-section-title"><td colspan="' + _colCount + '">' + s.def.label +
                        ' <span class="ib-section-count">' + s.rows.length + '</span></td></tr>' +
                        '<tr class="ib-section-head">' + buildHeadCells(s.sort.key, s.sort.dir, s.def.id) + '</tr>' +
                        buildTotalsRow(s.rows) +
