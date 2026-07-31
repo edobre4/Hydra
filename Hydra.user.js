@@ -1285,6 +1285,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var ymsEquipmentMap      = {};     // visitId -> { equipmentId, equipmentVersion }
     var ymsVisitIdMap        = {};     // VRID -> visitId (extracted from yard state)
     var ymsOwnerMap          = {};     // VRID -> trailer owner code (e.g. AZNG) from yard state
+    var ymsDamageMap         = {};     // VRID -> 'RED TAG' | 'YELLOW TAG' from equipment ops codes
     var ymsMoveEnabled = (function(){ try { var v = localStorage.getItem('hydra_yms_moves'); if (v === 'false') return false; return true; } catch(e) { return true; } })();
     unsafeWindow.hydraUnlockMoves = function() { ymsMoveEnabled = true; try { localStorage.setItem('hydra_yms_moves', 'true'); } catch(e) {} console.log('[Hydra] YMS Moves UNLOCKED'); };
     unsafeWindow.hydraLockMoves = function() { ymsMoveEnabled = false; try { localStorage.setItem('hydra_yms_moves', 'false'); } catch(e) {} console.log('[Hydra] YMS Moves LOCKED'); };
@@ -2073,6 +2074,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.hydra-loc-move-badge{font-size:9px;color:var(--h-ob-accent, #20d4f0);opacity:0.55;pointer-events:none}',
         'td.col-equip.equip-owner-other{color:#ff1744}',
         'td.col-equip.equip-owner-other img{filter:brightness(0.65) sepia(1) saturate(12) hue-rotate(-45deg) brightness(1.5)}',
+        // Damage tags (RED TAG = severe, YELLOW TAG = moderate)
+        '.hydra-door-cell.dd-damaged-red{box-shadow:inset 0 0 0 2px #d50000}',
+        '.hydra-door-cell.dd-damaged-yellow{box-shadow:inset 0 0 0 2px #f9a825}',
+        '.hydra-door-damage-badge{position:absolute;top:1px;left:1px;font-size:calc(8px * var(--dd-scale));line-height:1;pointer-events:none}',
+        '.dd-damaged-red .hydra-door-damage-badge{color:#ff1744}',
+        '.dd-damaged-yellow .hydra-door-damage-badge{color:#f9a825}',
+        '.equip-damage-badge{font-size:10px;margin-left:2px;vertical-align:middle}',
+        '.equip-damage-badge.dmg-red{color:#ff1744}',
+        '.equip-damage-badge.dmg-yellow{color:#f9a825}',
         'td.hydra-door-clickable:hover .hydra-loc-move-badge{opacity:1}',
         '.hydra-door-cell.dd-moveable:hover .hydra-door-move-badge{opacity:1}',
         '.hydra-door-cell.dd-unknown{opacity:0.4}',
@@ -5992,6 +6002,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         ymsVisitIdMap[vrid] = String(a.visitId);
                         var _own = (a.owner && (a.owner.shortName || a.owner.code)) || '';
                         if (_own) ymsOwnerMap[vrid] = _own;
+                        var _eqInfo = ymsEquipmentMap[String(a.visitId)];
+                        if (_eqInfo && _eqInfo.operationalCodes) {
+                            if (_eqInfo.operationalCodes.indexOf('DAMAGED_SEVERE') !== -1) ymsDamageMap[vrid] = 'RED TAG';
+                            else if (_eqInfo.operationalCodes.indexOf('DAMAGED_MODERATE') !== -1) ymsDamageMap[vrid] = 'YELLOW TAG';
+                        }
                     }
                     if (loc.code.indexOf('DD') === 0 && vrid) {
                         var tdr = a.trailerHandoverStatus && a.trailerHandoverStatus.tdrStatus;
@@ -6123,6 +6138,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (dmaps.door[_dr.vrid]) _dr.doorSinceMs = dmaps.door[_dr.vrid];
             if (dmaps.yard[_dr.vrid]) _dr.yardSinceMs = dmaps.yard[_dr.vrid];
             if (ymsOwnerMap[_dr.vrid]) _dr.trailerOwner = ymsOwnerMap[_dr.vrid];
+            if (ymsDamageMap[_dr.vrid]) _dr.damageTag = ymsDamageMap[_dr.vrid];
         }
         if (!Object.keys(tmap).length && !Object.keys(dmaps.door).length && !Object.keys(dmaps.yard).length) return rows;
         for (var i = 0; i < rows.length; i++) {
@@ -6882,8 +6898,17 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     titleTxt += ' \u2014 Double-click to move';
                 }
             }
+            // Damage tags: visible warning so trailers aren't moved to another
+            // door for loading (RED TAG = severe, YELLOW TAG = moderate)
+            var damageHtml = '';
+            if (s.tags && s.tags.length) {
+                var _dmgRed = s.tags.indexOf('RED TAG') !== -1;
+                cellCls += _dmgRed ? ' dd-damaged-red' : ' dd-damaged-yellow';
+                damageHtml = '<span class="hydra-door-damage-badge" title="' + s.tags.join(', ') + ' \u2014 do not use for loading">\u26A0</span>';
+                titleTxt += ' \u2014 ' + s.tags.join(', ') + ' (damaged \u2014 do not use for loading)';
+            }
             return '<div class="' + cellCls + '" title="' + titleTxt + '">' +
-                   sdtWarnHtml + pendingMoveHtml + moveIndicatorHtml +
+                   sdtWarnHtml + pendingMoveHtml + moveIndicatorHtml + damageHtml +
                    '<div class="hydra-door-num">' + num + '</div>' +
                    '<div class="' + bodyCls + '" data-full-route="1">' + bodyHtml + '</div>' +
                    '</div>';
@@ -7102,7 +7127,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 if (aD && bD) return parseInt(a.slice(2)) - parseInt(b.slice(2));
                 return a.localeCompare(b);
             });
-            var html = '<div class="move-title">Move ' + label + '</div>' +
+            var _dmgTag = ymsDamageMap[vrid];
+            var _dmgWarn = _dmgTag ? '<div style="background:' + (_dmgTag === 'RED TAG' ? 'rgba(213,0,0,0.2);border:1px solid #d50000;color:#ff5252' : 'rgba(249,168,37,0.15);border:1px solid #f9a825;color:#f9a825') + ';border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:11px;font-weight:700">\u26A0 ' + _dmgTag + ' \u2014 trailer is damaged. Do not move to a door for loading.</div>' : '';
+            var html = '<div class="move-title">Move ' + label + '</div>' + _dmgWarn +
                 '<div style="font-size:11px;color:var(--h-muted3, #5a6a7a);margin-bottom:4px">' + locations.length + ' eligible locations</div>' +
                 '<input type="text" id="hydra-move-filter" placeholder="Filter doors..." style="width:100%;padding:6px 8px;margin-bottom:8px;background:var(--h-bg1, #0e1620);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);font-size:12px;box-sizing:border-box">' +
                 '<ul class="move-list" id="hydra-move-list">' + locations.map(function(loc) {
@@ -11385,7 +11412,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     var eq = equipCell(r.equipType);
                     var _eqOwn = r.trailerOwner || '';
                     var _eqOther = _eqOwn && _eqOwn.toUpperCase() !== 'AZNG';
-                    return '<td class="col-equip' + (_eqOther ? ' equip-owner-other' : '') + '" title="' + eq.label + (_eqOwn ? ' \u2014 ' + _eqOwn : '') + '">' + eq.html + '</td>';
+                    var _eqDmg = r.damageTag || '';
+                    var _eqDmgHtml = _eqDmg ? '<span class="equip-damage-badge ' + (_eqDmg === 'RED TAG' ? 'dmg-red' : 'dmg-yellow') + '" title="' + _eqDmg + ' \u2014 damaged, do not use for loading">\u26A0</span>' : '';
+                    return '<td class="col-equip' + (_eqOther ? ' equip-owner-other' : '') + '" title="' + eq.label + (_eqOwn ? ' \u2014 ' + _eqOwn : '') + (_eqDmg ? ' \u2014 ' + _eqDmg : '') + '">' + eq.html + _eqDmgHtml + '</td>';
                 }
                 if (k === 'vrid') return '<td class="vrid-cell"><span class="hydra-copy-id" data-copy="' + r.vrid + '" title="Click to copy">' + r.vrid + '</span></td>';
                 if (k === 'route') { var rc = routeColorClass(r); var ra = ' data-route-click="1" data-route-vrid="' + r.vrid + '" data-route-loadid="' + r.loadId + '" data-route-name="' + (r.route||'') + '" data-route-status="' + r.status + '"'; return '<td><span class="' + rc + '" title="' + (ROUTE_LABELS[rc] || '') + '" style="cursor:pointer"' + ra + '>' + (r.route || '—') + '</span></td>'; }
