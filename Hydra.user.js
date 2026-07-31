@@ -4626,10 +4626,44 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
+    // Extract an error message from an SSP action response (SSP returns
+    // HTTP 200 with error payloads like {details:{exceptionMessage},stackTrace}).
+    function sspActionError(data) {
+        if (!data) return null;
+        if (data.details && data.details.exceptionMessage) return data.details.exceptionMessage;
+        if (data.stackTrace && data.nameSpace) return (data.details && JSON.stringify(data.details)) || 'SSP exception (' + data.nameSpace + ')';
+        if (data.error) return typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+        if (data.errorMessage) return data.errorMessage;
+        if (data.ret && data.ret.error) return data.ret.error;
+        if (data.ret && data.ret.errorMessage) return data.ret.errorMessage;
+        if (data.ret && data.ret.success === false) return data.ret.message || 'SSP reported failure';
+        if (data.success === false) return data.message || 'SSP reported failure';
+        return null;
+    }
+
+    // Resolve the plan the trailer is actually attached to. Vista's loadId is
+    // often NOT the live plan (SSP rejects with "attached to plan which is
+    // different than oldplan"). Prefer row.planId (Vista), then Sesame's
+    // plan.identifier, then fall back to loadId.
+    function resolveIbPlanId(vrid, loadId) {
+        var row = Array.isArray(ibTableData) ? ibTableData.find(function(r) { return r && r.vrid === vrid; }) : null;
+        if (row && row.planId) return row.planId;
+        var meta = sesameLoadMeta[vrid];
+        if (meta && meta.planIdentifier) return meta.planIdentifier;
+        return loadId;
+    }
+
     function startUnloadTrailer(vrid, planId) {
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
+        planId = resolveIbPlanId(vrid, planId);
+        console.log('[Hydra startUnload] payload: vrid=' + vrid + ' planId=' + planId);
         var body = 'entity=setLoadStatusStartUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
         return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
+            var _err = sspActionError(data);
+            if (_err) {
+                console.warn('[Hydra startUnload] FAILED:', _err);
+                return Promise.reject(_err);
+            }
             console.log('[Hydra] startUnload SUCCESS for ' + vrid, data);
             // Update local row immediately
             if (Array.isArray(ibTableData)) {
@@ -4648,6 +4682,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function completeUnloadTrailer(vrid, planId) {
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
+        planId = resolveIbPlanId(vrid, planId);
         // Get trailerId from YMS equipment map if available
         var visitId = ymsVisitIdMap[vrid];
         var trailerId = '';
@@ -4690,15 +4725,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
             console.log('[Hydra completeUnload] response:', JSON.stringify(data).slice(0, 1500));
             // SSP often returns HTTP 200 with the error inside the body — validate
-            var errMsg = null;
-            if (data) {
-                if (data.error) errMsg = data.error;
-                else if (data.errorMessage) errMsg = data.errorMessage;
-                else if (data.ret && data.ret.error) errMsg = data.ret.error;
-                else if (data.ret && data.ret.errorMessage) errMsg = data.ret.errorMessage;
-                else if (data.ret && data.ret.success === false) errMsg = data.ret.message || 'SSP reported failure';
-                else if (data.success === false) errMsg = data.message || 'SSP reported failure';
-            }
+            var errMsg = sspActionError(data);
             if (errMsg) {
                 console.warn('[Hydra completeUnload] FAILED:', errMsg);
                 return Promise.reject(errMsg);
@@ -5730,6 +5757,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 results[1].forEach(function(e) { ctnMap[e.loadId] = ibSummarizeContainers(e); });
 
                 return loads.map(function(l) {
+                    if (!unsafeWindow._hydraLoadKeysLogged) {
+                        unsafeWindow._hydraLoadKeysLogged = true;
+                        console.log('[Hydra] Vista load keys:', Object.keys(l).join(', '));
+                    }
                     var pkg = pkgMap[l.loadId] || { total: 0, remaining: 0, crossdock: 0, nc: 0, cptCount: 0, ncCpt: 0, extraSmall: 0, small: 0, medium: 0, large: 0, extraLarge: 0 };
                     pkg.nextCptCount = nextCptMap[l.loadId] || 0;
                     var ctn = ctnMap[l.loadId] || { containers: 0, fluid: 0, containerized: 0 };
@@ -5777,6 +5808,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     var row = {
                         vrid:          l.displayId || '—',
                         loadId:        l.loadId,
+                        planId:        l.planId || (l.plan && l.plan.identifier) || null,
                         status:        l.status || '—',
                         displayStatus: (l.status === 'SCHEDULED' && etaMsVal) ? 'MANIFESTED' : (l.status || '—'),
                         location:      String(door),
