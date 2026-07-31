@@ -11386,7 +11386,7 @@ if (k === 'eta') {
             var lo = Math.min(dragAnchor, dragCurrent), hi = Math.max(dragAnchor, dragCurrent);
             if (!isDragging) {
                 var row = dataRows[dragAnchor], vrid = row ? row.dataset.vrid : null;
-                if (vrid && e.target.tagName !== 'A' && !e.target.dataset.routeClick) {
+                if (vrid && e.target.tagName !== 'A' && !e.target.dataset.routeClick && !e.target.dataset.action) {
                     if (e.shiftKey && lastClickIdx !== null) {
                         var slo = Math.min(lastClickIdx, dragAnchor), shi = Math.max(lastClickIdx, dragAnchor);
                         for (var i = slo; i <= shi; i++) { ibSelectedIds.add(dataRows[i].dataset.vrid); dataRows[i].classList.add('selected'); }
