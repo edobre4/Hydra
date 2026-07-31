@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.34
+// @version      3.35
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -1836,6 +1836,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.badge-READY_FOR_LOAD{background:var(--h-badge-blue, #1a3a5c);color:#2f7fc8}',
         '.badge-LOADING_PAUSED{background:var(--h-badge-amber, #3d2a00);color:#c87f0a}',
         '.badge-STAGED{background:var(--h-badge-gold, #2a2a1a);color:#b8950a}',
+        '.hydra-status-action{cursor:pointer;transition:all 0.15s}',
+        '.hydra-status-action:hover{filter:brightness(1.4);box-shadow:0 0 6px rgba(255,255,255,0.3);transform:scale(1.05)}',
 
         // Empty state
         '#hydra-empty{text-align:center;padding:40px;font-size:14px;width:100%;box-sizing:border-box}',
@@ -4573,6 +4575,48 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
+    // ── IB Dock: Start / Complete unload via SSP ──
+    function startUnloadTrailer(vrid, planId) {
+        var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
+        var body = 'entity=setLoadStatusStartUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
+        return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
+            console.log('[Hydra] startUnload SUCCESS for ' + vrid, data);
+            // Update local row immediately
+            if (Array.isArray(ibTableData)) {
+                for (var i = 0; i < ibTableData.length; i++) {
+                    if (ibTableData[i] && ibTableData[i].vrid === vrid) {
+                        ibTableData[i].status = 'UNLOADING_IN_PROGRESS';
+                        ibTableData[i].displayStatus = 'UNLOADING_IN_PROGRESS';
+                        break;
+                    }
+                }
+            }
+            renderIBTabs(); renderIBTable(); renderDockDoorPanel();
+            return data;
+        });
+    }
+
+    function completeUnloadTrailer(vrid, planId) {
+        var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
+        var body = 'entity=setLoadStatusCompleteUnload&nodeId=' + encodeURIComponent(nodeId) + '&planId=' + encodeURIComponent(planId) + '&vrId=' + encodeURIComponent(vrid);
+        return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
+            console.log('[Hydra] completeUnload SUCCESS for ' + vrid, data);
+            // Update local row immediately
+            if (Array.isArray(ibTableData)) {
+                for (var i = 0; i < ibTableData.length; i++) {
+                    if (ibTableData[i] && ibTableData[i].vrid === vrid) {
+                        ibTableData[i].status = 'COMPLETED';
+                        ibTableData[i].displayStatus = 'COMPLETED';
+                        ibTableData[i].remaining = 0;
+                        break;
+                    }
+                }
+            }
+            renderIBTabs(); renderIBTable(); renderDockDoorPanel();
+            return data;
+        });
+    }
+
     function fetchToken() {
         var _tokTrace = hydraTraceStart('fetchToken');
         var _tokTimedOut = false;
@@ -5023,7 +5067,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.34') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.35') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -11074,7 +11118,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 if (k === 'equip') { var eq = equipCell(r.equipType); return '<td class="col-equip" title="' + eq.label + '">' + eq.html + '</td>'; }
                 if (k === 'vrid') return '<td class="vrid-cell"><span class="hydra-copy-id" data-copy="' + r.vrid + '" title="Click to copy">' + r.vrid + '</span></td>';
                 if (k === 'route') { var rc = routeColorClass(r); var ra = ' data-route-click="1" data-route-vrid="' + r.vrid + '" data-route-loadid="' + r.loadId + '" data-route-name="' + (r.route||'') + '" data-route-status="' + r.status + '"'; return '<td><span class="' + rc + '" title="' + (ROUTE_LABELS[rc] || '') + '" style="cursor:pointer"' + ra + '>' + (r.route || '—') + '</span></td>'; }
-                if (k === 'status') { var ds = r.displayStatus || r.status; var bc = ds === 'MANIFESTED' ? 'badge-MANIFESTED' : 'badge-' + r.status; return '<td><span class="badge ' + bc + '">' + ds.replace(/_/g, ' ') + '</span></td>'; }
+                if (k === 'status') {
+                    var ds = r.displayStatus || r.status; var bc = ds === 'MANIFESTED' ? 'badge-MANIFESTED' : 'badge-' + r.status;
+                    var canStart = r.status === 'READY_FOR_UNLOAD' && r.tdrStatus && r.tdrStatus !== 'NoTDR';
+                    var canComplete = r.status === 'UNLOADING_IN_PROGRESS';
+                    var actionCls = (canStart || canComplete) ? ' hydra-status-action' : '';
+                    var actionAttr = canStart ? ' data-action="start" data-vrid="' + r.vrid + '" data-loadid="' + r.loadId + '"' : (canComplete ? ' data-action="complete" data-vrid="' + r.vrid + '" data-loadid="' + r.loadId + '"' : '');
+                    var actionTitle = canStart ? ' title="Click to start unload"' : (canComplete ? ' title="Click to complete unload"' : '');
+                    return '<td><span class="badge ' + bc + actionCls + '"' + actionAttr + actionTitle + '>' + ds.replace(/_/g, ' ') + '</span></td>';
+                }
                 if (k === 'progress') return progressBarHtml(r.total, r.remaining);
                 if (k === 'cpt') return cptCellHtml(r.cpt, _noHeat);
                 if (k === 'cptPlus') return cptCellHtml(r.cptPlus || 0, _noHeat);
@@ -11198,6 +11250,33 @@ if (k === 'eta') {
             el.addEventListener('click', function(e) {
                 e.stopPropagation();
                 openRoutePopup(el.dataset.routeLoadid, el.dataset.routeVrid, el.dataset.routeName, el.dataset.routeStatus);
+            });
+        });
+
+        // Wire up status badge clicks → start/complete unload
+        _wrap.querySelectorAll('.hydra-table .hydra-status-action').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var action = el.dataset.action;
+                var vrid = el.dataset.vrid;
+                var loadId = el.dataset.loadid;
+                if (!action || !vrid || !loadId) return;
+                // Visual feedback
+                var origText = el.textContent;
+                el.textContent = action === 'start' ? 'Starting...' : 'Completing...';
+                el.style.opacity = '0.6';
+                el.style.pointerEvents = 'none';
+                var fn = action === 'start' ? startUnloadTrailer : completeUnloadTrailer;
+                fn(vrid, loadId).then(function() {
+                    // Success — table re-renders via the function
+                }).catch(function(err) {
+                    console.error('[Hydra] ' + action + ' unload failed:', err);
+                    el.textContent = '\u2717 ' + origText;
+                    el.style.opacity = '1';
+                    el.style.pointerEvents = '';
+                    el.title = 'Failed: ' + err;
+                    setTimeout(function() { el.textContent = origText; el.title = action === 'start' ? 'Click to start unload' : 'Click to complete unload'; }, 3000);
+                });
             });
         });
 
