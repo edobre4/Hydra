@@ -2055,6 +2055,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.hydra-door-body.dd-incoming{color:var(--h-blue, #5090d0);font-size:calc(13px * var(--dd-scale))}',
         '.hydra-door-body.dd-outgoing{color:#ff7043;font-size:calc(13px * var(--dd-scale))}',
         '.hydra-door-cell.dd-empty-trailer{background:rgba(249,168,37,0.1)}',
+        '.hydra-door-cell.dd-moveable:hover{box-shadow:0 0 6px rgba(32,212,240,0.4);border-color:rgba(32,212,240,0.5)}',
+        '.hydra-door-move-badge{position:absolute;top:1px;right:1px;font-size:7px;color:var(--h-ob-accent, #20d4f0);opacity:0.5;pointer-events:none;line-height:1}',
+        '.hydra-door-cell.dd-moveable:hover .hydra-door-move-badge{opacity:1}',
         '.hydra-door-cell.dd-unknown{opacity:0.4}',
         '.hydra-door-cell.dd-unknown .hydra-door-body{color:var(--h-dim, #4a5a6a)}',
         '.hydra-door-cell.dd-pa-upcoming{background:rgba(156,102,204,0.28);border-color:rgba(156,102,204,0.7)}',
@@ -6687,8 +6690,25 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var _pmText = (_pmRoute && _pmRoute.text) || '';
                 pendingMoveHtml = '<span class="hydra-door-pending-in" title="Move: ' + _pmText + '">\u2192</span>';
             }
+            // Move indicator: show small badge on cells where a trailer can be moved
+            var moveIndicatorHtml = '';
+            if (ymsMoveEnabled && (s.state === 'loaded' || s.state === 'empty')) {
+                var _canMove = false;
+                if (s.state === 'loaded') {
+                    // Loaded trailer: moveable if NOT TDR'd in
+                    _canMove = !s.tdrStatus || s.tdrStatus === 'NoTDR';
+                } else if (s.state === 'empty') {
+                    // Empty trailer at door: always moveable
+                    _canMove = true;
+                }
+                if (_canMove) {
+                    cellCls += ' dd-moveable';
+                    moveIndicatorHtml = '<span class="hydra-door-move-badge" title="Double-click to move">\u21BB</span>';
+                    titleTxt += ' \u2014 Double-click to move';
+                }
+            }
             return '<div class="' + cellCls + '" title="' + titleTxt + '">' +
-                   sdtWarnHtml + pendingMoveHtml +
+                   sdtWarnHtml + pendingMoveHtml + moveIndicatorHtml +
                    '<div class="hydra-door-num">' + num + '</div>' +
                    '<div class="' + bodyCls + '" data-full-route="1">' + bodyHtml + '</div>' +
                    '</div>';
