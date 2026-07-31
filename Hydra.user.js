@@ -9476,50 +9476,36 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // Parse door number from locationCode (e.g. 'DD205' -> '205')
         var doorMatch = locationCode.match(/\d+/);
         var doorNum = doorMatch ? doorMatch[0] : locationCode;
-        // Update ibTableData if present
+        // Update ibTableData location column to show the destination
         if (Array.isArray(ibTableData)) {
             for (var i = 0; i < ibTableData.length; i++) {
                 var row = ibTableData[i];
                 if (!row) continue;
                 var rowVisitId = ymsVisitIdMap[row.vrid];
                 if (String(rowVisitId) === String(visitId)) {
-                    row.location = doorNum;
+                    row.pendingMoveDoor = doorNum;
                     break;
                 }
             }
         }
-        // Update yardStateData: move the asset to the new location
+        // Update yardStateData: add an outgoing movement record on the source location
+        // so the dock panel shows the "outgoing" arrow. Do NOT remove the asset —
+        // the trailer is still physically there until the driver moves it.
         if (yardStateData && Array.isArray(yardStateData)) {
-            var asset = null, oldLocIdx = -1, oldAssetIdx = -1;
             for (var li = 0; li < yardStateData.length; li++) {
                 var loc = yardStateData[li];
                 if (!loc || !loc.yardAssets) continue;
                 for (var ai = 0; ai < loc.yardAssets.length; ai++) {
                     if (String(loc.yardAssets[ai].visitId) === String(visitId)) {
-                        asset = loc.yardAssets[ai];
-                        oldLocIdx = li;
-                        oldAssetIdx = ai;
+                        // Add a synthetic outgoing movement so getDoorState sees it
+                        if (!loc.movements) loc.movements = [];
+                        loc.movements.push({
+                            sourceLocation: { code: loc.code },
+                            targetLocation: { code: locationCode },
+                            yardAssets: [loc.yardAssets[ai]]
+                        });
                         break;
                     }
-                }
-                if (asset) break;
-            }
-            if (asset) {
-                // Remove from old location
-                yardStateData[oldLocIdx].yardAssets.splice(oldAssetIdx, 1);
-                // Add to new location (find or create)
-                var newLoc = null;
-                for (var ni = 0; ni < yardStateData.length; ni++) {
-                    if (yardStateData[ni] && yardStateData[ni].code === locationCode) {
-                        newLoc = yardStateData[ni];
-                        break;
-                    }
-                }
-                if (newLoc) {
-                    if (!newLoc.yardAssets) newLoc.yardAssets = [];
-                    newLoc.yardAssets.push(asset);
-                } else {
-                    yardStateData.push({ code: locationCode, yardAssets: [asset], movements: [] });
                 }
             }
         }
