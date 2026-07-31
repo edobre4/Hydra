@@ -2066,6 +2066,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.hydra-door-cell.dd-empty-trailer{background:rgba(249,168,37,0.1)}',
         '.hydra-door-cell.dd-moveable:hover{box-shadow:0 0 6px rgba(32,212,240,0.4);border-color:rgba(32,212,240,0.5)}',
         '.hydra-door-move-badge{position:absolute;top:1px;right:1px;font-size:7px;color:var(--h-ob-accent, #20d4f0);opacity:0.5;pointer-events:none;line-height:1}',
+        '.hydra-loc-move-badge{font-size:9px;color:var(--h-ob-accent, #20d4f0);opacity:0.55;pointer-events:none}',
+        'td.hydra-door-clickable:hover .hydra-loc-move-badge{opacity:1}',
         '.hydra-door-cell.dd-moveable:hover .hydra-door-move-badge{opacity:1}',
         '.hydra-door-cell.dd-unknown{opacity:0.4}',
         '.hydra-door-cell.dd-unknown .hydra-door-body{color:var(--h-dim, #4a5a6a)}',
@@ -4778,6 +4780,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         ibTableData[i].displayStatus = 'COMPLETED';
                         ibTableData[i].remaining = 0;
                         break;
+                    }
+                }
+            }
+            // Update the YMS yard asset locally: the trailer is now EMPTY, so
+            // the dock door panel shows "E" instead of the stale inbound route.
+            if (visitId && yardStateData && Array.isArray(yardStateData)) {
+                emptyLoop:
+                for (var eli = 0; eli < yardStateData.length; eli++) {
+                    var eLoc = yardStateData[eli];
+                    if (!eLoc || !eLoc.yardAssets) continue;
+                    for (var ela = 0; ela < eLoc.yardAssets.length; ela++) {
+                        if (String(eLoc.yardAssets[ela].visitId) === String(visitId)) {
+                            eLoc.yardAssets[ela].status = 'EMPTY';
+                            break emptyLoop;
+                        }
                     }
                 }
             }
@@ -11465,7 +11482,13 @@ if (k === 'eta') {
                             tdCls = ' class="hydra-door-no-tdr"';
                         }
                     }
-                    return '<td' + tdCls + tdTitle + extraAttrs + '>' + doorVal + warnHtml + '</td>';
+                    // Move indicator: same cue as the dock door panel — trailer
+                    // can be moved (at dock without TDR, or in yard)
+                    var moveBadgeHtml = '';
+                    if (ymsMoveEnabled && r.status !== 'SCHEDULED' && _dockYardStatuses[r.status] && (!r.tdrStatus || r.tdrStatus === 'NoTDR')) {
+                        moveBadgeHtml = ' <span class="hydra-loc-move-badge" title="Click to move">\u21BB</span>';
+                    }
+                    return '<td' + tdCls + tdTitle + extraAttrs + '>' + doorVal + warnHtml + moveBadgeHtml + '</td>';
                 }
                 if (typeof r[k] === 'number') return r[k] === 0 ? '<td style="color:var(--h-dim2, #3a4a5a)">0</td>' : '<td>' + r[k].toLocaleString() + '</td>';
                 return '<td>' + (r[k] || '—') + '</td>';
