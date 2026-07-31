@@ -3,8 +3,8 @@
 // @version      2.31
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
-// @updateURL    https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1
-// @downloadURL  https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1
+// @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
+// @downloadURL  https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.user.js
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ob*
@@ -17587,8 +17587,8 @@ if (k === 'eta') {
         // Version check — notify user if newer version exists on code.amazon.com
         (function checkForUpdate() {
             var CURRENT_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '2.24';
-            var UPDATE_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.user.js?raw=1';
-            var META_URL = 'https://code.amazon.com/packages/HydraUserscript/blobs/mainline/--/Hydra.meta.js?raw=1';
+            var UPDATE_URL = 'https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.user.js';
+            var META_URL = 'https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js';
             function _cmpVer(x, y) {
                 var xa = String(x).split('.'), ya = String(y).split('.');
                 for (var i = 0; i < Math.max(xa.length, ya.length); i++) {
