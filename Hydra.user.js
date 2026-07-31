@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.33
+// @version      3.34
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -1284,7 +1284,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var ymsSecurityTokenAt   = 0;      // timestamp when token was fetched (ms)
     var ymsEquipmentMap      = {};     // visitId -> { equipmentId, equipmentVersion }
     var ymsVisitIdMap        = {};     // VRID -> visitId (extracted from yard state)
-    var ymsMoveEnabled = (function(){ try { return localStorage.getItem('hydra_yms_moves') === 'true'; } catch(e) { return false; } })();
+    var ymsMoveEnabled = (function(){ try { var v = localStorage.getItem('hydra_yms_moves'); if (v === 'false') return false; return true; } catch(e) { return true; } })();
     unsafeWindow.hydraUnlockMoves = function() { ymsMoveEnabled = true; try { localStorage.setItem('hydra_yms_moves', 'true'); } catch(e) {} console.log('[Hydra] YMS Moves UNLOCKED'); };
     unsafeWindow.hydraLockMoves = function() { ymsMoveEnabled = false; try { localStorage.setItem('hydra_yms_moves', 'false'); } catch(e) {} console.log('[Hydra] YMS Moves LOCKED'); };
 
@@ -5023,7 +5023,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.33') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.34') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -6875,7 +6875,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     statusEl.className = 'move-status success';
                     statusEl.textContent = '\u2714 Moved to ' + selectedLoc + '!';
                     confirmBtn.style.display = 'none';
-                    setTimeout(function() { fetchYardStateIfNeeded().then(function() { renderDockDoorPanel(); if (typeof puActive !== 'undefined' && puActive) { renderAllPanes(); } else if (activeView === 'IB') { renderIBTabs(); renderIBTable(); } updateIndicators(); }); }, 2000);
+                    applyMoveLocally(visitId, selectedLoc);
                 }).catch(function(err) {
                     statusEl.className = 'move-status error';
                     statusEl.textContent = '\u2717 Failed: ' + err;
@@ -7047,7 +7047,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     statusEl.className = 'move-status success';
                     statusEl.textContent = '\u2714 ' + vrid + ' moved to ' + selectedLoc + '!';
                     confirmBtn.style.display = 'none';
-                    setTimeout(function() { fetchYardStateIfNeeded().then(function() { renderDockDoorPanel(); if (typeof puActive !== 'undefined' && puActive) { renderAllPanes(); } else if (activeView === 'IB') { renderIBTabs(); renderIBTable(); } updateIndicators(); }); }, 2000);
+                    applyMoveLocally(visitId, selectedLoc);
                 }).catch(function(err) {
                     statusEl.className = 'move-status error';
                     statusEl.textContent = '\u2717 Failed: ' + err;
@@ -8248,7 +8248,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 statusEl.className = 'move-status success';
                 statusEl.textContent = '\u2714 ' + selectedVrid + ' moved to Door ' + doorNum + '!';
                 confirmBtn.style.display = 'none';
-                setTimeout(function() { fetchYardStateIfNeeded().then(function() { renderDockDoorPanel(); if (typeof puActive !== 'undefined' && puActive) { renderAllPanes(); } else if (activeView === 'IB') { renderIBTabs(); renderIBTable(); } updateIndicators(); }); }, 2000);
+                applyMoveLocally(selectedVisitId, locationCode);
             }).catch(function(err) {
                 statusEl.className = 'move-status error';
                 statusEl.textContent = '\u2717 Failed: ' + err;
@@ -9349,6 +9349,66 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 });
             });
         });
+    }
+
+    // Immediately update local data after a successful move so the UI reflects the change
+    // without waiting for the next YMS fetch cycle.
+    function applyMoveLocally(visitId, locationCode) {
+        // Parse door number from locationCode (e.g. 'DD205' -> '205')
+        var doorMatch = locationCode.match(/\d+/);
+        var doorNum = doorMatch ? doorMatch[0] : locationCode;
+        // Update ibTableData if present
+        if (Array.isArray(ibTableData)) {
+            for (var i = 0; i < ibTableData.length; i++) {
+                var row = ibTableData[i];
+                if (!row) continue;
+                var rowVisitId = ymsVisitIdMap[row.vrid];
+                if (String(rowVisitId) === String(visitId)) {
+                    row.location = doorNum;
+                    break;
+                }
+            }
+        }
+        // Update yardStateData: move the asset to the new location
+        if (yardStateData && Array.isArray(yardStateData)) {
+            var asset = null, oldLocIdx = -1, oldAssetIdx = -1;
+            for (var li = 0; li < yardStateData.length; li++) {
+                var loc = yardStateData[li];
+                if (!loc || !loc.yardAssets) continue;
+                for (var ai = 0; ai < loc.yardAssets.length; ai++) {
+                    if (String(loc.yardAssets[ai].visitId) === String(visitId)) {
+                        asset = loc.yardAssets[ai];
+                        oldLocIdx = li;
+                        oldAssetIdx = ai;
+                        break;
+                    }
+                }
+                if (asset) break;
+            }
+            if (asset) {
+                // Remove from old location
+                yardStateData[oldLocIdx].yardAssets.splice(oldAssetIdx, 1);
+                // Add to new location (find or create)
+                var newLoc = null;
+                for (var ni = 0; ni < yardStateData.length; ni++) {
+                    if (yardStateData[ni] && yardStateData[ni].code === locationCode) {
+                        newLoc = yardStateData[ni];
+                        break;
+                    }
+                }
+                if (newLoc) {
+                    if (!newLoc.yardAssets) newLoc.yardAssets = [];
+                    newLoc.yardAssets.push(asset);
+                } else {
+                    yardStateData.push({ code: locationCode, yardAssets: [asset], movements: [] });
+                }
+            }
+        }
+        // Re-render immediately
+        renderDockDoorPanel();
+        if (typeof puActive !== 'undefined' && puActive) { renderAllPanes(); }
+        else if (activeView === 'IB') { renderIBTabs(); renderIBTable(); }
+        updateIndicators();
     }
 
 
