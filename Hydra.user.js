@@ -4645,6 +4645,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var trailerNumber = '';
         if (visitId && ymsEquipmentMap[visitId]) {
             trailerId = ymsEquipmentMap[visitId].equipmentId || '';
+            trailerNumber = ymsEquipmentMap[visitId].trailerNumber || '';
         }
         var seals = encodeURIComponent(JSON.stringify([{stopName: nodeId, sealNum: null}]));
         var body = 'entity=setLoadStatusComplete&nodeId=' + encodeURIComponent(nodeId)
@@ -9366,7 +9367,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                     ymsEquipmentMap[visitId] = {
                                         equipmentId: info.yerIdentifier.equipmentId,
                                         equipmentVersion: info.yerIdentifier.equipmentVersion,
-                                        operationalCodes: info.operationalCodes || []
+                                        operationalCodes: info.operationalCodes || [],
+                                        trailerNumber: info.equipmentName || info.trailerNumber || info.yerIdentifier.equipmentName || info.yerIdentifier.trailerNumber || ''
                                     };
                                 }
                             });
