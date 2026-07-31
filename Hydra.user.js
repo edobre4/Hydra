@@ -1773,6 +1773,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
         // Totals row
         '.ib-view #hydra-table tbody tr.totals-row td{background:var(--h-gray3, #3a3a3a);color:#ff2855;font-weight:700;border-bottom:2px solid #cc1040;padding:6px 12px;position:sticky;top:37px;z-index:9}',
+        // Sectioned All view (IB): section title band + per-section header rows
+        '.ib-view #hydra-table.ib-sectioned tbody tr.totals-row td, .hydra-table.ib-sectioned tbody tr.totals-row td{position:static}',
+        '.ib-section-title td{background:linear-gradient(90deg, rgba(204,16,64,0.30), rgba(35,35,35,0.55));color:#ff4070;font-weight:800;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:7px 12px;border-top:2px solid #cc1040;border-bottom:1px solid var(--h-border, #2a3a4c);text-align:left}',
+        '.ib-section-count{display:inline-block;background:#3d1020;color:#ff4070;border:1px solid #ff4070;border-radius:8px;padding:0 7px;font-size:10px;font-weight:700;margin-left:6px}',
+        '.hydra-table tbody tr.ib-section-head th{background:var(--h-gray3, #3a3a3a);color:#ff2855;padding:6px 12px;text-align:center;border-bottom:2px solid #cc1040;white-space:nowrap;font-weight:700;cursor:pointer}',
+        '.hydra-table tbody tr.ib-section-head th:hover{background:#484848}',
+        '.hydra-table tbody tr.ib-section-head th.col-equip{cursor:default;width:44px;padding:6px 4px}',
+        '.hydra-table tbody tr.ib-section-head th.sort-asc::after{content:" ▲";font-size:9px}',
+        '.hydra-table tbody tr.ib-section-head th.sort-desc::after{content:" ▼";font-size:9px}',
         '.ob-view #hydra-table tbody tr.totals-row td{background:var(--h-grey33, #333333);color:var(--h-ob-accent, #20d4f0);font-weight:700;border-bottom:2px solid #0a6e8a;padding:6px 12px;position:sticky;top:37px;z-index:9}',
         '.ob-view .hydra-table tbody tr.totals-row td{background:var(--h-grey33, #333333);color:var(--h-ob-accent, #20d4f0);font-weight:700;border-bottom:2px solid #0a6e8a;padding:6px 12px}',
 
@@ -11070,25 +11079,62 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
         var data = getIBFiltered(ibActiveTab);
 
-        // Sort - per-tab sort state
-        var _sortState = getIbSort();
-        var _sortKey = _sortState.key, _sortDir = _sortState.dir;
-        data.sort(function(a, b) {
-            var av = a[_sortKey], bv = b[_sortKey];
-            // Use millisecond values for time columns
-            if (_sortKey === 'sat') { av = a.satMs; bv = b.satMs; }
-            if (_sortKey === 'aat') { av = a.aatMs; bv = b.aatMs; }
-            if (_sortKey === 'dwell') { av = a.doorSinceMs ? (Date.now() - a.doorSinceMs) : -1; bv = b.doorSinceMs ? (Date.now() - b.doorSinceMs) : -1; }
-            if (_sortKey === 'yardDwell') { av = a.yardSinceMs ? (Date.now() - a.yardSinceMs) : -1; bv = b.yardSinceMs ? (Date.now() - b.yardSinceMs) : -1; }
-            if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
-            if (_sortKey === 'criticalPull') { av = a.criticalPullMs; bv = b.criticalPullMs; }
-            if (_sortKey === 'progress') {
-                av = a.total > 0 ? (a.total - a.remaining) / a.total : 0;
-                bv = b.total > 0 ? (b.total - b.remaining) / b.total : 0;
+        // Sort comparator — shared by the flat view and the per-section All view
+        function sortIbRows(arr, _sortKey, _sortDir) {
+            arr.sort(function(a, b) {
+                var av = a[_sortKey], bv = b[_sortKey];
+                // Use millisecond values for time columns
+                if (_sortKey === 'sat') { av = a.satMs; bv = b.satMs; }
+                if (_sortKey === 'aat') { av = a.aatMs; bv = b.aatMs; }
+                if (_sortKey === 'dwell') { av = a.doorSinceMs ? (Date.now() - a.doorSinceMs) : -1; bv = b.doorSinceMs ? (Date.now() - b.doorSinceMs) : -1; }
+                if (_sortKey === 'yardDwell') { av = a.yardSinceMs ? (Date.now() - a.yardSinceMs) : -1; bv = b.yardSinceMs ? (Date.now() - b.yardSinceMs) : -1; }
+                if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
+                if (_sortKey === 'criticalPull') { av = a.criticalPullMs; bv = b.criticalPullMs; }
+                if (_sortKey === 'progress') {
+                    av = a.total > 0 ? (a.total - a.remaining) / a.total : 0;
+                    bv = b.total > 0 ? (b.total - b.remaining) / b.total : 0;
+                }
+                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * _sortDir;
+                return String(av || '').localeCompare(String(bv || '')) * _sortDir;
+            });
+        }
+
+        // Sectioned "All" view: group rows into At Dock / Yard / Manifested /
+        // Scheduled / Completed, each with its own sortable header + totals.
+        // Section sort state piggybacks on the matching tab's ibTabSort slot.
+        var _sections = null;
+        if (ibActiveTab === 'all') {
+            var _secDefs = [
+                { id: 'ondock',     label: 'At Dock',    match: function(r) { return !!({'UNLOADING_IN_PROGRESS':1,'READY_FOR_UNLOAD':1,'UNLOADING_PAUSED':1})[r.status]; } },
+                { id: 'yard',       label: 'Yard',       match: function(r) { return !!({'LOAD_ARRIVED':1,'IN_TRANSIT':1})[r.status]; } },
+                { id: 'manifested', label: 'Manifested', match: function(r) { return (r.displayStatus || r.status) === 'MANIFESTED'; } },
+                { id: 'scheduled',  label: 'Scheduled',  match: function(r) { return (r.displayStatus || r.status) === 'SCHEDULED'; } },
+                { id: 'completed',  label: 'Completed',  match: function(r) { return r.status === 'COMPLETED'; } },
+            ];
+            var _claimed = new Set();
+            _sections = [];
+            _secDefs.forEach(function(sec) {
+                var rows = data.filter(function(r) { return !_claimed.has(r) && sec.match(r); });
+                if (!rows.length) return;
+                rows.forEach(function(r) { _claimed.add(r); });
+                var ss = ibTabSort[sec.id] || (ibTabSort[sec.id] = { key: 'cpt', dir: -1 });
+                sortIbRows(rows, ss.key, ss.dir);
+                _sections.push({ def: sec, rows: rows, sort: ss });
+            });
+            // Rows with unexpected statuses fall into a trailing Other bucket
+            var _leftover = data.filter(function(r) { return !_claimed.has(r); });
+            if (_leftover.length) {
+                var _oSort = getIbSort();
+                sortIbRows(_leftover, _oSort.key, _oSort.dir);
+                _sections.push({ def: { id: 'all', label: 'Other' }, rows: _leftover, sort: _oSort });
             }
-            if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * _sortDir;
-            return String(av || '').localeCompare(String(bv || '')) * _sortDir;
-        });
+            // Rebuild data in section order so downstream consumers (CPT risk
+            // snapshot, drag-select row indexes) see the rendered order.
+            data = _sections.reduce(function(acc, s) { return acc.concat(s.rows); }, []);
+        } else {
+            var _sortState = getIbSort();
+            sortIbRows(data, _sortState.key, _sortState.dir);
+        }
 
         // CPT Risk: Record snapshot
         var _now = Date.now();
@@ -11104,40 +11150,48 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
         var visArr = ibColOrder.filter(function(k) { return ibVisibleCols.has(k); });
 
-        // Header
+        // Header — buildHeadCells is reused for per-section header rows in the
+        // sectioned All view (secId stamps data-section for the sort handler).
         var obRoutesForCols = ibVisibleCols.has('obRoutes') ? getSelectedObRoutes() : [];
-        var headHtml = '<tr>' + visArr.map(function(k) {
-            if (k === 'obRoutes') {
-                return obRoutesForCols.map(function(rt) {
-                    var rtLabel = String(rt).replace(/-CYC[12]$/i, '');
-                    return '<th class="col-obRoute" data-key="obRoute:' + rt + '">' + rtLabel + '</th>';
-                }).join('');
-            }
-            var c = IB_COLS.find(function(col) { return col.key === k; });
-            var sc = _sortKey === k ? (_sortDir === 1 ? ' sort-asc' : ' sort-desc') : '';
-            return '<th class="col-' + k + sc + '" data-key="' + k + '">' + c.label + '</th>';
-        }).join('') + '</tr>';
-
-        // Totals
-        var totals = { total: 0, sortable: 0, crossdock: 0, cpt: 0, cptPlus: 0, noncon: 0, ncCpt: 0, nextCpt: 0, containers: 0, containersS: 0, containersXD: 0, fluid: 0, containerized: 0 };
-        data.forEach(function(r) {
-            totals.total += r.total || 0; totals.sortable += r.sortable || 0; totals.crossdock += r.crossdock || 0;
-            totals.cpt += r.cpt || 0; totals.cptPlus += r.cptPlus || 0; totals.noncon += r.noncon || 0; totals.ncCpt += r.ncCpt || 0; totals.nextCpt += r.nextCpt || 0; totals.containers += r.containers || 0;
-            totals.fluid += r.fluid || 0; totals.containerized += r.containerized || 0;
-            totals.containersS += r.containersS || 0; totals.containersXD += r.containersXD || 0;
-        });
-
-        // Calculate percentage totals
-        if (totals.total > 0) {
-            totals.fluidPct = Math.round((totals.fluid / totals.total) * 100);
-            totals.containerizedPct = Math.round((totals.containerized / totals.total) * 100);
-        } else {
-            totals.fluidPct = 0;
-            totals.containerizedPct = 0;
+        function buildHeadCells(_hSortKey, _hSortDir, secId) {
+            var secAttr = secId ? ' data-section="' + secId + '"' : '';
+            return visArr.map(function(k) {
+                if (k === 'obRoutes') {
+                    return obRoutesForCols.map(function(rt) {
+                        var rtLabel = String(rt).replace(/-CYC[12]$/i, '');
+                        return '<th class="col-obRoute" data-key="obRoute:' + rt + '"' + secAttr + '>' + rtLabel + '</th>';
+                    }).join('');
+                }
+                var c = IB_COLS.find(function(col) { return col.key === k; });
+                var sc = _hSortKey === k ? (_hSortDir === 1 ? ' sort-asc' : ' sort-desc') : '';
+                return '<th class="col-' + k + sc + '" data-key="' + k + '"' + secAttr + '>' + c.label + '</th>';
+            }).join('');
         }
+        var _flatSort = getIbSort();
+        var headHtml = '<tr>' + buildHeadCells(_flatSort.key, _flatSort.dir, null) + '</tr>';
 
-        var totalsHtml = '<tr class="totals-row">' + visArr.map(function(k) {
-            if (k === 'equip') return '<td>' + data.length + '</td>';
+        // Totals — parametrized so the sectioned All view can render a totals
+        // row per section (label defaults to TOTAL).
+        function buildTotalsRow(rows) {
+            var totals = { total: 0, sortable: 0, crossdock: 0, cpt: 0, cptPlus: 0, noncon: 0, ncCpt: 0, nextCpt: 0, containers: 0, containersS: 0, containersXD: 0, fluid: 0, containerized: 0 };
+            rows.forEach(function(r) {
+                totals.total += r.total || 0; totals.sortable += r.sortable || 0; totals.crossdock += r.crossdock || 0;
+                totals.cpt += r.cpt || 0; totals.cptPlus += r.cptPlus || 0; totals.noncon += r.noncon || 0; totals.ncCpt += r.ncCpt || 0; totals.nextCpt += r.nextCpt || 0; totals.containers += r.containers || 0;
+                totals.fluid += r.fluid || 0; totals.containerized += r.containerized || 0;
+                totals.containersS += r.containersS || 0; totals.containersXD += r.containersXD || 0;
+            });
+
+            // Calculate percentage totals
+            if (totals.total > 0) {
+                totals.fluidPct = Math.round((totals.fluid / totals.total) * 100);
+                totals.containerizedPct = Math.round((totals.containerized / totals.total) * 100);
+            } else {
+                totals.fluidPct = 0;
+                totals.containerizedPct = 0;
+            }
+
+            return '<tr class="totals-row">' + visArr.map(function(k) {
+            if (k === 'equip') return '<td>' + rows.length + '</td>';
             if (k === 'vrid') return '<td>TOTAL</td>';
             if (k === 'fluidPct') return '<td>' + totals.fluidPct + '%</td>';
             if (k === 'containerizedPct') return '<td>' + totals.containerizedPct + '%</td>';
@@ -11148,24 +11202,25 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             }
             if (k === 'obRoutes') {
                 return obRoutesForCols.map(function(rt) {
-                    var sum = data.reduce(function(s, r) {
+                    var sum = rows.reduce(function(s, r) {
                         return s + ((r.obRouteCounts && r.obRouteCounts[rt]) || 0);
                     }, 0);
                     if (sum === 0) return '<td style="color:var(--h-dim2, #3a4a5a)">0</td>';
                     return '<td>' + sum.toLocaleString() + '</td>';
                 }).join('');
             }
-            if (k === 'projFinish') return projFinishTotalCell(data);
+            if (k === 'projFinish') return projFinishTotalCell(rows);
             if (totals[k] !== undefined) return totals[k] === 0 ? '<td style="color:var(--h-dim2, #3a4a5a)">0</td>' : '<td>' + totals[k].toLocaleString() + '</td>';
             return '<td></td>';
-        }).join('') + '</tr>';
+            }).join('') + '</tr>';
+        }
 
         // Data rows
         var nodeId = document.getElementById('hydra-node-input').value || DEFAULT_NODE;
         // CPT SLA: suppress heatmap on CPT / CPT+ / NC CPT when a trailer's AAT
         // is later than (latest selected CPT window end - SLA hours). null = no suppression.
         var _slaThresholdMs = computeSlaThresholdMs();
-        var rowsHtml = data.map(function(r) {
+        function buildRowHtml(r) {
             var sel = ibSelectedIds.has(r.vrid) ? ' selected' : '';
             var _noHeat = (_slaThresholdMs !== null && r.aatMs && r.aatMs > _slaThresholdMs);
             return '<tr class="data-row' + sel + '" data-vrid="' + r.vrid + '">' + visArr.map(function(k) {
@@ -11301,9 +11356,28 @@ if (k === 'eta') {
                 if (typeof r[k] === 'number') return r[k] === 0 ? '<td style="color:var(--h-dim2, #3a4a5a)">0</td>' : '<td>' + r[k].toLocaleString() + '</td>';
                 return '<td>' + (r[k] || '—') + '</td>';
             }).join('') + '</tr>';
-        }).join('');
-        _wrap.querySelector('.hydra-table thead').innerHTML = headHtml;
-        _wrap.querySelector('.hydra-table tbody').innerHTML = totalsHtml + rowsHtml;
+        }
+
+        if (_sections) {
+            // Sectioned All view: each section renders a title band, its own
+            // sortable header row, a totals row, and its data rows.
+            var _colCount = visArr.length + (ibVisibleCols.has('obRoutes') ? Math.max(0, obRoutesForCols.length - 1) : 0);
+            var _secHtml = _sections.map(function(s) {
+                return '<tr class="ib-section-title"><td colspan="' + _colCount + '">' + s.def.label +
+                       ' <span class="ib-section-count">' + s.rows.length + '</span></td></tr>' +
+                       '<tr class="ib-section-head">' + buildHeadCells(s.sort.key, s.sort.dir, s.def.id) + '</tr>' +
+                       buildTotalsRow(s.rows) +
+                       s.rows.map(buildRowHtml).join('');
+            }).join('');
+            if (!_secHtml) _secHtml = buildTotalsRow(data); // empty state: show zeroed TOTAL row
+            _wrap.querySelector('.hydra-table thead').innerHTML = '';
+            _wrap.querySelector('.hydra-table tbody').innerHTML = _secHtml;
+            _wrap.querySelector('.hydra-table').classList.add('ib-sectioned');
+        } else {
+            _wrap.querySelector('.hydra-table thead').innerHTML = headHtml;
+            _wrap.querySelector('.hydra-table tbody').innerHTML = buildTotalsRow(data) + data.map(buildRowHtml).join('');
+            _wrap.querySelector('.hydra-table').classList.remove('ib-sectioned');
+        }
         applyZoom();
 
         // Wire up route badge clicks → route popup
@@ -16220,13 +16294,21 @@ if (k === 'eta') {
         document.getElementById('hydra-table-wrap').addEventListener('click', function(e) {
             var th = e.target.closest('th');
             if (!th || th.classList.contains('col-equip')) return;
-            // Only handle clicks inside a thead (not totals row th or other elements)
-            if (!th.closest('thead')) return;
+            // Handle clicks inside a thead OR a per-section header row (All view)
+            if (!th.closest('thead') && !th.closest('tr.ib-section-head')) return;
             var key = th.dataset.key;
             if (!key) return;
             if (activeView === 'IB') {
-                var _s = getIbSort();
-                if (_s.key === key) _s.dir *= -1; else { _s.key = key; _s.dir = 1; }
+                var _secId = th.dataset.section;
+                if (_secId) {
+                    // Sectioned All view: sort just that section (shares the
+                    // matching tab's sort slot).
+                    var _ss = ibTabSort[_secId] || (ibTabSort[_secId] = { key: 'cpt', dir: -1 });
+                    if (_ss.key === key) _ss.dir *= -1; else { _ss.key = key; _ss.dir = 1; }
+                } else {
+                    var _s = getIbSort();
+                    if (_s.key === key) _s.dir *= -1; else { _s.key = key; _s.dir = 1; }
+                }
                 renderIBTable();
             } else {
                 if (obSortKey !== key) { obSortKey2 = obSortKey; obSortDir2 = obSortDir; } if (obSortKey === key) obSortDir *= -1; else { obSortKey = key; obSortDir = 1; }
@@ -16244,7 +16326,7 @@ if (k === 'eta') {
                 if (!puActive) return;
                 var th = e.target.closest('th');
                 if (!th || th.classList.contains('col-equip')) return;
-                if (!th.closest('thead')) return;
+                if (!th.closest('thead') && !th.closest('tr.ib-section-head')) return;
                 var key = th.dataset.key;
                 if (!key) return;
                 var cell = e.target.closest('.hydra-pane');
@@ -16252,6 +16334,16 @@ if (k === 'eta') {
                 var idx = parseInt(cell.getAttribute('data-pane'), 10);
                 var p = puPanes[idx];
                 if (!p || !p.view || p.view === 'PS') return;
+                // Sectioned All view in a pane: section sorts use the shared
+                // ibTabSort slots rather than the pane's own sort.
+                var _paneSecId = th.dataset.section;
+                if (_paneSecId && p.view === 'IB') {
+                    var _pss = ibTabSort[_paneSecId] || (ibTabSort[_paneSecId] = { key: 'cpt', dir: -1 });
+                    if (_pss.key === key) _pss.dir *= -1; else { _pss.key = key; _pss.dir = 1; }
+                    renderPane(idx);
+                    try { saveAllSettings(); } catch (e3) {}
+                    return;
+                }
                 var s = p.sort || {};
                 if (p.view === 'OB') {
                     if (s.key && s.key !== key) { s.key2 = s.key; s.dir2 = s.dir; }
