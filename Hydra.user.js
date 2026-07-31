@@ -4656,6 +4656,28 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             trailerId = ymsEquipmentMap[visitId].equipmentId || '';
             trailerNumber = ymsEquipmentMap[visitId].trailerNumber || '';
         }
+        // Fallback: pull trailer info straight from the YMS yard asset
+        if ((!trailerId || !trailerNumber) && yardStateData && Array.isArray(yardStateData)) {
+            outer:
+            for (var yi = 0; yi < yardStateData.length; yi++) {
+                var yLoc = yardStateData[yi];
+                if (!yLoc || !yLoc.yardAssets) continue;
+                for (var ya = 0; ya < yLoc.yardAssets.length; ya++) {
+                    var yAsset = yLoc.yardAssets[ya];
+                    if (!yAsset || String(yAsset.visitId) !== String(visitId)) continue;
+                    console.log('[Hydra completeUnload] yard asset for ' + vrid + ':', JSON.stringify(yAsset).slice(0, 1500));
+                    var eq = yAsset.equipment || {};
+                    if (!trailerId) trailerId = eq.equipmentId || (eq.identifier && eq.identifier.equipmentId) || yAsset.equipmentId || '';
+                    if (!trailerNumber) {
+                        var eqOwner = eq.owner || yAsset.vehicleOwner || yAsset.carrier || '';
+                        var eqName = eq.name || eq.equipmentName || eq.number || yAsset.trailerNumber || '';
+                        trailerNumber = eqName ? (eqOwner ? eqOwner + ' ' + eqName : eqName) : '';
+                    }
+                    break outer;
+                }
+            }
+        }
+        console.log('[Hydra completeUnload] payload: vrid=' + vrid + ' planId=' + planId + ' trailerId=' + trailerId + ' trailerNumber=' + trailerNumber + ' visitId=' + visitId);
         var seals = encodeURIComponent(JSON.stringify([{stopName: nodeId, sealNum: null}]));
         var body = 'entity=setLoadStatusComplete&nodeId=' + encodeURIComponent(nodeId)
             + '&planId=' + encodeURIComponent(planId)
@@ -4666,7 +4688,22 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             + '&sealNum=null'
             + '&seals=' + encodeURIComponent(seals);
         return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
-            console.log('[Hydra] completeUnload SUCCESS for ' + vrid, data);
+            console.log('[Hydra completeUnload] response:', JSON.stringify(data).slice(0, 1500));
+            // SSP often returns HTTP 200 with the error inside the body — validate
+            var errMsg = null;
+            if (data) {
+                if (data.error) errMsg = data.error;
+                else if (data.errorMessage) errMsg = data.errorMessage;
+                else if (data.ret && data.ret.error) errMsg = data.ret.error;
+                else if (data.ret && data.ret.errorMessage) errMsg = data.ret.errorMessage;
+                else if (data.ret && data.ret.success === false) errMsg = data.ret.message || 'SSP reported failure';
+                else if (data.success === false) errMsg = data.message || 'SSP reported failure';
+            }
+            if (errMsg) {
+                console.warn('[Hydra completeUnload] FAILED:', errMsg);
+                return Promise.reject(errMsg);
+            }
+            console.log('[Hydra] completeUnload SUCCESS for ' + vrid);
             // Update local row immediately
             if (Array.isArray(ibTableData)) {
                 for (var i = 0; i < ibTableData.length; i++) {
