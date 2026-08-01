@@ -12859,11 +12859,12 @@ if (k === 'eta') {
         // Waterspiders card: counted from RightStation ASSIGNMENTS (waterspiders
         // don't sign into their station, so sign-in data always reads zero).
         // Cross-referenced with build-chute scan data to flag misplacements.
-        var wsAssigned = Object.keys(arMezzAssignedRole).filter(function(lg) { return /waterspider/i.test(arMezzAssignedRole[lg]); });
+        // Only AR Waterspiders count — Nonconauto / Miscellaneous excluded.
+        var wsAssigned = Object.keys(arMezzAssignedRole).filter(function(lg) { return /\bAR\s+Waterspider/i.test(arMezzAssignedRole[lg]); });
         var wsTitle = wsAssigned.map(function(lg) {
             return lg + ' \u2014 ' + arMezzAssignedRole[lg] + (globalAssocScans[lg] ? ' \u2014 \u26a0 scanning at a build chute' : '');
         }).join('\n');
-        if (!wsTitle) wsTitle = staffingAssignments ? 'No associates assigned to Waterspider in RightStation' : 'Staffing assignments not loaded yet \u2014 refresh';
+        if (!wsTitle) wsTitle = staffingAssignments ? 'No associates assigned to AR Waterspider in RightStation' : 'Staffing assignments not loaded yet \u2014 refresh';
         var stats = [
             { label: 'Scanners', value: totalAssoc, color: '#4ade80' },
             { label: 'Waterspiders', value: wsAssigned.length, color: '#f472b6', title: wsTitle },
