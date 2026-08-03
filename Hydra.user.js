@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.38
+// @version      3.39
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -12519,6 +12519,13 @@ if (k === 'eta') {
                 xhr.onerror = function() { reject(new Error('QBCC XHR error')); };
                 xhr.send(JSON.stringify({ operationName: 'queryChuteInfo', variables: { ksk: ksk }, query: query }));
             });
+        }).catch(function(e) {
+            // Stale QBCC data is worse than none: clear the cache so the
+            // AMZL / blue-light / priority overlays render nothing instead
+            // of an old snapshot when the fetch fails.
+            qbccChuteData = null;
+            qbccPriorities = {};
+            throw e;
         });
     }
 
