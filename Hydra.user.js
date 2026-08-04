@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.39
+// @version      3.40
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -12692,6 +12692,19 @@ if (k === 'eta') {
         var grid = {};
         var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0, wsScans = 0;
         var laneRe = /Lane\s+(\d+)\s+Chute\s+(\d+)/i;
+        // Parse lane/chute from a workstation. Primary: "Lane X Chute Y" alias
+        // (ORD9-style). Fallback for sites without STEM aliases (e.g. PNE5,
+        // where the alias is the raw id like "scKivaA02-20301"): the 5-digit
+        // chute id encodes 2CCLL -> chute CC, lane LL (20301 = chute 3 lane 1;
+        // verified against ORD9 aliases: "Lane 17 Chute 16 (21617)").
+        function parseLaneChute(w) {
+            var m = laneRe.exec(w.workstationAlias || '');
+            if (m) return { lane: parseInt(m[1], 10), chute: parseInt(m[2], 10) };
+            var src = (w.workstationAlias || '') + ' ' + (w.workstationId || '');
+            var m2 = /\b2(\d{2})(\d{2})\b/.exec(src);
+            if (m2) return { lane: parseInt(m2[2], 10), chute: parseInt(m2[1], 10) };
+            return null;
+        }
         var uniqueAssocs = new Set();
 
         // Pre-pass: sum each associate's scans across ALL workstations for accurate JPH
@@ -12711,9 +12724,9 @@ if (k === 'eta') {
         var assocLatestChute = {}; // associateId -> { lane, chute, lastScanTime }
         arMezzData.forEach(function(ws) {
             if (ws.workstation.workstationType !== 'CONTAINER_BUILD') return;
-            var m2 = laneRe.exec(ws.workstation.workstationAlias);
-            if (!m2) return;
-            var wLane = parseInt(m2[1], 10), wChute = parseInt(m2[2], 10);
+            var lc2 = parseLaneChute(ws.workstation);
+            if (!lc2) return;
+            var wLane = lc2.lane, wChute = lc2.chute;
             var states = ws.workstationStates;
             if (!states || !states.length) return;
             var last = states[states.length - 1];
@@ -12729,9 +12742,9 @@ if (k === 'eta') {
 
         arMezzData.forEach(function(ws) {
             if (ws.workstation.workstationType !== 'CONTAINER_BUILD') return;
-            var m = laneRe.exec(ws.workstation.workstationAlias);
-            if (!m) return;
-            var lane = parseInt(m[1], 10), chute = parseInt(m[2], 10);
+            var lc = parseLaneChute(ws.workstation);
+            if (!lc) return;
+            var lane = lc.lane, chute = lc.chute;
             var states = ws.workstationStates;
             if (!states || !states.length) return;
             var last = states[states.length - 1];
@@ -12776,9 +12789,12 @@ if (k === 'eta') {
                     st.associateData.perAssociateData.forEach(function(a) { chuteScans += (a.scanCount || 0); });
                 }
             });
-            // Get chute ID from alias e.g. "Lane 17 Chute 16 (21617)" -> "21617"
+            // Get chute ID from alias e.g. "Lane 17 Chute 16 (21617)" -> "21617".
+            // Fallback: reconstruct the 2CCLL form so QBCC mapId matching still
+            // works at sites whose alias is the raw id (e.g. "scKivaA02-21617").
             var chuteIdMatch = ws.workstation.workstationAlias.match(/\((\d+)\)/);
-            var chuteId = chuteIdMatch ? chuteIdMatch[1] : ('' + chute + lane);
+            var chuteId = chuteIdMatch ? chuteIdMatch[1]
+                : ('2' + ('0' + chute).slice(-2) + ('0' + lane).slice(-2));
             // Get associate details from last window
             var assocDetail = null;
             if (assocs.length > 0) {
