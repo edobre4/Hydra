@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.42
+// @version      3.43
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -5081,16 +5081,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             '<div class="hydra-copy-list" id="hydra-copy-list"></div>' +
                         '</div>' +
                     '</div>' +
+                    '<div class="hydra-settings-section collapsed" id="hydra-section-armezz">' +
+                        '<div class="hydra-settings-section-title">AR Mezz</div>' +
+                        '<div class="hydra-settings-section-content">' +
+                            '<div class="hydra-settings-row">' +
+                                '<input type="checkbox" id="hydra-armezz-rotated" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
+                                '<label for="hydra-armezz-rotated" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Rotate table 90\u00b0 (chutes as rows, lanes as columns)</label>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-dockdoors">' +
                         '<div class="hydra-settings-section-title">Dock Door Panel</div>' +
                         '<div class="hydra-settings-section-content">' +
                             '<div class="hydra-settings-row">' +
                                 '<input type="checkbox" id="hydra-dockdoor-enabled" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
                                 '<label for="hydra-dockdoor-enabled" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Show dock door panel (IB view)</label>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row" style="margin-top:8px">' +
-                                '<input type="checkbox" id="hydra-armezz-rotated" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
-                                '<label for="hydra-armezz-rotated" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Rotate AR Mezz table 90\u00b0 (chutes as rows, lanes as columns)</label>' +
                             '</div>' +
                             '<div class="hydra-settings-row" style="margin-top:8px">' +
                                 '<input type="checkbox" id="hydra-ob-progress-enabled"' + (obDockProgressEnabled ? ' checked' : '') + ' style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
@@ -5278,7 +5283,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.42') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.43') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
