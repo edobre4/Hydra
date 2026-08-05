@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.41
+// @version      3.42
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -3509,6 +3509,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             obVisibleCols: Array.from(obVisibleCols),
             ibCopyCols:  ibCopyCols.slice(),
             dockDoorEnabled: dockDoorEnabled,
+            arMezzRotated: arMezzRotated,
             obDockProgressEnabled: obDockProgressEnabled,
             dockDoorRaw: dockDoorRaw, dockDoorSize: dockDoorSize, cptSlaHours: cptSlaHours, cptSlaEnabled: cptSlaEnabled,
             psBufferGroups: PS_BUFFER_GROUPS.map(function(g) { return { key: g.key, label: g.label, filters: (g.filters || []).slice() }; }),
@@ -3660,6 +3661,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             saveIBCopyCols();
         }
         if (s.dockDoorEnabled !== undefined) dockDoorEnabled = !!s.dockDoorEnabled;
+        if (s.arMezzRotated !== undefined) arMezzRotated = !!s.arMezzRotated;
         if (s.obDockProgressEnabled !== undefined) obDockProgressEnabled = !!s.obDockProgressEnabled;
         if (s.cptSlaHours !== undefined) { var _slaP = parseFloat(s.cptSlaHours); if (!isNaN(_slaP) && _slaP > 0) cptSlaHours = _slaP; }
         if (s.cptSlaEnabled !== undefined) cptSlaEnabled = !!s.cptSlaEnabled;
@@ -4217,6 +4219,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 obVisibleCols: Array.from(obVisibleCols),
                 ibCopyCols:  ibCopyCols.slice(),
                 dockDoorEnabled: dockDoorEnabled,
+                arMezzRotated: arMezzRotated,
                 dockDoorRaw: dockDoorRaw, dockDoorSize: dockDoorSize, cptSlaHours: cptSlaHours, cptSlaEnabled: cptSlaEnabled,
                 sesameEnabled: sesameEnabled,
                 autoFitZoom: autoFitZoom, autoFitCap: autoFitCap,
@@ -4391,6 +4394,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             }
             if (s.ibCopyCols && Array.isArray(s.ibCopyCols)) ibCopyCols = s.ibCopyCols.slice();
             if (s.dockDoorEnabled !== undefined) dockDoorEnabled = !!s.dockDoorEnabled;
+            if (s.arMezzRotated !== undefined) arMezzRotated = !!s.arMezzRotated;
         if (s.obDockProgressEnabled !== undefined) obDockProgressEnabled = !!s.obDockProgressEnabled;
         if (s.cptSlaHours !== undefined) { var _slaL = parseFloat(s.cptSlaHours); if (!isNaN(_slaL) && _slaL > 0) cptSlaHours = _slaL; }
         if (s.cptSlaEnabled !== undefined) cptSlaEnabled = !!s.cptSlaEnabled;
@@ -5085,6 +5089,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<label for="hydra-dockdoor-enabled" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Show dock door panel (IB view)</label>' +
                             '</div>' +
                             '<div class="hydra-settings-row" style="margin-top:8px">' +
+                                '<input type="checkbox" id="hydra-armezz-rotated" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
+                                '<label for="hydra-armezz-rotated" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Rotate AR Mezz table 90\u00b0 (chutes as rows, lanes as columns)</label>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px">' +
                                 '<input type="checkbox" id="hydra-ob-progress-enabled"' + (obDockProgressEnabled ? ' checked' : '') + ' style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
                                 '<label for="hydra-ob-progress-enabled" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">OB load progress on dock panel</label>' +
                             '</div>' +
@@ -5270,7 +5278,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.41') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.42') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -12365,6 +12373,7 @@ if (k === 'eta') {
     var arMezzMinutes = 15; // 5, 15, or 30
     var arMezzShowRates = false; // false = WIP, true = scan rates
     var arMezzOverlay = ''; // '' | 'amzl' | 'priority' | 'perspective'
+    var arMezzRotated = false; // rotate table 90°: chutes as rows, lanes as columns
     var arMezzAssignState = null; // null or { login, srcLane, srcChute }
     var qbccChuteData = null; // cached QBCC queryChuteInfo response
     var qbccPriorities = {}; // mapId -> 'high'|'low'
@@ -12975,6 +12984,77 @@ if (k === 'eta') {
         html += '</div>'; // end left panel
         html += '<div>'; // tables column
 
+        // Renders one chute cell <td>. Shared by the normal (lanes-as-rows)
+        // and rotated (chutes-as-rows) layouts so styling/overlay/tooltip
+        // behavior is identical in both.
+        function armezzCellTd(l, c, isLastCol) {
+            var cd = grid[l] && grid[l][c];
+            var cellWip = cd ? cd.wip : 0;
+            var cellDisplay = cellWip;
+            var isRate = false;
+            if (arMezzShowRates && cd && (cd.scanning || cd.idle)) { cellDisplay = cd.assoc ? cd.assoc.scanRate : Math.round((cd.scans || 0) * (60 / arMezzMinutes)); isRate = true; }
+            var bg = '', color = 'color:var(--h-muted,#7a8a9a)';
+            if (cd && cd.scanning) {
+                if (cd.assoc && isWsRole(cd.assoc.login)) { bg = 'background:#1e3a8a'; color = 'color:#60a5fa'; }
+                else { bg = 'background:#166534'; color = 'color:#4ade80'; }
+            }
+            else if (cd && cd.idle) { bg = 'background:#ca8a04'; color = 'color:#000'; }
+            else if (cellWip >= 100) { bg = 'background:#7f1d1d'; color = 'color:#f87171'; }
+            else if (cellWip > 0) { color = 'color:var(--h-text,#e8eaf0)'; }
+            var qbccMapId = 20000 + c * 100 + l;
+            var overlayStyle = '';
+            if (presentChutes[c] && arMezzOverlay === 'priority') {
+                if (qbccPriorities[qbccMapId] === 'high') overlayStyle = 'outline:3px solid #ef4444;outline-offset:-3px;';
+                else if (qbccPriorities[qbccMapId] === 'low') overlayStyle = 'outline:2px dashed #f97316;outline-offset:-2px;';
+            } else if (presentChutes[c] && arMezzOverlay === 'amzl') {
+                if (amzlChutes[qbccMapId]) overlayStyle = 'box-shadow:inset 0 0 0 2px #3b82f6;';
+                else overlayStyle = 'opacity:0.25;';
+            } else if (presentChutes[c] && arMezzOverlay === 'perspective') {
+                if (perspChutes[qbccMapId] === 'hardware') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
+                else if (perspChutes[qbccMapId] === 'inactive') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
+                else if (perspChutes[qbccMapId] === 'full') overlayStyle = 'outline:3px solid #3b82f6;outline-offset:-3px;';
+                else if (perspChutes[qbccMapId] === 'half') overlayStyle = 'outline:3px solid #eab308;outline-offset:-3px;';
+            } else if (presentChutes[c] && arMezzOverlay === 'serpenteye') {
+                // Priority overrides perspective
+                if (qbccPriorities[qbccMapId] === 'high') overlayStyle = 'outline:3px solid #ef4444;outline-offset:-3px;';
+                else if (qbccPriorities[qbccMapId] === 'low') overlayStyle = 'outline:2px dashed #f97316;outline-offset:-2px;';
+                else if (perspChutes[qbccMapId] === 'hardware' || perspChutes[qbccMapId] === 'inactive') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
+                else if (perspChutes[qbccMapId] === 'full') overlayStyle = 'outline:3px solid #3b82f6;outline-offset:-3px;';
+                else if (perspChutes[qbccMapId] === 'half') overlayStyle = 'outline:3px solid #eab308;outline-offset:-3px;';
+                // AMZL text styling
+                if (amzlChutes[qbccMapId]) overlayStyle += 'font-size:120%;font-weight:700;text-decoration:underline;color:#ffffff !important;';
+            }
+            return '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + overlayStyle + bg + ';' + color + (isLastCol ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (cellDisplay || '') + '</td>';
+        }
+
+        if (arMezzRotated) {
+        // === Rotated 90° layout: chutes as rows, lanes as columns ===
+        var rLaneWip = {}, rLaneAA = {};
+        for (var rl = 1; rl <= maxLane; rl++) {
+            var lw = 0, la = 0;
+            if (grid[rl]) for (var rc = 1; rc <= maxChute; rc++) { var rcell = grid[rl][rc]; if (rcell) { lw += rcell.wip; if (rcell.assocCount) la++; } }
+            rLaneWip[rl] = lw; rLaneAA[rl] = la;
+        }
+        html += '<table style="margin-bottom:28px;border-collapse:collapse;width:100%;font-size:11px">';
+        html += '<thead><tr>';
+        html += '<th style="text-align:left;padding:4px 8px;font-size:12px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;border-left:2px solid var(--h-border2,#3a4a5c)">Chute</th>';
+        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center' + (rl === maxLane ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">L' + rl + '</th>';
+        html += '</tr>';
+        // Per-lane WIP / AA summary rows
+        html += '<tr><th style="text-align:left;padding:2px 8px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;border-left:2px solid var(--h-border2,#3a4a5c)">WIP</th>';
+        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center' + (rl === maxLane ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (rLaneWip[rl] || '') + '</th>';
+        html += '</tr>';
+        html += '<tr><th style="text-align:left;padding:2px 8px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;border-left:2px solid var(--h-border2,#3a4a5c);border-bottom:1px solid var(--h-border2,#3a4a5c)">AA</th>';
+        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center;border-bottom:1px solid var(--h-border2,#3a4a5c)' + (rl === maxLane ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (rLaneAA[rl] || '') + '</th>';
+        html += '</tr></thead><tbody>';
+        for (var rc = 1; rc <= maxChute; rc++) {
+            html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">';
+            html += '<td style="padding:3px 8px;font-weight:600;white-space:nowrap;color:var(--h-text,#e8eaf0);border-left:2px solid var(--h-border2,#3a4a5c)">CH' + rc + '</td>';
+            for (var rl = 1; rl <= maxLane; rl++) html += armezzCellTd(rl, rc, rl === maxLane);
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        } else {
         sections.forEach(function(sec) {
             var startL = sec[0], endL = sec[1];
             var secWip = 0, secAssoc = 0;
@@ -13020,49 +13100,13 @@ if (k === 'eta') {
                 }
                 html += '<td style="width:12px"></td>';
                 for (var c = 1; c <= maxChute; c++) {
-                    var cd = grid[l] && grid[l][c];
-                    var cellWip = cd ? cd.wip : 0;
-                    var cellDisplay = cellWip;
-                    var isRate = false;
-                    if (arMezzShowRates && cd && (cd.scanning || cd.idle)) { cellDisplay = cd.assoc ? cd.assoc.scanRate : Math.round((cd.scans || 0) * (60 / arMezzMinutes)); isRate = true; }
-                    var bg = '', color = 'color:var(--h-muted,#7a8a9a)';
-                    if (cd && cd.scanning) {
-                        if (cd.assoc && isWsRole(cd.assoc.login)) { bg = 'background:#1e3a8a'; color = 'color:#60a5fa'; }
-                        else { bg = 'background:#166534'; color = 'color:#4ade80'; }
-                    }
-                    else if (cd && cd.idle) { bg = 'background:#ca8a04'; color = 'color:#000'; }
-                    else if (cellWip >= 100) { bg = 'background:#7f1d1d'; color = 'color:#f87171'; }
-                    else if (cellWip > 0) { color = 'color:var(--h-text,#e8eaf0)'; }
-                    var qbccBorder = '';
-                    var qbccMapId = 20000 + c * 100 + l;
-                    var overlayStyle = '';
-                    if (presentChutes[c] && arMezzOverlay === 'priority') {
-                        if (qbccPriorities[qbccMapId] === 'high') overlayStyle = 'outline:3px solid #ef4444;outline-offset:-3px;';
-                        else if (qbccPriorities[qbccMapId] === 'low') overlayStyle = 'outline:2px dashed #f97316;outline-offset:-2px;';
-                    } else if (presentChutes[c] && arMezzOverlay === 'amzl') {
-                        if (amzlChutes[qbccMapId]) overlayStyle = 'box-shadow:inset 0 0 0 2px #3b82f6;';
-                        else overlayStyle = 'opacity:0.25;';
-                    } else if (presentChutes[c] && arMezzOverlay === 'perspective') {
-                        if (perspChutes[qbccMapId] === 'hardware') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
-                        else if (perspChutes[qbccMapId] === 'inactive') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
-                        else if (perspChutes[qbccMapId] === 'full') overlayStyle = 'outline:3px solid #3b82f6;outline-offset:-3px;';
-                        else if (perspChutes[qbccMapId] === 'half') overlayStyle = 'outline:3px solid #eab308;outline-offset:-3px;';
-                    } else if (presentChutes[c] && arMezzOverlay === 'serpenteye') {
-                        // Priority overrides perspective
-                        if (qbccPriorities[qbccMapId] === 'high') overlayStyle = 'outline:3px solid #ef4444;outline-offset:-3px;';
-                        else if (qbccPriorities[qbccMapId] === 'low') overlayStyle = 'outline:2px dashed #f97316;outline-offset:-2px;';
-                        else if (perspChutes[qbccMapId] === 'hardware' || perspChutes[qbccMapId] === 'inactive') overlayStyle = 'outline:3px solid #9ca3af;outline-offset:-3px;';
-                        else if (perspChutes[qbccMapId] === 'full') overlayStyle = 'outline:3px solid #3b82f6;outline-offset:-3px;';
-                        else if (perspChutes[qbccMapId] === 'half') overlayStyle = 'outline:3px solid #eab308;outline-offset:-3px;';
-                        // AMZL text styling
-                        if (amzlChutes[qbccMapId]) overlayStyle += 'font-size:120%;font-weight:700;text-decoration:underline;color:#ffffff !important;';
-                    }
-                    html += '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + overlayStyle + bg + ';' + color + (c===maxChute?';border-right:2px solid var(--h-border2,#3a4a5c)':'') + '">' + (cellDisplay || '') + '</td>';
+                    html += armezzCellTd(l, c, c === maxChute);
                 }
                 html += '</tr>';
             }
             html += '</tbody></table>';
         });
+        } // end normal (non-rotated) layout
 
         html += '</div>'; // end tables column
 
@@ -15283,6 +15327,8 @@ if (k === 'eta') {
             var ddEnabled = document.getElementById('hydra-dockdoor-enabled');
             var ddList    = document.getElementById('hydra-dockdoor-list');
             if (ddEnabled) ddEnabled.checked = !!dockDoorEnabled;
+            var _amRot = document.getElementById('hydra-armezz-rotated');
+            if (_amRot) _amRot.checked = !!arMezzRotated;
             if (ddList)    ddList.value     = dockDoorRaw || '';
             var _slaIn = document.getElementById('hydra-cpt-sla');
             if (_slaIn) _slaIn.value = cptSlaHours;
@@ -17114,6 +17160,14 @@ if (k === 'eta') {
                 dockDoorEnabled = this.checked;
                 saveAllSettings();
                 renderDockDoorPanel();
+            });
+        }
+        var amRotInput = document.getElementById('hydra-armezz-rotated');
+        if (amRotInput) {
+            amRotInput.addEventListener('change', function() {
+                arMezzRotated = this.checked;
+                saveAllSettings();
+                if (obActiveTab === 'armezz' && arMezzData) renderOBArMezzTable();
             });
         }
 
