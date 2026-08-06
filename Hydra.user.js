@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.45
+// @version      3.46
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -4067,11 +4067,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         var j = JSON.parse(r.responseText);
                         if (!j || !j.presets) return;
                         GM_setValue('hydra_hosted_presets', r.responseText);
-                        // Merge new site presets live (missing ids only - never
-                        // clobber a user's local presets/tweaks)
+                        // Merge rule: *-default presets (isDefault) always track
+                        // the hosted catalog - overwrite local copies. Anything
+                        // else (users' own presets) is only added if missing,
+                        // never touched.
                         var changed = false;
                         Object.keys(j.presets).forEach(function (k) {
-                            if (!hydraPresets[k]) { hydraPresets[k] = j.presets[k]; changed = true; }
+                            var h = j.presets[k];
+                            if (!hydraPresets[k]) { hydraPresets[k] = h; changed = true; }
+                            else if (h && h.isDefault && JSON.stringify(hydraPresets[k]) !== JSON.stringify(h)) { hydraPresets[k] = h; changed = true; }
                         });
                         if (changed) { savePresetsToStorage(); renderPresetSelect(); }
                         console.log('[Hydra Presets] hosted catalog v' + (j.version || 0) + ' - ' + Object.keys(j.presets).length + ' presets' + (changed ? ' (new presets added)' : ''));
@@ -4091,15 +4095,24 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 hydraPresets = {};
                 _hydraWizardNeeded = true;
             }
-            // Merge hosted cache first (newer, larger catalog), then baked
-            // fallback - missing ids only, so user tweaks always win.
+            // Merge rules:
+            //  - hosted cache: isDefault presets overwrite local copies (they
+            //    always track the catalog); others added only if missing
+            //  - baked fallback: added only if missing (oldest data, never
+            //    overwrites anything)
+            //  - users' own presets are never touched
             var _changed = false;
-            var _sources = [getHostedPresetsCache(), getBakedPresets()];
-            _sources.forEach(function (srcMap) {
-                if (!srcMap) return;
-                Object.keys(srcMap).forEach(function (k) {
-                    if (!hydraPresets[k]) { hydraPresets[k] = srcMap[k]; _changed = true; }
+            var _hosted = getHostedPresetsCache();
+            if (_hosted) {
+                Object.keys(_hosted).forEach(function (k) {
+                    var h = _hosted[k];
+                    if (!hydraPresets[k]) { hydraPresets[k] = h; _changed = true; }
+                    else if (h && h.isDefault && JSON.stringify(hydraPresets[k]) !== JSON.stringify(h)) { hydraPresets[k] = h; _changed = true; }
                 });
+            }
+            var _baked = getBakedPresets();
+            Object.keys(_baked).forEach(function (k) {
+                if (!hydraPresets[k]) { hydraPresets[k] = _baked[k]; _changed = true; }
             });
             if (_changed || !raw) savePresetsToStorage();
             var savedActive = localStorage.getItem(STORAGE_KEYS.activePreset);
@@ -5331,7 +5344,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.45') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.46') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
