@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.49
+// @version      3.50
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
-// @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
-// @downloadURL  https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.user.js
+// @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
+// @downloadURL  https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/ib*
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ob*
