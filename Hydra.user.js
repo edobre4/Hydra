@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.47
+// @version      3.48
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -4073,7 +4073,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         // offered as an explicit "Update" action in the Preset bar.
                         var changed = false;
                         Object.keys(j.presets).forEach(function (k) {
-                            if (!hydraPresets[k]) { hydraPresets[k] = j.presets[k]; changed = true; }
+                            if (!hydraPresets[k]) { hydraPresets[k] = _deliverPreset(j.presets[k]); changed = true; }
                         });
                         if (changed) { savePresetsToStorage(); renderPresetSelect(); }
                         renderPresetUpdateNotice();
@@ -4085,16 +4085,48 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         } catch (e) {}
     }
 
-    // Defaults whose hosted catalog version differs from the local copy.
+    // Defaults whose hosted catalog entry CHANGED since it was delivered to
+    // this user. Comparing local-vs-catalog directly doesn't work because the
+    // active preset continuously absorbs live session state (saveAllSettings);
+    // instead each delivered default is stamped with a hash of the catalog
+    // entry it came from (_catalogRev), and we only flag when the catalog
+    // side moves.
+    function _presetHash(obj) {
+        var s = JSON.stringify(obj), h = 5381, i;
+        for (i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+        return String(h);
+    }
+
+    // Deep-copy a catalog entry and stamp it with the rev it was delivered
+    // from, so later catalog changes can be detected regardless of what the
+    // session does to the local copy afterwards.
+    function _deliverPreset(entry) {
+        var copy = JSON.parse(JSON.stringify(entry));
+        copy._catalogRev = _presetHash(entry);
+        return copy;
+    }
+
     function getDefaultPresetUpdates() {
         var hosted = getHostedPresetsCache();
         if (!hosted) return [];
-        var updates = [];
+        var updates = [], stamped = false;
         Object.keys(hosted).forEach(function (k) {
             var h = hosted[k];
             if (!h || !h.isDefault) return;
-            if (hydraPresets[k] && JSON.stringify(hydraPresets[k]) !== JSON.stringify(h)) updates.push(h);
+            var local = hydraPresets[k];
+            if (!local) return;
+            var rev = _presetHash(h);
+            if (!local._catalogRev) {
+                // Legacy copy delivered before rev-stamping: assume it matches
+                // the current catalog so users aren't spammed; future catalog
+                // edits will flag correctly from here on.
+                local._catalogRev = rev;
+                stamped = true;
+                return;
+            }
+            if (local._catalogRev !== rev) updates.push(h);
         });
+        if (stamped) savePresetsToStorage();
         return updates;
     }
 
@@ -4117,7 +4149,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var id = this.getAttribute('data-preset-update');
                 var hosted = getHostedPresetsCache();
                 if (!hosted || !hosted[id]) return;
-                hydraPresets[id] = hosted[id];
+                hydraPresets[id] = _deliverPreset(hosted[id]);
                 savePresetsToStorage();
                 renderPresetSelect();
                 renderPresetUpdateNotice();
@@ -4143,7 +4175,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             _sources.forEach(function (srcMap) {
                 if (!srcMap) return;
                 Object.keys(srcMap).forEach(function (k) {
-                    if (!hydraPresets[k]) { hydraPresets[k] = srcMap[k]; _changed = true; }
+                    if (!hydraPresets[k]) { hydraPresets[k] = _deliverPreset(srcMap[k]); _changed = true; }
                 });
             });
             if (_changed || !raw) savePresetsToStorage();
@@ -5377,7 +5409,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.47') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.48') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
