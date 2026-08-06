@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.48
+// @version      3.49
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://raw.githubusercontent.com/edobre4/Hydra/main/Hydra.meta.js
@@ -3708,6 +3708,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // SETUP WIZARD (first-run / post-reset)
     // ═══════════════════════════════════════════════════════════════════════════
     var _hydraWizardNeeded = false;
+    var _hydraWizardRefreshCards = null; // set while the setup wizard is open
 
     function showSetupWizard(onComplete) {
         var existing = document.getElementById('hydra-setup-wizard');
@@ -3715,11 +3716,26 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var overlay = document.createElement('div');
         overlay.id = 'hydra-setup-wizard';
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.85);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif';
-        var bakedIds = Object.keys(hydraPresets);
-        var cards = bakedIds.map(function(id) {
-            var p = hydraPresets[id];
-            return '<div class="hydra-wiz-card" data-id="' + id + '" style="background:var(--h-bg3,#1b2330);border:1px solid var(--h-border2,#3a4a5c);border-radius:8px;padding:20px 32px;cursor:pointer;text-align:center;font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0);transition:border-color .15s,box-shadow .15s">' + p.name + '</div>';
-        }).join('');
+        function wizCardsHtml() {
+            return Object.keys(hydraPresets).map(function(id) {
+                var p = hydraPresets[id];
+                return '<div class="hydra-wiz-card" data-id="' + id + '" style="background:var(--h-bg3,#1b2330);border:1px solid var(--h-border2,#3a4a5c);border-radius:8px;padding:20px 32px;cursor:pointer;text-align:center;font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0);transition:border-color .15s,box-shadow .15s">' + p.name + '</div>';
+            }).join('');
+        }
+        var cards = wizCardsHtml();
+        // Live-refresh hook: when the hosted catalog fetch lands while the
+        // wizard is open, new site presets pop into the card list without
+        // touching the rest of the wizard (inputs keep their state; card
+        // clicks are delegated on the overlay so no re-binding needed).
+        _hydraWizardRefreshCards = function() {
+            var box = document.getElementById('hydra-wiz-cards');
+            if (!box || !document.getElementById('hydra-setup-wizard')) return;
+            box.innerHTML = wizCardsHtml();
+            box.querySelectorAll('.hydra-wiz-card').forEach(function(c) {
+                c.addEventListener('mouseenter', function() { c.style.borderColor = '#ff9900'; c.style.boxShadow = '0 0 12px rgba(255,153,0,0.3)'; });
+                c.addEventListener('mouseleave', function() { c.style.borderColor = ''; c.style.boxShadow = ''; });
+            });
+        };
         // MDW5 CPT windows as default for new presets
         var _mdw5P = hydraPresets['mdw5-default'] || hydraPresets['mdw5'];
         var mdw5Settings = _mdw5P && _mdw5P.settings ? JSON.parse(JSON.stringify(_mdw5P.settings)) : {};
@@ -3730,7 +3746,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         overlay.innerHTML = '<div style="background:var(--h-bg2,#141e2a);border:1px solid var(--h-border2,#3a4a5c);border-radius:12px;padding:28px 24px;max-width:720px;width:auto;text-align:center;max-height:90vh;overflow-y:auto">'
             + '<div style="display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(#0d1117,#0d1117) padding-box,linear-gradient(135deg,#ff3030 0%,#ff2060 25%,#a020b8 50%,#2060d8 75%,#20c8f0 100%) border-box;border:2px solid transparent;border-radius:8px;padding:0;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.5),0 0 12px rgba(255,48,48,0.4),0 0 12px rgba(32,200,240,0.35);line-height:0"><img src="' + HYDRA_LOGO_FULL + '" alt="Hydra" style="height:54px;width:auto;display:block;padding:2px 4px"></div>'
             + '<div style="color:var(--h-text,#e8eaf0);font-size:14px;margin-bottom:20px;opacity:.8">Select a preset to get started</div>'
-            + '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:20px">' + cards + '</div>'
+            + '<div id="hydra-wiz-cards" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:20px">' + cards + '</div>'
             + '<div style="border-top:1px solid var(--h-border,#2a3a4c);padding-top:16px;margin-top:8px">'
             + '<div style="color:var(--h-text,#e8eaf0);font-size:13px;margin-bottom:10px;opacity:.7">Or create a new site preset:</div>'
             // Site code + Create button
@@ -3950,6 +3966,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             activePresetId = presetId;
             localStorage.setItem(STORAGE_KEYS.activePreset, activePresetId);
             savePresetsToStorage();
+            _hydraWizardRefreshCards = null;
             overlay.remove();
             if (onComplete) onComplete();
         }
@@ -4075,7 +4092,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         Object.keys(j.presets).forEach(function (k) {
                             if (!hydraPresets[k]) { hydraPresets[k] = _deliverPreset(j.presets[k]); changed = true; }
                         });
-                        if (changed) { savePresetsToStorage(); renderPresetSelect(); }
+                        if (changed) { savePresetsToStorage(); renderPresetSelect(); if (typeof _hydraWizardRefreshCards === 'function') _hydraWizardRefreshCards(); }
                         renderPresetUpdateNotice();
                         console.log('[Hydra Presets] hosted catalog v' + (j.version || 0) + ' - ' + Object.keys(j.presets).length + ' presets' + (changed ? ' (new presets added)' : ''));
                     } catch (e) { console.warn('[Hydra Presets] hosted parse failed:', e && e.message); }
@@ -4186,8 +4203,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             hydraPresets = getBakedPresets();
             activePresetId = hydraPresets['mdw5-default'] ? 'mdw5-default' : Object.keys(hydraPresets)[0];
         }
-        // Background refresh - fire and forget, never blocks startup
-        setTimeout(refreshHostedPresets, 1500);
+        // Background refresh - fire and forget, never blocks startup. On a
+        // fresh install (wizard pending) fetch immediately so the full site
+        // catalog pops into the wizard cards within a second or two.
+        setTimeout(refreshHostedPresets, _hydraWizardNeeded ? 0 : 1500);
     }
 
     function renderPresetSelect() {
@@ -5409,7 +5428,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.48') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.49') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
