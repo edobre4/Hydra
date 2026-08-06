@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.51
+// @version      3.52
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -3514,6 +3514,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             arMezzPaired: arMezzPaired,
             arMezzManualLanes: arMezzManualLanes,
             arMezzManualChutes: arMezzManualChutes,
+            arMezzShowMoves: arMezzShowMoves,
+            arMezzShowTop5: arMezzShowTop5,
+            arMezzShowLow5: arMezzShowLow5,
+            arMezzShowLegend: arMezzShowLegend,
             obDockProgressEnabled: obDockProgressEnabled,
             dockDoorRaw: dockDoorRaw, dockDoorSize: dockDoorSize, cptSlaHours: cptSlaHours, cptSlaEnabled: cptSlaEnabled,
             psBufferGroups: PS_BUFFER_GROUPS.map(function(g) { return { key: g.key, label: g.label, filters: (g.filters || []).slice() }; }),
@@ -3669,6 +3673,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.arMezzPaired !== undefined) arMezzPaired = !!s.arMezzPaired;
         if (s.arMezzManualLanes !== undefined) arMezzManualLanes = Math.max(0, parseInt(s.arMezzManualLanes, 10) || 0);
         if (s.arMezzManualChutes !== undefined) arMezzManualChutes = Math.max(0, parseInt(s.arMezzManualChutes, 10) || 0);
+        if (s.arMezzShowMoves !== undefined) arMezzShowMoves = s.arMezzShowMoves;
+        if (s.arMezzShowTop5 !== undefined) arMezzShowTop5 = s.arMezzShowTop5;
+        if (s.arMezzShowLow5 !== undefined) arMezzShowLow5 = s.arMezzShowLow5;
+        if (s.arMezzShowLegend !== undefined) arMezzShowLegend = s.arMezzShowLegend;
         if (s.obDockProgressEnabled !== undefined) obDockProgressEnabled = !!s.obDockProgressEnabled;
         if (s.cptSlaHours !== undefined) { var _slaP = parseFloat(s.cptSlaHours); if (!isNaN(_slaP) && _slaP > 0) cptSlaHours = _slaP; }
         if (s.cptSlaEnabled !== undefined) cptSlaEnabled = !!s.cptSlaEnabled;
@@ -4379,6 +4387,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 arMezzPaired: arMezzPaired,
                 arMezzManualLanes: arMezzManualLanes,
                 arMezzManualChutes: arMezzManualChutes,
+                arMezzShowMoves: arMezzShowMoves,
+                arMezzShowTop5: arMezzShowTop5,
+                arMezzShowLow5: arMezzShowLow5,
+                arMezzShowLegend: arMezzShowLegend,
                 dockDoorRaw: dockDoorRaw, dockDoorSize: dockDoorSize, cptSlaHours: cptSlaHours, cptSlaEnabled: cptSlaEnabled,
                 sesameEnabled: sesameEnabled,
                 autoFitZoom: autoFitZoom, autoFitCap: autoFitCap,
@@ -4557,6 +4569,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.arMezzPaired !== undefined) arMezzPaired = !!s.arMezzPaired;
             if (s.arMezzManualLanes !== undefined) arMezzManualLanes = Math.max(0, parseInt(s.arMezzManualLanes, 10) || 0);
             if (s.arMezzManualChutes !== undefined) arMezzManualChutes = Math.max(0, parseInt(s.arMezzManualChutes, 10) || 0);
+            if (s.arMezzShowMoves !== undefined) arMezzShowMoves = s.arMezzShowMoves;
+            if (s.arMezzShowTop5 !== undefined) arMezzShowTop5 = s.arMezzShowTop5;
+            if (s.arMezzShowLow5 !== undefined) arMezzShowLow5 = s.arMezzShowLow5;
+            if (s.arMezzShowLegend !== undefined) arMezzShowLegend = s.arMezzShowLegend;
         if (s.obDockProgressEnabled !== undefined) obDockProgressEnabled = !!s.obDockProgressEnabled;
         if (s.cptSlaHours !== undefined) { var _slaL = parseFloat(s.cptSlaHours); if (!isNaN(_slaL) && _slaL > 0) cptSlaHours = _slaL; }
         if (s.cptSlaEnabled !== undefined) cptSlaEnabled = !!s.cptSlaEnabled;
@@ -5261,6 +5277,13 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<input type="number" id="hydra-armezz-chutes" min="0" placeholder="chutes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:10px">blank/0 = auto from workstation data</span>' +
                             '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">' +
+                                '<span style="color:var(--h-muted, #aab4c0);font-size:12px">Show panels:</span>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-moves" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Active Moves</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-top5" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Top 5 WIP</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-low5" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Low 5 Scanners</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-legend" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Legend</label>' +
+                            '</div>' +
                         '</div>' +
                     '</div>' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-dockdoors">' +
@@ -5456,7 +5479,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.51') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.52') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -12555,6 +12578,10 @@ if (k === 'eta') {
     var arMezzPaired = false; // rotated view: label lane pairs A (1), B (2/3), C (4/5)...
     var arMezzManualLanes = 0; // manual layout override, 0 = auto from workstation data
     var arMezzManualChutes = 0;
+    var arMezzShowMoves = true;  // Active Moves left panel
+    var arMezzShowTop5 = true;   // Top 5 WIP panel
+    var arMezzShowLow5 = true;   // Low 5 Scanners panel
+    var arMezzShowLegend = true; // Legend + Borders block
     var arMezzAssignState = null; // null or { login, srcLane, srcChute }
     var qbccChuteData = null; // cached QBCC queryChuteInfo response
     var qbccPriorities = {}; // mapId -> 'high'|'low'
@@ -13117,7 +13144,8 @@ if (k === 'eta') {
 
         // Flex row: left panel (moves), tables center, right panel (top5/legend)
         html += '<div style="display:flex;gap:0;align-items:flex-start">';
-        // Left panel: Active Moves
+        // Left panel: Active Moves (toggleable)
+        if (arMezzShowMoves) {
         html += '<div style="min-width:140px;max-width:180px;padding-right:12px;font-size:10px">';
         html += '<div style="font-weight:700;color:#a78bfa;margin-bottom:6px;font-size:11px">Active Moves</div>';
         if (staffingAssignments && qbccChuteData) {
@@ -13166,6 +13194,7 @@ if (k === 'eta') {
             html += '<div style="color:var(--h-muted,#7a8a9a);font-style:italic">Loading...</div>';
         }
         html += '</div>'; // end left panel
+        } // end arMezzShowMoves
         html += '<div>'; // tables column
 
         // Renders one chute cell <td>. Shared by the normal (lanes-as-rows)
@@ -13234,7 +13263,11 @@ if (k === 'eta') {
         var R_SEP = 'border-left:2px solid var(--h-border2,#3a4a5c);';
         function rSep(l) { return (arMezzPaired && laneGroupStart[l]) ? R_SEP : ''; }
         var R_LAST = 'border-right:2px solid var(--h-border2,#3a4a5c);';
-        html += '<table style="margin-bottom:28px;border-collapse:collapse;width:100%;font-size:11px">';
+        // table-layout:fixed + colgroup -> every lane column identical width
+        html += '<table style="margin-bottom:28px;border-collapse:collapse;width:100%;font-size:11px;table-layout:fixed">';
+        html += '<colgroup><col style="width:64px">';
+        for (var _cg = 1; _cg <= maxLane; _cg++) html += '<col>';
+        html += '</colgroup>';
         html += '<thead><tr>';
         html += '<th style="text-align:left;padding:4px 8px;font-size:12px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;border-left:2px solid var(--h-border2,#3a4a5c)">Chute</th>';
         if (arMezzPaired) {
@@ -13325,7 +13358,9 @@ if (k === 'eta') {
             return c.scanning && c.assoc && c.assoc.login && !isWsRole(c.assoc.login);
         }).sort(function(a,b){ return (a.assoc.scanRate || 0) - (b.assoc.scanRate || 0); }).slice(0,5);
 
-        html += '<div style="min-width:160px;padding-left:16px;font-size:11px">';
+        var _showRightPanel = arMezzShowTop5 || arMezzShowLow5 || arMezzShowLegend;
+        if (_showRightPanel) html += '<div style="min-width:160px;padding-left:16px;font-size:11px">';
+        if (arMezzShowTop5) {
         html += '<div style="font-weight:700;color:#22d3ee;margin-bottom:6px;font-size:12px">Top 5 WIP</div>';
         html += '<div style="display:flex;gap:6px;font-size:9px;color:var(--h-muted,#7a8a9a);padding:0 6px;margin-bottom:3px"><span style="min-width:42px">Chute</span><span style="min-width:24px;text-align:right">WIP</span><span style="min-width:24px;text-align:right">JPH</span><span>AA</span></div>';
         top5.forEach(function(c) {
@@ -13341,6 +13376,8 @@ if (k === 'eta') {
             html += '</div>';
         });
 
+        } // end arMezzShowTop5
+        if (arMezzShowLow5) {
         html += '<div style="font-weight:700;color:#22d3ee;margin:16px 0 6px;font-size:12px">Low 5 Scanners</div>';
         html += '<div style="display:flex;gap:6px;font-size:9px;color:var(--h-muted,#7a8a9a);padding:0 6px;margin-bottom:3px"><span style="min-width:42px">Chute</span><span style="min-width:24px;text-align:right">WIP</span><span style="min-width:24px;text-align:right">JPH</span><span>AA</span></div>';
         bot5.forEach(function(c) {
@@ -13352,7 +13389,9 @@ if (k === 'eta') {
             if (c.assoc) html += '<span style="opacity:0.7;font-size:10px">' + c.assoc.login + '</span>';
             html += '</div>';
         });
-        // Legend
+        } // end arMezzShowLow5
+        // Legend (incl. Borders)
+        if (arMezzShowLegend) {
         html += '<div style="margin-top:16px;font-size:10px;color:var(--h-muted,#7a8a9a)">';
         html += '<div style="font-weight:700;color:#22d3ee;margin-bottom:4px;font-size:11px">Legend</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;background:#166534;border-radius:2px"></span> Scanning</div>';
@@ -13367,7 +13406,8 @@ if (k === 'eta') {
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;border:2px solid #eab308;border-radius:2px"></span> Half Full</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="display:inline-block;width:14px;height:10px;border:2px solid #9ca3af;border-radius:2px"></span> Inactive/Jammed</div>';
         html += '</div>';
-        html += '</div>'; // end right panel
+        } // end arMezzShowLegend
+        if (_showRightPanel) html += '</div>'; // end right panel
 
         html += '</div></div>'; // end flex row + outer wrapper
         wrap.innerHTML = html;
@@ -15542,6 +15582,14 @@ if (k === 'eta') {
             if (_amL) _amL.value = arMezzManualLanes || '';
             var _amC = document.getElementById('hydra-armezz-chutes');
             if (_amC) _amC.value = arMezzManualChutes || '';
+            var _amShM = document.getElementById('hydra-armezz-show-moves');
+            if (_amShM) _amShM.checked = !!arMezzShowMoves;
+            var _amShT = document.getElementById('hydra-armezz-show-top5');
+            if (_amShT) _amShT.checked = !!arMezzShowTop5;
+            var _amShL = document.getElementById('hydra-armezz-show-low5');
+            if (_amShL) _amShL.checked = !!arMezzShowLow5;
+            var _amShG = document.getElementById('hydra-armezz-show-legend');
+            if (_amShG) _amShG.checked = !!arMezzShowLegend;
             if (ddList)    ddList.value     = dockDoorRaw || '';
             var _slaIn = document.getElementById('hydra-cpt-sla');
             if (_slaIn) _slaIn.value = cptSlaHours;
@@ -17401,6 +17449,18 @@ if (k === 'eta') {
         }
         _amDimHandler('hydra-armezz-lanes', function(v) { arMezzManualLanes = v; });
         _amDimHandler('hydra-armezz-chutes', function(v) { arMezzManualChutes = v; });
+        function _amShowHandler(id, setter) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', function() {
+                setter(this.checked);
+                saveAllSettings();
+                if (obActiveTab === 'armezz' && arMezzData) renderOBArMezzTable();
+            });
+        }
+        _amShowHandler('hydra-armezz-show-moves', function(v) { arMezzShowMoves = v; });
+        _amShowHandler('hydra-armezz-show-top5', function(v) { arMezzShowTop5 = v; });
+        _amShowHandler('hydra-armezz-show-low5', function(v) { arMezzShowLow5 = v; });
+        _amShowHandler('hydra-armezz-show-legend', function(v) { arMezzShowLegend = v; });
 
         var obProgInput = document.getElementById('hydra-ob-progress-enabled');
         if (obProgInput) {

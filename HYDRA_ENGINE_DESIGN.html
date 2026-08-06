@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hydra Engine — Design Document</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #a020b8;
+    --accent2: #20c8f0;
+    --code-bg: #11151b;
+    --green: #3fb950;
+    --amber: #e3b341;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px 120px; }
+  header.doc {
+    background: linear-gradient(90deg,#d01818 0%,#a81845 20%,#8020a0 44%,#a020b8 50%,#6040d0 62%,#2868d8 80%,#10b8ee 100%);
+    padding: 3px;
+    border-radius: 0 0 14px 14px;
+    margin-bottom: 40px;
+  }
+  header.doc .inner {
+    background: var(--bg);
+    border-radius: 0 0 12px 12px;
+    padding: 40px 32px 32px;
+  }
+  header.doc h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: -0.5px; }
+  header.doc .sub { color: var(--muted); font-size: 15px; }
+  header.doc .meta { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  header.doc .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    background: rgba(160,32,184,0.18); color: #d8a8f0; border: 1px solid rgba(160,32,184,0.5);
+    font-size: 12px; font-weight: 600; margin-right: 8px;
+  }
+  h2 {
+    margin: 48px 0 16px; padding-bottom: 8px; font-size: 25px;
+    border-bottom: 2px solid var(--border);
+  }
+  h3 { margin: 32px 0 12px; font-size: 19px; color: #f0f3f6; }
+  h4 { margin: 24px 0 10px; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  p { margin: 12px 0; }
+  a { color: var(--accent2); }
+  ul, ol { padding-left: 24px; }
+  li { margin: 6px 0; }
+  strong { color: #fff; }
+  blockquote {
+    margin: 20px 0; padding: 14px 20px;
+    border-left: 4px solid var(--accent);
+    background: var(--surface); border-radius: 0 8px 8px 0;
+    color: #f0e0f6; font-style: italic;
+  }
+  code {
+    background: var(--code-bg); padding: 2px 6px; border-radius: 4px;
+    font-family: "SF Mono", "Fira Code", Consolas, monospace; font-size: 13.5px;
+    color: #ffb0e0;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; overflow-x: auto; font-size: 13px; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; color: #c9d1d9; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14.5px;
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  th, td { text-align: left; padding: 9px 14px; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface2); color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .toc {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px 24px; margin-bottom: 40px;
+  }
+  .toc h4 { margin: 0 0 12px; color: var(--text); }
+  .toc ol { columns: 2; column-gap: 32px; margin: 0; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--accent2); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  .principle {
+    background: linear-gradient(135deg, rgba(160,32,184,0.12), rgba(32,200,240,0.08));
+    border: 1px solid rgba(160,32,184,0.4);
+    border-radius: 12px; padding: 4px 24px; margin: 20px 0;
+  }
+</style>
+</head>
+<body>
+<header class="doc">
+  <div class="inner wrap" style="padding-bottom:0">
+    <h1>Hydra Engine</h1>
+    <div class="sub">Design Document</div>
+    <div class="meta">
+      <span class="badge">v2.0</span>
+      Author: eddobrev &nbsp;·&nbsp; Date: July 18, 2026
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <h4>Contents</h4>
+    <ol>
+      <li><a href="#s1">Purpose</a></li>
+      <li><a href="#s2">Problem Statement</a></li>
+      <li><a href="#s3">What It Solves</a></li>
+      <li><a href="#s4">Product Requirements</a></li>
+      <li><a href="#s5">Architecture</a></li>
+      <li><a href="#s6">Data Model</a></li>
+      <li><a href="#s7">Deterministic Baseline Algorithm</a></li>
+      <li><a href="#s8">Data Mapper</a></li>
+      <li><a href="#s9">The Decision Loop (AI as Interpreter)</a></li>
+      <li><a href="#s10">Explanation (AI as Narrator)</a></li>
+      <li><a href="#s11">User Interface</a></li>
+      <li><a href="#s12">Implementation Phases</a></li>
+      <li><a href="#s13">Success Metrics</a></li>
+      <li><a href="#s14">Future State</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="s1">1. Purpose</h2>
+  <p>Hydra Engine is a universal staffing decision system for Amazon Sort Centers. It models a facility as a directed graph of process paths, computes everything provable with deterministic code, and uses an AI layer as an <strong>interpreter of operator-authored rules</strong> to handle the judgment that cannot be hardcoded.</p>
+  <p>The engine does not claim to be smarter than the operator. The operator is the domain expert; the engine's job is to hold the facility's live state and math perfectly, and to apply the operator's intent — expressed as natural-language rules — to situations the operator could not enumerate in advance.</p>
+
+  <h2 id="s2">2. Problem Statement</h2>
+  <p>Every sort center makes staffing decisions 10+ times per shift — allocating finite headcount across process paths to maximize throughput. Today this is done by:</p>
+  <ul>
+    <li>Manual estimation using static spreadsheet planners (built once pre-shift, stale within 20 minutes)</li>
+    <li>Gut-feel adjustments as conditions change</li>
+    <li>Inconsistent quality across shifts, sites, and experience levels</li>
+  </ul>
+  <p>The result: suboptimal TPH, missed CPTs, overstaffed areas coexisting with bottlenecks, and no systematic way to carry good judgment across shifts, people, and 100+ sort centers.</p>
+  <p>Two failure modes bound the design:</p>
+  <ol>
+    <li><strong>Pure hardcoding is too rigid.</strong> No fixed algorithm can anticipate every site quirk, edge case, or tradeoff an experienced operator makes on instinct.</li>
+    <li><strong>Pure AI is unsafe and unauditable.</strong> An LLM allowed to "just optimize the floor" will hallucinate numbers, violate physical constraints, and produce decisions nobody can trace or trust.</li>
+  </ol>
+  <p>Hydra Engine resolves this by drawing a hard line between the two: <strong>code owns everything provable; AI owns only the interpretation of the operator's rules, and is never allowed to override math.</strong></p>
+
+  <h2 id="s3">3. What It Solves</h2>
+  <table>
+    <tr><th>Problem</th><th>How Engine Solves It</th></tr>
+    <tr><td>Static plans go stale</td><td>Continuously recomputes as live data changes</td></tr>
+    <tr><td>Too many variables for mental math</td><td>Graph engine evaluates all flow + constraints simultaneously</td></tr>
+    <tr><td>Can't hardcode every scenario</td><td>Operator writes natural-language rules; AI interprets them against live state</td></tr>
+    <tr><td>AI can't be trusted with the floor</td><td>AI only proposes; deterministic validator disposes. AI never touches math</td></tr>
+    <tr><td>Inconsistent across shifts/people</td><td>Same engine + same operator rules = same quality regardless of who runs it</td></tr>
+    <tr><td>Each site is unique</td><td>Universal graph model + per-site rules, no site-specific code</td></tr>
+    <tr><td>No feedback loop</td><td>Logs baseline, AI adjustments, and outcomes for continuous improvement</td></tr>
+  </table>
+
+  <h2 id="s4">4. Product Requirements</h2>
+  <h3>4.1 Functional Requirements</h3>
+  <ul>
+    <li><strong>FR-1:</strong> Accept any sort center's process topology as a directed graph</li>
+    <li><strong>FR-2:</strong> Ingest live data (trailers, WIP, headcount, rates) from existing APIs</li>
+    <li><strong>FR-3:</strong> Produce a constraint-valid baseline HC allocation with zero AI involvement</li>
+    <li><strong>FR-4:</strong> Accept operator-authored rules (natural language) scoped to nodes and to the site</li>
+    <li><strong>FR-5:</strong> Use AI to interpret those rules against live state and propose adjustments to the baseline</li>
+    <li><strong>FR-6:</strong> Re-validate every AI-proposed adjustment against hard constraints before accepting it</li>
+    <li><strong>FR-7:</strong> Respect all operational constraints (min/max HC, grouping rules, flow physics, headcount conservation)</li>
+    <li><strong>FR-8:</strong> Provide phased timeline showing when staffing should shift as conditions change</li>
+    <li><strong>FR-9:</strong> Report projected throughput (transient and steady-state), current bottleneck, and risks with time-to-threshold</li>
+    <li><strong>FR-10:</strong> Explain every decision, tracing each adjustment back to the specific rule that caused it</li>
+    <li><strong>FR-11:</strong> Work for any NASC regardless of equipment type, process paths, or volume mix</li>
+  </ul>
+  <h3>4.2 Non-Functional Requirements</h3>
+  <ul>
+    <li><strong>NFR-1:</strong> Produce a recommendation within 60 seconds of request</li>
+    <li><strong>NFR-2:</strong> No site-specific code — all variation handled through graph definition + operator rules</li>
+    <li><strong>NFR-3:</strong> Operate from a userscript (Tampermonkey) with no infrastructure dependencies beyond a lightweight AI server</li>
+    <li><strong>NFR-4:</strong> Safety is never AI-dependent — the system must produce a valid plan with zero rules and zero AI availability</li>
+    <li><strong>NFR-5:</strong> Every AI proposal is validated by code before it can affect output</li>
+    <li><strong>NFR-6:</strong> Degrade gracefully when data is unavailable (flag missing inputs, compute with what's available)</li>
+    <li><strong>NFR-7:</strong> Every decision is auditable — traceable to a rule, a constraint, or deterministic math</li>
+  </ul>
+
+  <h2 id="s5">5. Architecture</h2>
+  <h3>5.1 Core Philosophy: The Operator Is the Expert, AI Is the Interpreter</h3>
+  <p>Hydra Engine is built on one principle:</p>
+  <div class="principle">
+    <blockquote style="border:none;background:none;margin:16px 0;padding:0;color:#f0e0f6"><strong>Code owns everything provable. The operator owns judgment. AI is the operator's interpreter — it translates human intent into concrete moves, bounded by math it is not permitted to violate.</strong></blockquote>
+  </div>
+  <p>This is a deliberate reframing. The AI is not an optimizer and not a domain expert. It is a translation layer that takes:</p>
+  <ul>
+    <li><strong>fuzzy human intent</strong> ("keep jam break covered when recirc risk is climbing"), and</li>
+    <li><strong>hard deterministic state</strong> (the live graph, the constraint-valid baseline),</li>
+  </ul>
+  <p>and produces a concrete, bounded proposal ("move 2 HC into jam_break") that code then re-validates before anything reaches the operator.</p>
+  <p>Three consequences follow:</p>
+  <ol>
+    <li><strong>The AI can never hallucinate a number into production</strong>, because it never does arithmetic and every proposal is re-checked by the deterministic validator.</li>
+    <li><strong>The AI is additive, never load-bearing for safety.</strong> With zero rules or zero AI availability, the deterministic baseline is still a complete, valid plan.</li>
+    <li><strong>Every decision is auditable.</strong> An adjustment traces to a specific rule on a specific node; a rejection traces to a specific constraint.</li>
+  </ol>
+
+  <h3>5.2 System Overview</h3>
+  <pre><code>┌───────────────────────────────────────────────────────────────────┐
+│                          HYDRA (Browser)                            │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────┐   ┌──────────┐   ┌──────────────────────────────┐   │
+│  │ API Layer │  │  Data    │   │        GRAPH ENGINE           │   │
+│  │ SSP, YMS  │─▶│  Mapper  │──▶│        (JS, deterministic)    │   │
+│  │ WATT,STEM │  │ raw→graph │   │  • Flow calculator           │   │
+│  │ QBCC      │  └──────────┘   │  • Bottleneck finder          │   │
+│  └──────────┘                  │  • Constraint validator       │   │
+│                                 │  • WIP projector              │   │
+│                                 │  • BASELINE allocator         │   │
+│                                 └───────────────┬──────────────┘   │
+│                                                 │ baseline + state  │
+│                                                 ▼                   │
+│                                 ┌──────────────────────────────┐   │
+│                                 │   AI INTERPRETER LAYER        │   │
+│                                 │   (via server / Bedrock)      │   │
+│                                 │   Input: local state +        │   │
+│                                 │   baseline + operator rules   │   │
+│                                 │   Output: PROPOSED adjustment │   │
+│                                 │   + rationale (no math)       │   │
+│                                 └───────────────┬──────────────┘   │
+│                                                 │ proposals         │
+│                                                 ▼                   │
+│                                 ┌──────────────────────────────┐   │
+│                                 │   VALIDATOR / RECONCILER      │   │
+│                                 │   (JS, deterministic)         │   │
+│                                 │  • Re-check every proposal    │   │
+│                                 │  • Reject constraint breakers │   │
+│                                 │  • Resolve HC contention      │   │
+│                                 │  • Conserve headcount         │   │
+│                                 └───────────────┬──────────────┘   │
+│                                                 │ final plan        │
+│                                                 ▼                   │
+│                                 ┌──────────────────────────────┐   │
+│                                 │   AI NARRATOR (single call)   │   │
+│                                 │  Explanation, phasing, risks  │   │
+│                                 │  over the ALREADY-DECIDED plan │   │
+│                                 └───────────────┬──────────────┘   │
+│                                                 ▼                   │
+│                                 ┌──────────────────────────────┐   │
+│                                 │        USER INTERFACE         │   │
+│                                 │  Allocation table, flows,     │   │
+│                                 │  timeline, risks, rule trace  │   │
+│                                 └──────────────────────────────┘   │
+│                                                                     │
+└───────────────────────────────────────────────────────────────────┘</code></pre>
+
+  <h3>5.3 Layer Responsibilities</h3>
+  <table>
+    <tr><th>Layer</th><th>What It Does</th><th>Deterministic?</th></tr>
+    <tr><td>API Layer</td><td>Authenticates, pulls raw data from Amazon systems</td><td>Yes</td></tr>
+    <tr><td>Data Mapper</td><td>Routes raw API data to graph nodes</td><td>Yes</td></tr>
+    <tr><td>Graph Engine</td><td>Flow math, bottleneck, constraint validation, WIP projection, <strong>constraint-valid baseline</strong></td><td>Yes</td></tr>
+    <tr><td>AI Interpreter</td><td>Translates operator rule + local state into a <strong>proposed</strong> adjustment. Never does math</td><td>No</td></tr>
+    <tr><td>Validator / Reconciler</td><td>Re-validates every proposal, rejects invalid moves, resolves contention, conserves HC</td><td>Yes</td></tr>
+    <tr><td>AI Narrator</td><td>Single call producing explanation/phasing/risk narrative over the finished plan</td><td>No</td></tr>
+    <tr><td>UI</td><td>Presents plan, rule traces, and accepts operator input/overrides</td><td>Yes</td></tr>
+  </table>
+
+  <h3>5.4 What Changed From v1.0</h3>
+  <p>v1.0 treated the AI as a single holistic "reasoning layer" that received the whole graph and returned a full plan. That conflated two very different jobs (deciding vs. explaining) into one unauditable call, and it left the operator's own judgment with no first-class home in the system.</p>
+  <p>v2.0 makes three structural changes:</p>
+  <ol>
+    <li><strong>Operator rules are a first-class data type</strong> (Section 6.5), scoped to nodes and to the site. They are the primary mechanism for flexibility.</li>
+    <li><strong>AI decision-making is split from AI explanation.</strong> Decisions happen as small, scoped, per-rule <em>proposals</em> that code validates (Section 9). Explanation is one holistic <em>narration</em> call over the already-final plan (Section 10).</li>
+    <li><strong>The deterministic baseline is a hard requirement, not a fallback.</strong> The system must always be able to produce a complete valid plan with zero rules and no AI.</li>
+  </ol>
+
+  <h2 id="s6">6. Data Model</h2>
+  <h3>6.1 Graph Node (Process Path)</h3>
+  <pre><code>{
+  "id": "ar_induct",
+  "name": "AR Induct",
+  "rate_per_5min": 33,
+  "min_hc": 3,
+  "max_hc": 20,
+  "current_hc": 0,
+  "constraints": [],
+  "feeds": ["mezz_wip"],
+  "fed_by": ["fluid_unload", "bb_unload"],
+  "volume_source": null,
+  "split_to": { "mezz_wip": 1.0 },
+  "ai_rules": []
+}</code></pre>
+
+  <h3>6.2 Source Node (Volume Entry Point)</h3>
+  <pre><code>{
+  "id": "ib_trailers",
+  "type": "source",
+  "children": [
+    { "id": "trailer_113F62J94", "category": "container", "volume_remaining": 4242, "door": 221, "status": "UNLOADING" }
+  ]
+}</code></pre>
+
+  <h3>6.3 WIP Pool</h3>
+  <pre><code>{
+  "id": "mezz_wip",
+  "type": "wip_pool",
+  "current_level": 3000,
+  "fed_by": ["ar_induct", "robin_induct"],
+  "feeds": ["scanner"],
+  "drain_reduces_by": ["ar_flow_direct"],
+  "thresholds": {
+    "danger_low_min_per_worker": 15,
+    "ideal_low_min_per_worker": 30,
+    "ideal_high_min_per_worker": 60,
+    "danger_high_recirc": true
+  }
+}</code></pre>
+
+  <h3>6.4 Output Node (TPH Definition)</h3>
+  <pre><code>{
+  "id": "tph_output",
+  "type": "output",
+  "formula": "(scanner_output + ar_flow_direct) * 12 / total_hc",
+  "components": ["scanner", "ar_flow"],
+  "denominator": "total_hc"
+}</code></pre>
+
+  <h3>6.5 Operator Rules (First-Class)</h3>
+  <p>Operator rules are the flexibility mechanism. They are natural-language statements of intent authored by the person running the floor. They exist at two scopes:</p>
+  <p><strong>Node-scoped rules</strong> (<code>node.ai_rules[]</code>) — apply when reasoning about one node's allocation:</p>
+  <pre><code>{
+  "id": "rule_jam_recirc",
+  "scope": "node",
+  "node_id": "jam_break",
+  "text": "Keep jam break staffed to at least 2 when mezz WIP is trending toward the recirc threshold, even if it means pulling from induct.",
+  "priority": "high",
+  "enabled": true
+}</code></pre>
+  <p><strong>Site-scoped rules</strong> (<code>graph.site_rules[]</code>) — global tiebreakers used during reconciliation when nodes compete for finite headcount:</p>
+  <pre><code>{
+  "id": "rule_cpt_first",
+  "scope": "site",
+  "text": "When two areas compete for the last available people, protect CPT-critical outbound loading first.",
+  "priority": "high",
+  "enabled": true
+}</code></pre>
+  <p>Rules are <strong>intent, not code</strong>. They are never executed directly — they are handed to the AI interpreter as instructions, and the AI's resulting proposal is always re-validated by deterministic code. A malformed or contradictory rule can, at worst, produce a proposal that the validator rejects; it can never break a constraint or corrupt the baseline.</p>
+
+  <h3>6.6 Site Graph (Complete Example — ORD9)</h3>
+  <pre><code>{
+  "site": "ORD9",
+  "nodes": ["fluid_unload", "bb_unload", "container_unload", "ar_induct", "robin_induct", "scanner"],
+  "wip_pools": ["mezz_wip"],
+  "sources": ["ib_trailers"],
+  "outputs": ["tph_output"],
+  "edges": [
+    {"from": "fluid_unload", "to": "ar_induct", "split": 1.0},
+    {"from": "bb_unload", "to": "ar_induct", "split": 0.75},
+    {"from": "bb_unload", "to": "nc_output", "split": 0.25},
+    {"from": "container_unload", "to": "robin_induct", "split": 1.0},
+    {"from": "ar_induct", "to": "mezz_wip", "split": 1.0},
+    {"from": "robin_induct", "to": "mezz_wip", "split": 0.5},
+    {"from": "robin_induct", "to": "ar_flow_direct", "split": 0.5},
+    {"from": "mezz_wip", "to": "scanner", "split": 1.0}
+  ],
+  "site_rules": [],
+  "mode": "racecar"
+}</code></pre>
+
+  <h2 id="s7">7. Deterministic Baseline Algorithm</h2>
+  <p>The baseline is computed with zero AI involvement and is always a complete, constraint-valid plan.</p>
+  <pre><code>INPUT: Graph + live data + operator settings (mode, HC, targets)
+OUTPUT: Constraint-valid baseline HC allocation + projected flows + timeline
+
+ALGORITHM:
+1. IDENTIFY output node (what defines TPH)
+2. WORK BACKWARDS through the graph:
+   a. Output node: how much can it produce given WIP state?
+   b. WIP pools: growing/draining/steady? Determine mode implications.
+   c. Middle nodes: what feed rate does the output need?
+   d. Source nodes: what volume is available to feed the pipeline?
+3. LOCK mandatory allocations (min HC constraints, fixed crews)
+4. SIZE each node's HC based on what downstream needs (top-down)
+5. VALIDATE:
+   - Every node's capacity >= its input flow (no jams)
+   - All hard constraints satisfied
+   - HC sums to available flow HC (conservation)
+   - WIP trajectory stays within thresholds for the planning horizon
+6. IF validation fails: adjust and re-run
+7. CALCULATE projected flows, TPH (transient + steady-state), timeline
+8. EMIT baseline as the input to the AI interpreter stage (Section 9)</code></pre>
+
+  <h2 id="s8">8. Data Mapper (API → Graph)</h2>
+  <table>
+    <tr><th>API Source</th><th>Maps To</th></tr>
+    <tr><td>SSP IB trailers (ibTableData)</td><td>Source node children (volume, type, status, ETA)</td></tr>
+    <tr><td>SSP OB trailers</td><td>Output constraints (CPT deadlines, loaded %)</td></tr>
+    <tr><td>YMS yard state</td><td>Door assignments, trailer locations, move status</td></tr>
+    <tr><td>WATT workstation data</td><td>Node current_hc, actual rates (live performance)</td></tr>
+    <tr><td>STEM scan rates</td><td>Node actual throughput (real vs engineered)</td></tr>
+    <tr><td>QBCC chute state</td><td>Downstream capacity constraints</td></tr>
+  </table>
+  <p>The mapper is a lookup table, not code logic: "WATT process name 'AR Induct' maps to graph node 'ar_induct'." Different sites have different process names, but the mapping is simple configuration.</p>
+
+  <h2 id="s9">9. The Decision Loop (AI as Interpreter)</h2>
+  <p>The decision loop runs in three deterministic-bounded stages every optimization cycle. The AI participates only in stage 2, and only as a proposer.</p>
+  <h3>9.1 Stage 1 — Deterministic Baseline (code)</h3>
+  <p>Run Section 7. Produce a constraint-valid baseline. If there were no rules and no AI, this is the answer. It is always safe and always producible.</p>
+  <h3>9.2 Stage 2 — Rule Interpretation (AI proposes)</h3>
+  <p>The engine identifies <strong>decision points</strong> — nodes that (a) carry one or more enabled <code>ai_rules</code> AND (b) are in a genuinely ambiguous state (headcount contention, near a threshold, an edge case the baseline handles poorly). Only these trigger an AI call. Nodes with no rules, or rules that aren't currently relevant, are skipped.</p>
+  <p>For each decision point, the AI interpreter receives a <strong>scoped</strong> payload:</p>
+  <pre><code>{
+  "node": { /* the node's live state */ },
+  "neighbors": { /* fed_by and feeds nodes' state */ },
+  "baseline_allocation": { /* what stage 1 assigned this node */ },
+  "wip_context": { /* relevant WIP pool trajectory */ },
+  "operator_rules": [ /* this node's enabled ai_rules text */ ],
+  "mode": "racecar | boat"
+}</code></pre>
+  <p>The AI returns a <strong>proposal only</strong> — never applied directly:</p>
+  <pre><code>{
+  "node_id": "jam_break",
+  "proposed_hc_delta": 2,
+  "source_hint": "ar_induct",
+  "rule_id": "rule_jam_recirc",
+  "rationale": "Mezz WIP trending toward recirc threshold in ~12 min; rule prioritizes jam break coverage."
+}</code></pre>
+  <p>The AI does no arithmetic. It reads intent + state and expresses a bounded adjustment with a traceable rationale.</p>
+  <h3>9.3 Stage 3 — Validation &amp; Reconciliation (code disposes)</h3>
+  <p>Every proposal is re-checked by the deterministic validator before it can affect output:</p>
+  <ol>
+    <li><strong>Constraint re-validation</strong> — does the adjusted allocation still satisfy min/max HC, no-jam capacity, and WIP thresholds? If not, <strong>reject the proposal and log it</strong> (never silently apply).</li>
+    <li><strong>Headcount conservation</strong> — HC is finite. Adding to one node must subtract from another; that bookkeeping is arithmetic, done by code.</li>
+    <li><strong>Contention resolution</strong> — if multiple accepted proposals compete for the same headcount, resolve using site-scoped rules (Section 6.5) fed into a deterministic priority ordering. Ties broken by explicit priority, then by bottleneck impact.</li>
+  </ol>
+  <p>The output of stage 3 is the <strong>final allocation</strong>: baseline + validated, reconciled adjustments. It is provably constraint-valid regardless of what the AI proposed.</p>
+  <h3>9.4 Contract Summary</h3>
+  <blockquote><strong>AI proposes, code disposes.</strong> The AI never sees a knob it can turn directly. It emits proposals; the deterministic validator is the only thing that can change the plan.</blockquote>
+
+  <h2 id="s10">10. Explanation (AI as Narrator)</h2>
+  <p>After the plan is final, a single AI call produces the human-facing narrative over the <strong>already-decided</strong> allocation. This call makes no decisions.</p>
+  <p>Input:</p>
+  <pre><code>{
+  "final_allocation": { /* the decided plan */ },
+  "baseline_allocation": { /* stage 1, for contrast */ },
+  "applied_adjustments": [ /* validated proposals with rule_id + rationale */ ],
+  "rejected_adjustments": [ /* proposals the validator rejected + why */ ],
+  "wip_projection": { /* trend over next hour */ },
+  "trailer_timeline": { /* when each drains, what arrives */ },
+  "user_question": "optimize | what if... | free text"
+}</code></pre>
+  <p>Output:</p>
+  <pre><code>{
+  "explanation": "Natural-language summary of the plan and why it differs from baseline",
+  "rule_trace": [ /* which operator rule caused which adjustment */ ],
+  "phased_adjustments": [ /* when to move people as conditions change */ ],
+  "risks": [ /* flagged concerns with time-to-threshold */ ],
+  "alternatives": [ /* if the operator wants options */ ]
+}</code></pre>
+  <p>Splitting narration from decision-making means the explanation is always faithful to what actually happened (including <em>why</em> a proposal was rejected), and a failure or slowness in narration never affects the correctness of the plan.</p>
+
+  <h2 id="s11">11. User Interface</h2>
+  <h3>11.1 Graph Builder (site onboarding)</h3>
+  <ul>
+    <li>Visual drag-and-drop: create nodes, draw edges, set rates and constraints</li>
+    <li>Author node-scoped and site-scoped operator rules in plain language</li>
+    <li>Save as site graph JSON</li>
+  </ul>
+  <h3>11.2 Optimizer Panel (current Hydra Engine, evolved)</h3>
+  <ul>
+    <li>Operator inputs (HC, targets, mode toggle) and live API refresh</li>
+    <li>One-click optimize</li>
+    <li>Output: allocation table, flow rates, timeline, risk flags</li>
+    <li><strong>Rule trace panel</strong> — shows which operator rule drove each adjustment and which proposals were rejected and why</li>
+    <li>Chat for follow-up questions and what-if scenarios</li>
+  </ul>
+
+  <h2 id="s12">12. Implementation Phases</h2>
+  <table>
+    <tr><th>Phase</th><th>Deliverable</th><th>Effort</th><th>Proves</th></tr>
+    <tr><td>1</td><td>Graph schema (with <code>ai_rules</code>) + ORD9 defined as graph</td><td>3 hrs</td><td>Model works</td></tr>
+    <tr><td>2</td><td>JS graph engine: flow calc + bottleneck + validation + <strong>baseline allocator</strong></td><td>8 hrs</td><td>Deterministic plan is always producible</td></tr>
+    <tr><td>3</td><td>Data mapper for ORD9 (APIs → graph nodes)</td><td>4 hrs</td><td>Live data populates graph</td></tr>
+    <tr><td>4</td><td>Rule interpreter (stage 2) + validator/reconciler (stage 3)</td><td>6 hrs</td><td>AI proposes, code disposes — safely</td></tr>
+    <tr><td>5</td><td>AI narrator (stage 4) + rule-trace UI</td><td>3 hrs</td><td>Every decision is explainable and auditable</td></tr>
+    <tr><td>6</td><td>MDW5 defined as graph (second topology)</td><td>2 hrs</td><td>Model is universal</td></tr>
+    <tr><td>7</td><td>Graph + rule builder UI</td><td>10 hrs</td><td>Any site self-onboards</td></tr>
+    <tr><td>8</td><td>Outcome logging + feedback loop</td><td>4 hrs</td><td>System improves over time</td></tr>
+  </table>
+  <p><strong>Total to universal v1: ~40 hours</strong></p>
+
+  <h2 id="s13">13. Success Metrics</h2>
+  <table>
+    <tr><th>Metric</th><th>Target</th></tr>
+    <tr><td>Time to produce staffing plan</td><td>&lt; 30 seconds (vs 5+ min manual)</td></tr>
+    <tr><td>Plan validity (constraints satisfied)</td><td>100% — enforced by code, not AI</td></tr>
+    <tr><td>AI proposals accepted after validation</td><td>tracked; low acceptance flags bad rules</td></tr>
+    <tr><td>TPH improvement vs manual planning</td><td>&gt; 5% measurable delta</td></tr>
+    <tr><td>Decisions traceable to a rule or constraint</td><td>100%</td></tr>
+    <tr><td>Sites onboarded without code changes</td><td>2+ in first month</td></tr>
+    <tr><td>User adoption (daily active)</td><td>10+ operators within 60 days</td></tr>
+  </table>
+
+  <h2 id="s14">14. Future State</h2>
+  <p>The engine becomes the foundation for:</p>
+  <ul>
+    <li><strong>Autonomous rebalancing</strong> — detects bottlenecks and proposes moves without being asked (still validated by code)</li>
+    <li><strong>Shift pre-planning</strong> — given manifest, produce a full-shift staffing timeline before shift starts</li>
+    <li><strong>VTO/VET optimization</strong> — "you can release 4 people at 02:00 without TPH impact"</li>
+    <li><strong>Rule libraries</strong> — share proven operator rules across sites; new sites inherit a starter rule set</li>
+    <li><strong>Network-level visibility</strong> — regionals see which sites are optimally staffed vs which have slack</li>
+    <li><strong>Training simulator</strong> — new AMs input scenarios and see how the engine + rules solve them</li>
+  </ul>
+
+  <div class="footer">
+    <p>Document version: 2.0 &nbsp;·&nbsp; Author: eddobrev &nbsp;·&nbsp; Date: July 18, 2026</p>
+    <p><strong>Change from 1.0:</strong> AI reframed from "reasoning layer" to operator's rule-interpreter; decision-making (scoped proposals, code-validated) separated from explanation (single narration call); operator rules made a first-class node/site-scoped data type; deterministic baseline made a hard requirement rather than a fallback.</p>
+  </div>
+
+</div>
+</body>
+</html>
