@@ -13264,9 +13264,9 @@ if (k === 'eta') {
         function rSep(l) { return (arMezzPaired && laneGroupStart[l]) ? R_SEP : ''; }
         var R_LAST = 'border-right:2px solid var(--h-border2,#3a4a5c);';
         // table-layout:fixed + colgroup -> every lane column identical width
-        html += '<table style="margin-bottom:28px;border-collapse:collapse;width:100%;font-size:11px;table-layout:fixed">';
+        html += '<table style="margin-bottom:28px;border-collapse:collapse;font-size:11px;table-layout:fixed">';
         html += '<colgroup><col style="width:64px">';
-        for (var _cg = 1; _cg <= maxLane; _cg++) html += '<col>';
+        for (var _cg = 1; _cg <= maxLane; _cg++) html += '<col style="width:38px">';
         html += '</colgroup>';
         html += '<thead><tr>';
         html += '<th style="text-align:left;padding:4px 8px;font-size:12px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;border-left:2px solid var(--h-border2,#3a4a5c)">Chute</th>';
