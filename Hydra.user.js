@@ -5260,32 +5260,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             '<div class="hydra-copy-list" id="hydra-copy-list"></div>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="hydra-settings-section collapsed" id="hydra-section-armezz">' +
-                        '<div class="hydra-settings-section-title">AR Mezz</div>' +
-                        '<div class="hydra-settings-section-content">' +
-                            '<div class="hydra-settings-row">' +
-                                '<input type="checkbox" id="hydra-armezz-rotated" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
-                                '<label for="hydra-armezz-rotated" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Rotate table 90\u00b0 (chutes as rows, lanes as columns)</label>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row" style="margin-top:8px">' +
-                                '<input type="checkbox" id="hydra-armezz-paired" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
-                                '<label for="hydra-armezz-paired" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Group lanes A / B / C in rotated view (A=1, B=2/3, C=4/5...)</label>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row" style="margin-top:8px;display:flex;gap:8px;align-items:center">' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px">Manual layout:</label>' +
-                                '<input type="number" id="hydra-armezz-lanes" min="0" placeholder="lanes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
-                                '<input type="number" id="hydra-armezz-chutes" min="0" placeholder="chutes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:10px">blank/0 = auto from workstation data</span>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row" style="margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">' +
-                                '<span style="color:var(--h-muted, #aab4c0);font-size:12px">Show panels:</span>' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-moves" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Active Moves</label>' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-top5" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Top 5 WIP</label>' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-low5" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Low 5 Scanners</label>' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-legend" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Legend</label>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-dockdoors">' +
                         '<div class="hydra-settings-section-title">Dock Door Panel</div>' +
                         '<div class="hydra-settings-section-content">' +
@@ -5324,6 +5298,32 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     '</div>' +
                     '<!-- OUTBOUND -->' +
                     '<div class="hydra-settings-category"><div class="hydra-settings-category-header">Outbound</div></div>' +
+                    '<div class="hydra-settings-section collapsed" id="hydra-section-armezz">' +
+                        '<div class="hydra-settings-section-title">AR Mezz</div>' +
+                        '<div class="hydra-settings-section-content">' +
+                            '<div class="hydra-settings-row">' +
+                                '<input type="checkbox" id="hydra-armezz-rotated" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
+                                '<label for="hydra-armezz-rotated" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Rotate table 90\u00b0 (chutes as rows, lanes as columns)</label>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px">' +
+                                '<input type="checkbox" id="hydra-armezz-paired" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
+                                '<label for="hydra-armezz-paired" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Group lanes A / B / C in rotated view (A=1, B=2/3, C=4/5...)</label>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px;display:flex;gap:8px;align-items:center">' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px">Manual layout:</label>' +
+                                '<input type="number" id="hydra-armezz-lanes" min="0" placeholder="lanes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
+                                '<input type="number" id="hydra-armezz-chutes" min="0" placeholder="chutes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:10px">blank/0 = auto from workstation data</span>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">' +
+                                '<span style="color:var(--h-muted, #aab4c0);font-size:12px">Show panels:</span>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-moves" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Active Moves</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-top5" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Top 5 WIP</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-low5" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Low 5 Scanners</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="hydra-armezz-show-legend" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Legend</label>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-ob-routes">' +
                         '<div class="hydra-settings-section-title">Outbound Route Settings</div>' +
                         '<div class="hydra-settings-section-content">' +
