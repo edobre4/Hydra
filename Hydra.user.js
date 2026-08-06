@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.50
+// @version      3.51
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -3511,6 +3511,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             ibCopyCols:  ibCopyCols.slice(),
             dockDoorEnabled: dockDoorEnabled,
             arMezzRotated: arMezzRotated,
+            arMezzPaired: arMezzPaired,
+            arMezzManualLanes: arMezzManualLanes,
+            arMezzManualChutes: arMezzManualChutes,
             obDockProgressEnabled: obDockProgressEnabled,
             dockDoorRaw: dockDoorRaw, dockDoorSize: dockDoorSize, cptSlaHours: cptSlaHours, cptSlaEnabled: cptSlaEnabled,
             psBufferGroups: PS_BUFFER_GROUPS.map(function(g) { return { key: g.key, label: g.label, filters: (g.filters || []).slice() }; }),
@@ -3663,6 +3666,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         }
         if (s.dockDoorEnabled !== undefined) dockDoorEnabled = !!s.dockDoorEnabled;
         if (s.arMezzRotated !== undefined) arMezzRotated = !!s.arMezzRotated;
+        if (s.arMezzPaired !== undefined) arMezzPaired = !!s.arMezzPaired;
+        if (s.arMezzManualLanes !== undefined) arMezzManualLanes = Math.max(0, parseInt(s.arMezzManualLanes, 10) || 0);
+        if (s.arMezzManualChutes !== undefined) arMezzManualChutes = Math.max(0, parseInt(s.arMezzManualChutes, 10) || 0);
         if (s.obDockProgressEnabled !== undefined) obDockProgressEnabled = !!s.obDockProgressEnabled;
         if (s.cptSlaHours !== undefined) { var _slaP = parseFloat(s.cptSlaHours); if (!isNaN(_slaP) && _slaP > 0) cptSlaHours = _slaP; }
         if (s.cptSlaEnabled !== undefined) cptSlaEnabled = !!s.cptSlaEnabled;
@@ -4370,6 +4376,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 ibCopyCols:  ibCopyCols.slice(),
                 dockDoorEnabled: dockDoorEnabled,
                 arMezzRotated: arMezzRotated,
+                arMezzPaired: arMezzPaired,
+                arMezzManualLanes: arMezzManualLanes,
+                arMezzManualChutes: arMezzManualChutes,
                 dockDoorRaw: dockDoorRaw, dockDoorSize: dockDoorSize, cptSlaHours: cptSlaHours, cptSlaEnabled: cptSlaEnabled,
                 sesameEnabled: sesameEnabled,
                 autoFitZoom: autoFitZoom, autoFitCap: autoFitCap,
@@ -4545,6 +4554,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.ibCopyCols && Array.isArray(s.ibCopyCols)) ibCopyCols = s.ibCopyCols.slice();
             if (s.dockDoorEnabled !== undefined) dockDoorEnabled = !!s.dockDoorEnabled;
             if (s.arMezzRotated !== undefined) arMezzRotated = !!s.arMezzRotated;
+            if (s.arMezzPaired !== undefined) arMezzPaired = !!s.arMezzPaired;
+            if (s.arMezzManualLanes !== undefined) arMezzManualLanes = Math.max(0, parseInt(s.arMezzManualLanes, 10) || 0);
+            if (s.arMezzManualChutes !== undefined) arMezzManualChutes = Math.max(0, parseInt(s.arMezzManualChutes, 10) || 0);
         if (s.obDockProgressEnabled !== undefined) obDockProgressEnabled = !!s.obDockProgressEnabled;
         if (s.cptSlaHours !== undefined) { var _slaL = parseFloat(s.cptSlaHours); if (!isNaN(_slaL) && _slaL > 0) cptSlaHours = _slaL; }
         if (s.cptSlaEnabled !== undefined) cptSlaEnabled = !!s.cptSlaEnabled;
@@ -5239,6 +5251,16 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<input type="checkbox" id="hydra-armezz-rotated" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
                                 '<label for="hydra-armezz-rotated" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Rotate table 90\u00b0 (chutes as rows, lanes as columns)</label>' +
                             '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px">' +
+                                '<input type="checkbox" id="hydra-armezz-paired" style="accent-color:var(--h-blue, #5090d0);width:15px;height:15px;cursor:pointer">' +
+                                '<label for="hydra-armezz-paired" style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer">Group lanes A / B / C in rotated view (A=1, B=2/3, C=4/5...)</label>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row" style="margin-top:8px;display:flex;gap:8px;align-items:center">' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px">Manual layout:</label>' +
+                                '<input type="number" id="hydra-armezz-lanes" min="0" placeholder="lanes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
+                                '<input type="number" id="hydra-armezz-chutes" min="0" placeholder="chutes" style="width:70px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:12px">' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:10px">blank/0 = auto from workstation data</span>' +
+                            '</div>' +
                         '</div>' +
                     '</div>' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-dockdoors">' +
@@ -5434,7 +5456,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.50') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.51') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -12530,6 +12552,9 @@ if (k === 'eta') {
     var arMezzShowRates = false; // false = WIP, true = scan rates
     var arMezzOverlay = ''; // '' | 'amzl' | 'priority' | 'perspective'
     var arMezzRotated = false; // rotate table 90°: chutes as rows, lanes as columns
+    var arMezzPaired = false; // rotated view: label lane pairs A (1), B (2/3), C (4/5)...
+    var arMezzManualLanes = 0; // manual layout override, 0 = auto from workstation data
+    var arMezzManualChutes = 0;
     var arMezzAssignState = null; // null or { login, srcLane, srcChute }
     var qbccChuteData = null; // cached QBCC queryChuteInfo response
     var qbccPriorities = {}; // mapId -> 'high'|'low'
@@ -13023,6 +13048,9 @@ if (k === 'eta') {
         });
         if (maxLane < 1) maxLane = 1;
         if (maxChute < 1) maxChute = 1;
+        // Manual layout override (Settings -> AR Mezz) beats workstation-derived dims
+        if (arMezzManualLanes > 0) maxLane = arMezzManualLanes;
+        if (arMezzManualChutes > 0) { maxChute = arMezzManualChutes; for (var _pc = 1; _pc <= maxChute; _pc++) presentChutes[_pc] = true; }
         // Split lanes into 3 near-equal contiguous sections (keeps the 3-table
         // stacked layout regardless of how many lanes the site has).
         var sections = [];
@@ -13143,7 +13171,7 @@ if (k === 'eta') {
         // Renders one chute cell <td>. Shared by the normal (lanes-as-rows)
         // and rotated (chutes-as-rows) layouts so styling/overlay/tooltip
         // behavior is identical in both.
-        function armezzCellTd(l, c, isLastCol) {
+        function armezzCellTd(l, c, isLastCol, extraStyle) {
             var cd = grid[l] && grid[l][c];
             var cellWip = cd ? cd.wip : 0;
             var cellDisplay = cellWip;
@@ -13180,7 +13208,7 @@ if (k === 'eta') {
                 // AMZL text styling
                 if (amzlChutes[qbccMapId]) overlayStyle += 'font-size:120%;font-weight:700;text-decoration:underline;color:#ffffff !important;';
             }
-            return '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + overlayStyle + bg + ';' + color + (isLastCol ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (cellDisplay || '') + '</td>';
+            return '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + (extraStyle || '') + overlayStyle + bg + ';' + color + (isLastCol ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (cellDisplay || '') + '</td>';
         }
 
         if (arMezzRotated) {
@@ -13191,22 +13219,44 @@ if (k === 'eta') {
             if (grid[rl]) for (var rc = 1; rc <= maxChute; rc++) { var rcell = grid[rl][rc]; if (rcell) { lw += rcell.wip; if (rcell.assocCount) la++; } }
             rLaneWip[rl] = lw; rLaneAA[rl] = la;
         }
+        // Lane pair groups (optional): A = lane 1, B = 2/3, C = 4/5 ... matching
+        // the AR Field Overview lettering. Vertical separators at group starts.
+        var laneGroupStart = {}, laneGroups = [];
+        if (arMezzPaired) {
+            var _gl = 1;
+            while (_gl <= maxLane) {
+                var _gsize = (_gl === 1) ? 1 : Math.min(2, maxLane - _gl + 1);
+                laneGroups.push({ letter: String.fromCharCode(65 + laneGroups.length), start: _gl, size: _gsize });
+                laneGroupStart[_gl] = true;
+                _gl += _gsize;
+            }
+        }
+        var R_SEP = 'border-left:2px solid var(--h-border2,#3a4a5c);';
+        function rSep(l) { return (arMezzPaired && laneGroupStart[l]) ? R_SEP : ''; }
+        var R_LAST = 'border-right:2px solid var(--h-border2,#3a4a5c);';
         html += '<table style="margin-bottom:28px;border-collapse:collapse;width:100%;font-size:11px">';
         html += '<thead><tr>';
         html += '<th style="text-align:left;padding:4px 8px;font-size:12px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;border-left:2px solid var(--h-border2,#3a4a5c)">Chute</th>';
-        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center' + (rl === maxLane ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">L' + rl + '</th>';
+        if (arMezzPaired) {
+            // Group letter header spans its lanes; no per-lane numbers shown
+            laneGroups.forEach(function(g) {
+                html += '<th colspan="' + g.size + '" style="padding:3px 2px;font-size:12px;min-width:30px;color:#22d3ee;font-weight:700;border-bottom:2px solid #22d3ee;text-align:center;' + R_SEP + (g.start + g.size - 1 === maxLane ? R_LAST : '') + '">' + g.letter + '</th>';
+            });
+        } else {
+            for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center;' + (rl === maxLane ? R_LAST : '') + '">L' + rl + '</th>';
+        }
         html += '</tr>';
-        // Per-lane WIP / AA summary rows
+        // Per-lane WIP / AA summary rows (always per lane, even when grouped)
         html += '<tr><th style="text-align:left;padding:2px 8px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;border-left:2px solid var(--h-border2,#3a4a5c)">WIP</th>';
-        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center' + (rl === maxLane ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (rLaneWip[rl] || '') + '</th>';
+        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center;' + rSep(rl) + (rl === maxLane ? R_LAST : '') + '">' + (rLaneWip[rl] || '') + '</th>';
         html += '</tr>';
         html += '<tr><th style="text-align:left;padding:2px 8px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;border-left:2px solid var(--h-border2,#3a4a5c);border-bottom:1px solid var(--h-border2,#3a4a5c)">AA</th>';
-        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center;border-bottom:1px solid var(--h-border2,#3a4a5c)' + (rl === maxLane ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (rLaneAA[rl] || '') + '</th>';
+        for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center;border-bottom:1px solid var(--h-border2,#3a4a5c);' + rSep(rl) + (rl === maxLane ? R_LAST : '') + '">' + (rLaneAA[rl] || '') + '</th>';
         html += '</tr></thead><tbody>';
         for (var rc = 1; rc <= maxChute; rc++) {
             html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">';
             html += '<td style="padding:3px 8px;font-weight:600;white-space:nowrap;color:var(--h-text,#e8eaf0);border-left:2px solid var(--h-border2,#3a4a5c)">CH' + rc + '</td>';
-            for (var rl = 1; rl <= maxLane; rl++) html += armezzCellTd(rl, rc, rl === maxLane);
+            for (var rl = 1; rl <= maxLane; rl++) html += armezzCellTd(rl, rc, rl === maxLane, rSep(rl));
             html += '</tr>';
         }
         html += '</tbody></table>';
@@ -15486,6 +15536,12 @@ if (k === 'eta') {
             if (ddEnabled) ddEnabled.checked = !!dockDoorEnabled;
             var _amRot = document.getElementById('hydra-armezz-rotated');
             if (_amRot) _amRot.checked = !!arMezzRotated;
+            var _amPair = document.getElementById('hydra-armezz-paired');
+            if (_amPair) _amPair.checked = !!arMezzPaired;
+            var _amL = document.getElementById('hydra-armezz-lanes');
+            if (_amL) _amL.value = arMezzManualLanes || '';
+            var _amC = document.getElementById('hydra-armezz-chutes');
+            if (_amC) _amC.value = arMezzManualChutes || '';
             if (ddList)    ddList.value     = dockDoorRaw || '';
             var _slaIn = document.getElementById('hydra-cpt-sla');
             if (_slaIn) _slaIn.value = cptSlaHours;
@@ -17327,6 +17383,24 @@ if (k === 'eta') {
                 if (obActiveTab === 'armezz' && arMezzData) renderOBArMezzTable();
             });
         }
+        var amPairInput = document.getElementById('hydra-armezz-paired');
+        if (amPairInput) {
+            amPairInput.addEventListener('change', function() {
+                arMezzPaired = this.checked;
+                saveAllSettings();
+                if (obActiveTab === 'armezz' && arMezzData) renderOBArMezzTable();
+            });
+        }
+        function _amDimHandler(id, setter) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', function() {
+                setter(Math.max(0, parseInt(this.value, 10) || 0));
+                saveAllSettings();
+                if (obActiveTab === 'armezz' && arMezzData) renderOBArMezzTable();
+            });
+        }
+        _amDimHandler('hydra-armezz-lanes', function(v) { arMezzManualLanes = v; });
+        _amDimHandler('hydra-armezz-chutes', function(v) { arMezzManualChutes = v; });
 
         var obProgInput = document.getElementById('hydra-ob-progress-enabled');
         if (obProgInput) {
