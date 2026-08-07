@@ -14398,11 +14398,28 @@ if (k === 'eta') {
             tableWrap.innerHTML = '<div id="hydra-empty">No loads match the current route/CPT filters.</div>';
             return;
         }
-        if (!_sdtChaseCombo()) sdtChaseSel = obTableData.sdtchase[0].key;
+        // Header search box filters the rail (route / cpt / vrid)
+        var _railList = obTableData.sdtchase;
+        if (obFilterText) {
+            var _ft = obFilterText.toLowerCase();
+            _railList = _railList.filter(function(c) {
+                return (c.route || '').toLowerCase().indexOf(_ft) !== -1 ||
+                       (c.cpt || '').toLowerCase().indexOf(_ft) !== -1 ||
+                       (c.vrid || '').toLowerCase().indexOf(_ft) !== -1;
+            });
+            if (!_railList.length) {
+                tableWrap.innerHTML = '<div id="hydra-empty">No SDT Chase loads match the search.</div>';
+                return;
+            }
+            // keep selection within the filtered set
+            var _selIn = _railList.some(function(c) { return c.key === sdtChaseSel; });
+            if (!_selIn) sdtChaseSel = _railList[0].key;
+        }
+        if (!_sdtChaseCombo()) sdtChaseSel = _railList[0].key;
         var sel = _sdtChaseCombo();
 
         // ── Left rail: combo cards ──
-        var railHtml = obTableData.sdtchase.map(function(c) {
+        var railHtml = _railList.map(function(c) {
             var m = _sdtChaseMath(c);
             var cd = _sdtCountdown(c.sdtMs);
             var isSel = c.key === sdtChaseSel;
