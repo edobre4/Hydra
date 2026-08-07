@@ -1156,7 +1156,9 @@
     var AUTO_CHUTE_FILTER = 'AUTO-CHUTE';
     var AUTO_CHUTE_MODE   = 'cpt';
     var acUtilMode        = false; // Chute Matrix: show container utilization % instead of CPT counts
-    var acUtilHighOnly    = false; // Chute Matrix util mode: only show chutes at >= 90% utilization
+    var acUtilHighOnly    = false; // Waterspider View toggle (Chute Matrix util mode + Custom View 1D)
+    var wsRedPct          = 90;    // Waterspider View: red = any container >= this % full
+    var wsYellowPct       = 35;    // Waterspider View: yellow = PALLET >= this % (wrap-ready)
     var obWindowHours     = 12;    // OB VRIDs pull search window: 12 (SSP default view) or 24 (explicit date range)
     var AUTO_CHUTE_MIN    = 10;
     var AUTO_CHUTE_SEP1   = '';   // separator between filter and lane (default: none)
@@ -3502,6 +3504,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 customStagedFilter: (Array.isArray(CUSTOM_STAGED_FILTER) ? CUSTOM_STAGED_FILTER.join(',') : CUSTOM_STAGED_FILTER),
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
             autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
+            wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
             cptWindows:  cptWindows.map(function(w) { return Object.assign({}, w); }),
@@ -3641,6 +3644,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
         if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
         if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
+        if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
+        if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
         if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
         if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
@@ -4372,6 +4377,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
                 autoChuteFilter: AUTO_CHUTE_FILTER,
                 autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
+                wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
                 autoChuteSep2:   AUTO_CHUTE_SEP2,
@@ -4544,6 +4550,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
             if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
             if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
+            if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
+            if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
             if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
             if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
@@ -5369,6 +5377,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             '</div>' +
                         '</div>' +
                     '</div>' +
+                    '<div class="hydra-settings-section collapsed" id="hydra-section-waterspider">' +
+                        '<div class="hydra-settings-section-title">Waterspider View</div>' +
+                        '<div class="hydra-settings-section-content">' +
+                            '<div class="hydra-settings-row" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:6px">Red: container &#8805;<input type="number" id="hydra-ws-red" min="1" max="200" style="width:56px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px">% full</label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:6px">Yellow: pallet &#8805;<input type="number" id="hydra-ws-yellow" min="1" max="200" style="width:56px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px">% (wrap-ready)</label>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-ob-routes">' +
                         '<div class="hydra-settings-section-title">Outbound Route Settings</div>' +
                         '<div class="hydra-settings-section-content">' +
@@ -5528,7 +5545,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
-            '<div id="hydra-search-bar"><input id="hydra-search-input" type="text" placeholder="Search VRID, route, door, status..."><button id="hydra-search-clear">&#x2715;</button><span id="hydra-search-count"></span><span id="hydra-sla-indicator" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#ff4070;white-space:nowrap;padding:2px 8px;border:1px solid #cc1040;border-radius:4px" title="Trailers arriving after this time are not heat-colored (CPT SLA suppression)"></span><span id="hydra-cptperf-window-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap">SDT Window:<input id="hydra-cptperf-start" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"><span style="opacity:0.6">to</span><input id="hydra-cptperf-end" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"></span><button id="hydra-obv-selectall" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap" title="Select all routes/CPTs visible in the current filter">Select all</button><button id="hydra-div-copy-chutes-hdr" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 10px;cursor:pointer;white-space:nowrap" title="Copy non-zero diverter chute IDs (space-separated)">\u2398 Copy chutes</button><label id="hydra-obv-selonly-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);cursor:pointer;white-space:nowrap" title="Show only selected routes"><input type="checkbox" id="hydra-obv-selonly" style="cursor:pointer">Selected only</label><select id="hydra-1d-source" style="display:none;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 8px;font-size:12px;font-weight:600" title="Custom View source"><option value="stacked">Stacked</option><option value="staged">Staged</option><option value="inFacilityReceived">Received</option><option value="diverted">Diverted</option></select><button id="hydra-ac-util-toggle" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Toggle Chute Matrix cells between CPT package counts and container utilization %">CPT Packages</button><button id="hydra-ac-util90" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Show only chutes at 90%+ utilization">&#8805;90% only</button><div id="hydra-bar-zoom"><input type="range" id="hydra-bar-zoom-slider" min="50" max="250" step="1" value="100"><span id="hydra-bar-zoom-value">100%</span><button id="hydra-bar-autofit-btn" type="button" title="Auto-fit zoom" style="margin-left:4px;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0);border-radius:4px">Auto Zoom</button></div></div>' +
+            '<div id="hydra-search-bar"><input id="hydra-search-input" type="text" placeholder="Search VRID, route, door, status..."><button id="hydra-search-clear">&#x2715;</button><span id="hydra-search-count"></span><span id="hydra-sla-indicator" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#ff4070;white-space:nowrap;padding:2px 8px;border:1px solid #cc1040;border-radius:4px" title="Trailers arriving after this time are not heat-colored (CPT SLA suppression)"></span><span id="hydra-cptperf-window-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap">SDT Window:<input id="hydra-cptperf-start" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"><span style="opacity:0.6">to</span><input id="hydra-cptperf-end" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"></span><button id="hydra-obv-selectall" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap" title="Select all routes/CPTs visible in the current filter">Select all</button><button id="hydra-div-copy-chutes-hdr" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 10px;cursor:pointer;white-space:nowrap" title="Copy non-zero diverter chute IDs (space-separated)">\u2398 Copy chutes</button><label id="hydra-obv-selonly-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);cursor:pointer;white-space:nowrap" title="Show only selected routes"><input type="checkbox" id="hydra-obv-selonly" style="cursor:pointer">Selected only</label><select id="hydra-1d-source" style="display:none;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 8px;font-size:12px;font-weight:600" title="Custom View source"><option value="stacked">Stacked</option><option value="staged">Staged</option><option value="inFacilityReceived">Received</option><option value="diverted">Diverted</option></select><button id="hydra-ac-util-toggle" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Toggle Chute Matrix cells between CPT package counts and container utilization %">CPT Packages</button><button id="hydra-ac-util90" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Waterspider View: only containers at the red threshold+ full, plus wrap-ready pallets">Waterspider View</button><div id="hydra-bar-zoom"><input type="range" id="hydra-bar-zoom-slider" min="50" max="250" step="1" value="100"><span id="hydra-bar-zoom-value">100%</span><button id="hydra-bar-autofit-btn" type="button" title="Auto-fit zoom" style="margin-left:4px;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0);border-radius:4px">Auto Zoom</button></div></div>' +
             '<div id="hydra-selection-bar"><span id="hydra-sel-info"><span style="color:var(--h-dim, #4a5a6a)">No trailers selected</span></span><div id="hydra-sel-right"><button id="hydra-vc-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer" title="Volume Calculator">VC</button><button id="hydra-cm-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px" title="Chute Map - map selected IB incoming packages onto OB chutes by route">Chute Map</button><button id="hydra-rtc-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px" title="Ready to Close - shows which chutes are ready to close based on IB volume threshold">Ready To Close</button><button id="hydra-copy-btn">&#128203; Copy</button><button id="hydra-sel-clear">&#x2715; Clear</button></div></div>' +
             '<div id="hydra-door-panel" style="display:none"></div>' +
             '<div id="hydra-tabs"></div>' +
@@ -10203,7 +10220,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         var cnt = ctn.sameCPTPackageCount || 0;
                         if (!grid[ls.lane]) grid[ls.lane] = {};
                         if (!grid[ls.lane][ls.slot]) grid[ls.lane][ls.slot] = { val: 0, containers: [] };
-                        grid[ls.lane][ls.slot].containers.push({ id: ctn.containerId || '', route: route, cpt: c.cpt, count: cnt, pct: pct, location: loc });
+                        grid[ls.lane][ls.slot].containers.push({ id: ctn.containerId || '', route: route, cpt: c.cpt, count: cnt, pct: pct, location: loc, type: ctn.containerType || '' });
                     });
                 }).catch(function(e){ console.warn('[Hydra] AC util fetch failed planId', c.planId, e); });
             });
@@ -10599,6 +10616,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (!planIds.length) return Promise.resolve();
 
         var utilMap = {};
+        var _1dTypeMap = {};
         var _thunks = [];
         planIds.forEach(function(pid, i) {
             _thunks.push(function() {
@@ -10613,6 +10631,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     containers.forEach(function(ctn) {
                         var id = ctn.containerId || '';
                         if (id && ctn.percentFull != null) utilMap[id] = +ctn.percentFull;
+                        if (id) _1dTypeMap[id] = ctn.containerType || '';
                     });
                 }).catch(function(e){ console.warn('[Hydra] 1D util fetch failed planId', pid, e); });
             });
@@ -10630,6 +10649,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             obTableData.linearchutes.forEach(function(r){
                 r.utilNA = false;
                 r.util = (utilMap[r.containerId] != null) ? utilMap[r.containerId] : null;
+                r.ctype = _1dTypeMap[r.containerId] || '';
             });
             console.log('[Hydra] 1D util enriched, map size=' + Object.keys(utilMap).length);
         });
@@ -12035,7 +12055,16 @@ if (k === 'eta') {
         updateUtil90Button();
     }
 
-    // Shows the "\u226590% only" filter button when utilization values are on
+    // Short legend shown while Waterspider View is active.
+    function wsLegendHtml() {
+        return '<div style="display:flex;gap:16px;align-items:center;margin:2px 0 8px;font-size:11px;color:var(--h-muted, #aab4c0);flex-wrap:wrap">' +
+            '<span style="font-weight:700;color:#20d4f0">Waterspider View</span>' +
+            '<span><span style="display:inline-block;width:10px;height:10px;background:#b71c1c;border-radius:2px;margin-right:5px"></span>&#8805;' + wsRedPct + '% full \u2014 needs a waterspider</span>' +
+            '<span><span style="display:inline-block;width:10px;height:10px;background:#f9a825;border-radius:2px;margin-right:5px"></span>pallet &#8805;' + wsYellowPct + '% \u2014 ready to wrap</span>' +
+            '</div>';
+    }
+
+    // Shows the Waterspider View button when utilization values are on
     // screen: Chute Matrix in util mode, or Custom View with Utilization %.
     function updateUtil90Button() {
         var b90 = document.getElementById('hydra-ac-util90');
@@ -12269,6 +12298,11 @@ if (k === 'eta') {
         if (r.utilNA) return '<span style="color:var(--h-dim, #4a5a6a)" title="Utilization not available for this source">N/A</span>';
         if (r.util == null) return '<span style="color:var(--h-dim2, #3a4a5a)">\u2014</span>';
         var v = Math.round(r.util);
+        // Waterspider colors in 1D util cell (red wins over pallet-yellow)
+        if (acUtilHighOnly) {
+            if (r.util >= wsRedPct) return '<span style="background:#b71c1c;color:#fff;font-weight:700;padding:1px 6px;border-radius:3px">' + v + '%</span>';
+            if (r.ctype === 'PALLET' && r.util >= wsYellowPct) return '<span style="background:#f9a825;color:#111;font-weight:700;padding:1px 6px;border-radius:3px">' + v + '%</span>';
+        }
         var col = v >= 90 ? '#66bb6a' : v >= 75 ? '#ffee58' : v >= 50 ? '#ffa726' : '#ef5350';
         return '<span style="color:' + col + ';font-weight:700">' + v + '%</span>';
     }
@@ -12291,9 +12325,13 @@ if (k === 'eta') {
             }
             return true;
         });
-        // "\u226590% only" filter: when Utilization % is on, keep only rows at 90%+
+        // Waterspider View: red = container >= wsRedPct% full; yellow = pallet
+        // >= wsYellowPct% (wrap-ready). Everything else is hidden.
         if (oneDFilterUtil && acUtilHighOnly) {
-            allRows = allRows.filter(function(r) { return typeof r.util === 'number' && r.util >= 90; });
+            allRows = allRows.filter(function(r) {
+                if (typeof r.util !== 'number') return false;
+                return r.util >= wsRedPct || (r.ctype === 'PALLET' && r.util >= wsYellowPct);
+            });
         }
         if (!allRows.length) {
             tableWrap.innerHTML = '<div id="hydra-empty">No containers match filters.</div>';
@@ -12366,7 +12404,7 @@ if (k === 'eta') {
             }).join('');
             return '<table class="hydra-table cs-sub-table"><thead>' + headHtml + '</thead><tbody>' + totalsHtml + rowsHtml + '</tbody></table>';
         }
-        var html = '';
+        var html = (oneDFilterUtil && acUtilHighOnly) ? wsLegendHtml() : '';
         filters.forEach(function(f, fi) {
             if (!f) return;
             var rows = allRows.filter(function(r) { return r.filter === f; });
@@ -12507,7 +12545,7 @@ if (k === 'eta') {
         var lanes = AUTO_CHUTE_LANES.map(function(x) { return x.l; });
         var _acUtil = (d && d.chuteMap) ? false : (!!(d && d.util) || acUtilMode);
         var _acCM = !!(d && d.chuteMap);
-        var html = '<table id="hydra-table"><thead><tr>';
+        var html = (_acUtil && acUtilHighOnly) ? wsLegendHtml() : ''; html += '<table id="hydra-table"><thead><tr>';
         html += '<th style="background:#000;color:#fff;font-weight:700;padding:6px 12px;text-align:left">Lane</th>';
         slots.forEach(function(s) {
             html += '<th style="background:#000;color:#fff;font-weight:700;padding:6px 10px;text-align:center">' + (s || '—') + '</th>';
@@ -12522,11 +12560,24 @@ if (k === 'eta') {
                 var val  = cell ? (typeof cell === 'object' ? cell.val : cell) : 0;
                 var bg = '', color = 'var(--h-chip-off, #555)', fw = '';
                 var _hasData = _acUtil ? !!(cell && cell.containers && cell.containers.length) : (val > 0);
-                // "\u226590% only" filter: in utilization mode, hide chutes below 90%
-                if (_acUtil && acUtilHighOnly && !(val >= 90)) _hasData = false;
+                // Waterspider View: keep only cells holding a red container
+                // (>= wsRedPct% full) or a wrap-ready pallet (>= wsYellowPct%).
+                var _ws = null;
+                if (_acUtil && acUtilHighOnly) {
+                    if (cell && cell.containers) {
+                        for (var _wi = 0; _wi < cell.containers.length; _wi++) {
+                            var _wc = cell.containers[_wi];
+                            if (_wc.pct != null && _wc.pct >= wsRedPct) { _ws = 'red'; break; }
+                            if (_wc.type === 'PALLET' && _wc.pct != null && _wc.pct >= wsYellowPct) _ws = 'yellow';
+                        }
+                    }
+                    if (!_ws) _hasData = false;
+                }
                 if (_acUtil) {
                     if (_hasData) {
-                        if      (val >= 90) { bg = '#b71c1c'; color = '#fff'; fw = 'font-weight:700'; }
+                        if      (_ws === 'red')    { bg = '#b71c1c'; color = '#fff'; fw = 'font-weight:700'; }
+                        else if (_ws === 'yellow') { bg = '#f9a825'; color = '#111'; fw = 'font-weight:700'; }
+                        else if (val >= 90) { bg = '#b71c1c'; color = '#fff'; fw = 'font-weight:700'; }
                         else if (val >= 75) { bg = '#e65100'; color = '#fff'; fw = 'font-weight:700'; }
                         else if (val >= 50) { bg = '#f9a825'; color = '#111'; fw = 'font-weight:700'; }
                         else                { bg = '#1b5e20'; color = '#fff'; }
@@ -15635,6 +15686,10 @@ if (k === 'eta') {
             if (_amL) _amL.value = arMezzManualLanes || '';
             var _amC = document.getElementById('hydra-armezz-chutes');
             if (_amC) _amC.value = arMezzManualChutes || '';
+            var _wsR = document.getElementById('hydra-ws-red');
+            if (_wsR) _wsR.value = wsRedPct;
+            var _wsY = document.getElementById('hydra-ws-yellow');
+            if (_wsY) _wsY.value = wsYellowPct;
             var _amShM = document.getElementById('hydra-armezz-show-moves');
             if (_amShM) _amShM.checked = !!arMezzShowMoves;
             var _amShT = document.getElementById('hydra-armezz-show-top5');
@@ -17502,6 +17557,15 @@ if (k === 'eta') {
         }
         _amDimHandler('hydra-armezz-lanes', function(v) { arMezzManualLanes = v; });
         _amDimHandler('hydra-armezz-chutes', function(v) { arMezzManualChutes = v; });
+        function _wsThrHandler(id, setter) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', function() {
+                var v = parseFloat(this.value);
+                if (!isNaN(v) && v > 0) { setter(v); saveAllSettings(); }
+            });
+        }
+        _wsThrHandler('hydra-ws-red', function(v) { wsRedPct = v; });
+        _wsThrHandler('hydra-ws-yellow', function(v) { wsYellowPct = v; });
         function _amShowHandler(id, setter) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', function() {
