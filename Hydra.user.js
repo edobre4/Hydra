@@ -14693,7 +14693,9 @@ if (k === 'eta') {
         var mergeIds = {};
         mergePairs.forEach(function(p) { mergeIds[p.into.id] = true; mergeIds[p.from.id] = true; });
 
-        var pHtml = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+        var _sdtCard = '<div style="border:1px solid var(--h-border2, #3a4a5c);border-radius:8px;background:var(--h-bg2, #16202c);padding:10px 12px;margin-bottom:12px">';
+        var pHtml = _sdtCard;
+        pHtml += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
             + '<div><span style="font-size:15px;font-weight:700;color:var(--h-ob-accent, #20d4f0)">' + sel.route + '</span>'
             + ' <span class="hydra-copy-id" data-copy="' + sel.vrid + '" title="Click to copy" style="font-size:12px;color:var(--h-muted, #aab4c0)">' + sel.vrid + '</span>'
             + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + '</span></div>'
@@ -14714,6 +14716,7 @@ if (k === 'eta') {
             + '<button id="hydra-sdtchase-clear" class="hydra-btn" style="font-size:11px;padding:3px 10px">Clear picks</button>'
             + '<button id="hydra-sdtchase-copy" class="hydra-btn" style="font-size:11px;padding:3px 10px">\ud83d\udccb Copy pick list</button>'
             + '</div>';
+        pHtml += '</div>'; // end header card
 
         function _ctnRows(list, picks, selectable) {
             var _man = sdtChaseManual[sel.key] || {};
@@ -14746,18 +14749,23 @@ if (k === 'eta') {
             return '<input type="text" id="' + id + '" value="' + (val || '').replace(/"/g, '&quot;') + '" placeholder="' + ph + '" style="width:190px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);font-size:11px;padding:3px 8px;margin-left:10px">';
         }
         // Stacked (floor) table — selectable
-        pHtml += '<div style="display:flex;align-items:center;margin-bottom:4px"><span style="font-weight:700;font-size:12px;color:var(--h-ob-accent, #20d4f0)">Stacked \u00b7 ' + floor.length + (sdtChaseFloorFilter ? '/' + floorAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-ffilter', sdtChaseFloorFilter, 'filter stacked\u2026') + '</div>';
+        pHtml += _sdtCard; // stacked card open
+        pHtml += '<div style="display:flex;align-items:center;margin-bottom:6px"><span style="font-weight:700;font-size:12px;color:var(--h-ob-accent, #20d4f0)">Stacked \u00b7 ' + floor.length + (sdtChaseFloorFilter ? '/' + floorAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-ffilter', sdtChaseFloorFilter, 'filter stacked\u2026') + '</div>';
         pHtml += floor.length
-            ? '<table class="hydra-table" id="hydra-sdtchase-floor" style="font-size:11px;margin-bottom:14px">' + _tblHead(true) + '<tbody>' + _ctnRows(floor, m.picks, true) + '</tbody></table>'
-            : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin-bottom:14px">No stacked containers' + (sdtChaseFloorFilter ? ' match the filter' : '') + '.</div>';
+            ? '<table class="hydra-table" id="hydra-sdtchase-floor" style="font-size:11px">' + _tblHead(true) + '<tbody>' + _ctnRows(floor, m.picks, true) + '</tbody></table>'
+            : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px">No stacked containers' + (sdtChaseFloorFilter ? ' match the filter' : '') + '.</div>';
+        pHtml += '</div>'; // end stacked card
         // Staged table — informational
-        pHtml += '<div style="display:flex;align-items:center;margin-bottom:4px"><span style="font-weight:700;font-size:12px;color:var(--h-muted, #aab4c0)">Staged \u00b7 ' + staged.length + (sdtChaseStagedFilter ? '/' + stagedAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-sfilter', sdtChaseStagedFilter, 'filter staged\u2026') + '</div>';
+        pHtml += _sdtCard; // staged card open
+        pHtml += '<div style="display:flex;align-items:center;margin-bottom:6px"><span style="font-weight:700;font-size:12px;color:var(--h-muted, #aab4c0)">Staged \u00b7 ' + staged.length + (sdtChaseStagedFilter ? '/' + stagedAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-sfilter', sdtChaseStagedFilter, 'filter staged\u2026') + '</div>';
         pHtml += staged.length
             ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(false) + '<tbody>' + _ctnRows(staged, null, false) + '</tbody></table>'
             : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px">No staged containers' + (sdtChaseStagedFilter ? ' match the filter' : '') + '.</div>';
+        pHtml += '</div>'; // end staged card
 
         // ── Merge panel (right) ──
-        var mHtml = '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Merge suggestions</div>';
+        var mHtml = _sdtCard.replace('margin-bottom:12px', 'margin-bottom:0'); // merge card
+        mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Merge suggestions</div>';
         if (!mergePairs.length) {
             mHtml += '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No closed containers can be merged under 95%.</div>';
         } else {
@@ -14771,6 +14779,7 @@ if (k === 'eta') {
             });
         }
 
+        mHtml += '</div>'; // end merge card
         tableWrap.innerHTML = '<div style="display:flex;gap:14px;align-items:flex-start">'
             + '<div style="min-width:240px;max-width:270px;max-height:75vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
             + '<div style="flex:1;min-width:0">' + pHtml + '</div>'
