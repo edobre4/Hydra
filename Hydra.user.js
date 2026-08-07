@@ -14654,6 +14654,7 @@ if (k === 'eta') {
                 + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + (c.trailerCount > 1 ? ' \u00b7 ' + c.trailerCount + ' trailers' : '') + '</div>'
                 + '<div style="display:flex;align-items:center;gap:6px;margin:2px 0 4px">'
                 + '<span style="background:var(--h-bg3, #1c2836);border:1px solid #20d4f0;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:800;color:#20d4f0" title="Containers in trailer">' + (c.loadedCtns != null ? c.loadedCtns : '0') + ' ctns</span>'
+                + '<span style="background:var(--h-bg3, #1c2836);border:1px solid #66bb6a;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:800;color:#66bb6a" title="Cube loaded in trailer">' + (c.loadedCube != null ? Math.round(c.loadedCube).toLocaleString() : '0') + ' cu ft</span>'
                 + '<span style="font-size:10px;color:var(--h-muted, #aab4c0)">' + (c.loadedPkgs != null ? c.loadedPkgs.toLocaleString() : '0') + ' pkgs in trailer</span>'
                 + '</div>'
                 + '<div style="display:flex;align-items:center;gap:6px">' + _sdtGauge(m.curCube, m.newCube, m.target, 110)
