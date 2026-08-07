@@ -14535,6 +14535,7 @@ if (k === 'eta') {
                 + '<span style="font-size:10px;color:' + cd.color + ';font-weight:700">' + cd.txt + '</span>'
                 + '</div>'
                 + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + (c.trailerCount > 1 ? ' \u00b7 ' + c.trailerCount + ' trailers' : '') + '</div>'
+                + '<div style="font-size:10px;color:var(--h-muted, #aab4c0);margin:0 0 4px">in trailer: <b>' + (c.loadedPkgs != null ? c.loadedPkgs.toLocaleString() : '0') + '</b> pkgs \u00b7 <b>' + (c.loadedCtns != null ? c.loadedCtns : '0') + '</b> ctns</div>'
                 + '<div style="display:flex;align-items:center;gap:6px">' + _sdtGauge(m.curCube, m.newCube, 110)
                 + '<span style="font-size:10px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-muted, #aab4c0)') + '">' + Math.round(m.newCube) + '</span>'
                 + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)">' + elig + ' on floor' + (m.nPicks ? ' \u00b7 ' + m.nPicks + ' picked' : '') + '</span>'
