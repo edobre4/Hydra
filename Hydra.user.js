@@ -9578,7 +9578,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     function pullSdtChase(nodeId) {
-        obTableData.sdtchase = null;
+        // Deliberately do NOT clear obTableData.sdtchase here: any re-render
+        // during the pull keeps showing the previous dataset instead of an
+        // empty screen. The new combos are swapped in atomically at the end.
         var comboBest = {};
         (obTableData.obvrids || []).forEach(function(r) {
             if (!r.planId) return;
