@@ -14324,7 +14324,7 @@ if (k === 'eta') {
                 tdr:    !!(r.tdrMs && r.sdtMs && r.tdrMs > r.sdtMs),
                 finish: !!(r.finishMs && r.sdtMs && r.finishMs > r.sdtMs),
                 adt:    !!(r.adtMs && r.sdtMs && r.adtMs > r.sdtMs + 30 * 60000),
-                cpt:    !!(r.cptMs && ((r.finishMs && r.finishMs > r.cptMs) || (r.tdrMs && r.tdrMs > r.cptMs)))
+                cpt:    !!(r.cptMs && ((r.finishMs && r.finishMs > r.cptMs) || (r.tdrMs && r.tdrMs > r.cptMs) || (r.sdtMs && r.sdtMs > r.cptMs)))
             };
         }
         var _anyFilter = cptPerfFilters.tdr || cptPerfFilters.finish || cptPerfFilters.adt || cptPerfFilters.cpt;
