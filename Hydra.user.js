@@ -1147,7 +1147,10 @@
     // SDT Chase planner state
     // SDT Chase combos live in obTableData.sdtchase (tab badge + refresh invalidation)
     var sdtChaseSel = null;       // selected combo key
-    var sdtChasePicks = {};       // comboKey -> { containerId: true } (session-only what-if picks)
+    var sdtChaseManual = {};      // comboKey -> { cid: true } user-added picks (session)
+    var sdtChaseAuto = {};        // comboKey -> { cid: true } live auto-suggestions (recomputed)
+    var sdtChaseExcluded = {};    // comboKey -> { cid: true } suggestions the user rejected
+    var sdtChaseAutoOn = false;   // auto-suggest mode toggle (session)
     var sdtChaseTarget = 3200;    // fill target in CUBE (cu ft, persisted)
     var sdtChaseFloorFilter = ''; // text filter, stacked (floor) table
     var sdtChaseStagedFilter = ''; // text filter, staged table
@@ -14442,10 +14445,48 @@ if (k === 'eta') {
         var txt = (a >= 60 ? Math.floor(a / 60) + 'h ' + (a % 60) + 'm' : a + 'm');
         return { txt: late ? txt + ' ago' : 'in ' + txt, color: late ? '#ef5350' : (diff < 60 ? '#ffa726' : '#66bb6a') };
     }
+    function _sdtEffPicks(key) {
+        var out = {};
+        var man = sdtChaseManual[key];
+        if (man) Object.keys(man).forEach(function(k) { out[k] = true; });
+        if (sdtChaseAutoOn) {
+            var au = sdtChaseAuto[key];
+            if (au) Object.keys(au).forEach(function(k) { out[k] = true; });
+        }
+        return out;
+    }
+    // Live auto-suggest: recomputed from scratch on every render while the
+    // mode is ON, so any manual change reshuffles downstream suggestions.
+    // Rules: manual picks claim their container globally first (user intent
+    // wins even across SDT order); rejected suggestions are never re-offered
+    // to that trailer but stay available to others; earliest SDT fills first.
+    function _sdtRecomputeAuto() {
+        sdtChaseAuto = {};
+        if (!sdtChaseAutoOn || !Array.isArray(obTableData.sdtchase)) return;
+        var claimed = {};
+        obTableData.sdtchase.forEach(function(c) {
+            var man = sdtChaseManual[c.key];
+            if (man) Object.keys(man).forEach(function(cid) { claimed[cid] = true; });
+        });
+        obTableData.sdtchase.forEach(function(c) {
+            var auto = sdtChaseAuto[c.key] = {};
+            var man = sdtChaseManual[c.key] || {};
+            var exc = sdtChaseExcluded[c.key] || {};
+            var cube = (c.loadedCube != null) ? c.loadedCube : 0;
+            c.containers.forEach(function(ctn) { if (man[ctn.id]) cube += ctn.cube; });
+            var flr = c.containers.filter(function(x) { return !x.staged; })
+                .sort(function(a, b) { return b.cube - a.cube; });
+            flr.forEach(function(ctn) {
+                if (cube >= sdtChaseTarget) return;
+                if (claimed[ctn.id] || man[ctn.id] || exc[ctn.id]) return;
+                auto[ctn.id] = true; claimed[ctn.id] = true; cube += ctn.cube;
+            });
+        });
+    }
     // Pure cube math: current = real loaded cu ft (0 if nothing loaded yet),
     // picks add exact cube, progress measured against the cube target.
     function _sdtChaseMath(c) {
-        var picks = sdtChasePicks[c.key] || {};
+        var picks = _sdtEffPicks(c.key);
         var curCube = (c.loadedCube != null) ? c.loadedCube : 0;
         var addCube = 0, nPicks = 0;
         c.containers.forEach(function(ctn) { if (picks[ctn.id]) { addCube += ctn.cube; nPicks++; } });
@@ -14489,8 +14530,9 @@ if (k === 'eta') {
     function sdtChaseSelectAll() {
         var sel = _sdtChaseCombo();
         if (!sel) return;
-        var picks = sdtChasePicks[sel.key] = sdtChasePicks[sel.key] || {};
-        _sdtLastFloorCids.forEach(function(cid) { picks[cid] = true; });
+        var man = sdtChaseManual[sel.key] = sdtChaseManual[sel.key] || {};
+        var exc = sdtChaseExcluded[sel.key] || {};
+        _sdtLastFloorCids.forEach(function(cid) { man[cid] = true; delete exc[cid]; });
         renderSdtChaseTable();
     }
     function renderSdtChaseTable(targetEl) {
@@ -14522,6 +14564,7 @@ if (k === 'eta') {
         }
         if (!_sdtChaseCombo()) sdtChaseSel = _railList[0].key;
         var sel = _sdtChaseCombo();
+        _sdtRecomputeAuto();
 
         // ── Left rail ──
         var railHtml = _railList.map(function(c) {
@@ -14582,17 +14625,23 @@ if (k === 'eta') {
             + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, sdtChaseTarget - m.newCube)) + ' cu ft to target')
             + '</div>';
         pHtml += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-            + '<button id="hydra-sdtchase-auto" class="hydra-btn" style="font-size:11px;padding:3px 10px">\u26a1 Auto suggest (all trailers)</button>'
+            + '<button id="hydra-sdtchase-auto" class="hydra-btn" style="font-size:11px;padding:3px 10px;' + (sdtChaseAutoOn ? 'background:#f9a825;color:#111;font-weight:700' : '') + '" title="Live suggestions for every trailer, earliest SDT first. Your picks and rejections are respected and reshuffle the rest.">\u26a1 Auto suggest: ' + (sdtChaseAutoOn ? 'ON' : 'OFF') + '</button>'
             + '<button id="hydra-sdtchase-clear" class="hydra-btn" style="font-size:11px;padding:3px 10px">Clear picks</button>'
             + '<button id="hydra-sdtchase-copy" class="hydra-btn" style="font-size:11px;padding:3px 10px">\ud83d\udccb Copy pick list</button>'
             + '</div>';
 
         function _ctnRows(list, picks, selectable) {
+            var _man = sdtChaseManual[sel.key] || {};
+            var _auto = (sdtChaseAutoOn && sdtChaseAuto[sel.key]) || {};
             return list.map(function(ctn) {
+                var isAuto = selectable && !!_auto[ctn.id] && !_man[ctn.id];
                 var on = selectable && picks && !!picks[ctn.id];
                 var mg = mergeIds[ctn.id] ? ' <span title="In a merge suggestion" style="color:#f9a825;font-weight:700">\u21c4</span>' : '';
-                return '<tr class="data-row' + (selectable ? ' sdt-floor-row' : '') + (on ? ' selected' : '') + '" data-cid="' + ctn.id.replace(/"/g, '&quot;') + '" style="' + (selectable ? 'cursor:pointer;' : '') + (on ? 'background:rgba(32,212,240,0.14)' : '') + '">'
-                    + (selectable ? '<td style="text-align:center;color:' + (on ? '#20d4f0' : 'var(--h-dim, #4a5a6a)') + ';font-weight:700">' + (on ? '\u2713' : '+') + '</td>' : '')
+                var mark = !on ? '+' : (isAuto ? '\u26a1' : '\u2713');
+                var markCol = !on ? 'var(--h-dim, #4a5a6a)' : (isAuto ? '#f9a825' : '#20d4f0');
+                var rowBg = on ? (isAuto ? 'background:rgba(249,168,37,0.12)' : 'background:rgba(32,212,240,0.14)') : '';
+                return '<tr class="data-row' + (selectable ? ' sdt-floor-row' : '') + (on ? ' selected' : '') + '" data-cid="' + ctn.id.replace(/"/g, '&quot;') + '" style="' + (selectable ? 'cursor:pointer;' : '') + rowBg + '">'
+                    + (selectable ? '<td style="text-align:center;color:' + markCol + ';font-weight:700" title="' + (isAuto ? 'Auto-suggested (click to reject)' : (on ? 'Picked (click to remove)' : 'Click to pick')) + '">' + mark + '</td>' : '')
                     + '<td><span class="hydra-copy-id" data-copy="' + ctn.id + '" title="Click to copy">' + ctn.id + '</span>' + mg + '</td>'
                     + '<td>' + (ctn.type || '\u2014') + '</td>'
                     + '<td>' + (ctn.location || '\u2014') + '</td>'
@@ -14665,7 +14714,7 @@ if (k === 'eta') {
             if (!tbl) return;
             var dataRows = Array.from(tbl.querySelectorAll('tbody tr.sdt-floor-row'));
             if (!dataRows.length) return;
-            var picks = sdtChasePicks[sel.key] = sdtChasePicks[sel.key] || {};
+            // picks live in manual/auto sets now
             var dragAnchor = null, dragCurrent = null, isDragging = false, lastClickIdx = null;
             dataRows.forEach(function(row, idx) {
                 row.addEventListener('mousedown', function(e) {
@@ -14689,17 +14738,24 @@ if (k === 'eta') {
             var onUp = function(e) {
                 if (dragAnchor === null) return;
                 var lo = Math.min(dragAnchor, dragCurrent), hi = Math.max(dragAnchor, dragCurrent);
+                var man = sdtChaseManual[sel.key] = sdtChaseManual[sel.key] || {};
+                var exc = sdtChaseExcluded[sel.key] = sdtChaseExcluded[sel.key] || {};
+                var auto = (sdtChaseAutoOn && sdtChaseAuto[sel.key]) || {};
+                // manual add clears any prior rejection
+                function addMan(cid) { man[cid] = true; delete exc[cid]; }
                 if (!isDragging) {
                     var cid = dataRows[dragAnchor].dataset.cid;
                     if (e.shiftKey && lastClickIdx !== null) {
                         var slo = Math.min(lastClickIdx, dragAnchor), shi = Math.max(lastClickIdx, dragAnchor);
-                        for (var i = slo; i <= shi; i++) picks[dataRows[i].dataset.cid] = true;
+                        for (var i = slo; i <= shi; i++) addMan(dataRows[i].dataset.cid);
                     } else {
-                        if (picks[cid]) delete picks[cid]; else picks[cid] = true;
+                        if (man[cid]) { delete man[cid]; }               // remove manual pick
+                        else if (auto[cid]) { exc[cid] = true; }          // reject the suggestion
+                        else { addMan(cid); }                             // pick (and un-reject)
                         lastClickIdx = dragAnchor;
                     }
                 } else {
-                    for (var j = lo; j <= hi; j++) picks[dataRows[j].dataset.cid] = true;
+                    for (var j = lo; j <= hi; j++) addMan(dataRows[j].dataset.cid);
                     lastClickIdx = hi;
                 }
                 dragAnchor = null; dragCurrent = null; isDragging = false;
@@ -14719,33 +14775,11 @@ if (k === 'eta') {
         });
         var _autoB = document.getElementById('hydra-sdtchase-auto');
         if (_autoB) _autoB.addEventListener('click', function() {
-            // Auto suggest across EVERY trailer: earliest SDT claims first.
-            // A container can be eligible for multiple combos of the same
-            // route (lessOrEqual-CPT), so a global claimed-set stops two
-            // trailers from being suggested the same container. Existing
-            // manual picks are kept and count as claims.
-            var claimed = {};
-            var all = obTableData.sdtchase || [];
-            all.forEach(function(c) {
-                var p = sdtChasePicks[c.key];
-                if (p) Object.keys(p).forEach(function(cid) { claimed[cid] = true; });
-            });
-            all.forEach(function(c) {
-                var picks = sdtChasePicks[c.key] = sdtChasePicks[c.key] || {};
-                var mm = _sdtChaseMath(c);
-                var cube = mm.newCube;
-                var flr = c.containers.filter(function(x) { return !x.staged; })
-                    .sort(function(a, b) { return b.cube - a.cube; });
-                flr.forEach(function(ctn) {
-                    if (cube >= sdtChaseTarget) return;
-                    if (claimed[ctn.id] || picks[ctn.id]) return;
-                    picks[ctn.id] = true; claimed[ctn.id] = true; cube += ctn.cube;
-                });
-            });
-            renderSdtChaseTable(targetEl);
+            sdtChaseAutoOn = !sdtChaseAutoOn;
+            renderSdtChaseTable(targetEl); // recompute happens at render start
         });
         var _clrB = document.getElementById('hydra-sdtchase-clear');
-        if (_clrB) _clrB.addEventListener('click', function() { sdtChasePicks[sel.key] = {}; renderSdtChaseTable(targetEl); });
+        if (_clrB) _clrB.addEventListener('click', function() { sdtChaseManual[sel.key] = {}; sdtChaseExcluded[sel.key] = {}; renderSdtChaseTable(targetEl); });
         var _cpB = document.getElementById('hydra-sdtchase-copy');
         if (_cpB) _cpB.addEventListener('click', function(e) {
             var mm = _sdtChaseMath(sel);
