@@ -345,6 +345,7 @@
         { id: 'autochutes',   label: 'Chute Matrix',    group: 'CHASE',  desc: 'Chute floor \u2014 live container counts mapped to physical lanes.' },
         { id: 'received',     label: 'Received',        group: 'CHASE',  desc: 'Receive dock \u2014 containers in gaylord / receive buffers.' },
         { id: 'linearchutes', label: 'Custom View',     group: 'CHASE',  desc: 'Catch-all sweep \u2014 point anywhere to find stragglers the other views miss.' },
+        { id: 'sdtchase',     label: 'SDT Chase',       group: 'CHASE',  desc: 'SDT cube planner \u2014 pick floor containers per trailer to hit the fill target before SDT.' },
         { id: 'armezz',       label: 'AR Mezz',         group: 'CHASE',  desc: 'AR Mezz View \u2014 live WIP + associate scanning status from STEM.' },
         { id: 'cptdetails',   label: 'CPT Details',     group: 'REVIEW', desc: 'Per-route stage breakdown \u2014 where volume sits across the pipeline.' },
         { id: 'cptperf',      label: 'CPT Performance', group: 'REVIEW', desc: 'On-time scorecard \u2014 % of CPT trailers that departed on time.' },
@@ -1043,6 +1044,7 @@
                 case 'customstaged': return pullCustomStaged(node);
                 case 'autochutes':   return pullAutoChutes(node);
                 case 'received':     return pullReceived(node);
+                case 'sdtchase':     return pullSdtChase(node);
                 case 'armezz':       return Promise.all([fetchArMezzData(), fetchQbccChuteInfo().catch(function(e){ console.warn("[Hydra QBCC]", e.message || e); }), fetchStaffingAssignments().catch(function(e){ console.warn("[Hydra Staffing]", e.message || e); })]);
                 default:             return Promise.resolve();
             }
@@ -1142,6 +1144,12 @@
     var obTableData = {}, obActiveTab = 'obvrids', obSortKey = 'cpt', obSortDir = -1;
     // CPT Performance late-filters (multi-select, session-only, all-off = show all)
     var cptPerfFilters = { tdr: false, finish: false, adt: false, cpt: false };
+    // SDT Chase planner state
+    // SDT Chase combos live in obTableData.sdtchase (tab badge + refresh invalidation)
+    var sdtChaseSel = null;       // selected combo key
+    var sdtChasePicks = {};       // comboKey -> { containerId: true } (session-only what-if picks)
+    var sdtChaseTarget = 85;      // fill target % (persisted)
+    var sdtChaseCap = 3800;       // trailer capacity cu ft used for what-if math (persisted)
     var obVridsSelectedOnly = false;  // OB VRIDs: show only selected routes
     var dynSel = {};              // { route: { cptStr: true } } session-scoped working set
     var dynSelSeeded = false;     // seeded from persistent settings once per session
@@ -3508,6 +3516,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
             autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
             wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
+            sdtChaseTarget: sdtChaseTarget, sdtChaseCap: sdtChaseCap,
             acWsMode: acWsMode,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
@@ -3649,6 +3658,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
         if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
         if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
+        if (s.sdtChaseTarget > 0) sdtChaseTarget = +s.sdtChaseTarget;
+        if (s.sdtChaseCap > 0) sdtChaseCap = +s.sdtChaseCap;
         if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
@@ -4383,6 +4394,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 autoChuteFilter: AUTO_CHUTE_FILTER,
                 autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
                 wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
+                sdtChaseTarget: sdtChaseTarget, sdtChaseCap: sdtChaseCap,
                 acWsMode: acWsMode,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
@@ -4557,6 +4569,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
             if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
             if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
+            if (s.sdtChaseTarget > 0) sdtChaseTarget = +s.sdtChaseTarget;
+            if (s.sdtChaseCap > 0) sdtChaseCap = +s.sdtChaseCap;
             if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
@@ -9495,6 +9509,70 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
 
+    // ── SDT Chase planner: one getEligibleContainersForLoad per route/cpt
+    // combo. The response carries BOTH the trailer's percentLoaded/Staged and
+    // the eligible floor containers with exact cube (cu ft), so a single call
+    // per combo feeds the rail gauge and the planner list. ──
+    function pullSdtChase(nodeId) {
+        obTableData.sdtchase = null;
+        var comboBest = {};
+        (obTableData.obvrids || []).forEach(function(r) {
+            if (!r.planId) return;
+            if (!dynSelMatches(r.route, r.cpt)) return;
+            var key = r.route + '|' + r.cpt;
+            var sMs = parseSSPDate(r.sdt) || 0;
+            // Rep trailer = earliest SDT in the combo (the next one out is the
+            // one being loaded, so its percentLoaded is the gauge that matters)
+            if (!comboBest[key] || (sMs && sMs < (comboBest[key].sdtMs || Infinity))) {
+                var prev = comboBest[key];
+                comboBest[key] = {
+                    key: key, route: r.route, cpt: r.cpt, cptMs: parseSSPDate(r.cpt),
+                    sdt: r.sdt, sdtMs: sMs, vrid: r.vrid, planId: r.planId,
+                    trailerCount: prev ? prev.trailerCount : 0,
+                    pctLoaded: null, pctStaged: null, containers: []
+                };
+            }
+            comboBest[key].trailerCount++;
+        });
+        var combos = Object.keys(comboBest).map(function(k) { return comboBest[k]; });
+        combos.sort(function(a, b) { return (a.sdtMs || Infinity) - (b.sdtMs || Infinity); });
+        if (!combos.length) { obTableData.sdtchase = []; return Promise.resolve(); }
+        console.log('[Hydra] SDT Chase:', combos.length, 'route/cpt combos');
+        var _thunks = combos.map(function(c, i) {
+            return function() {
+                setStatus('SDT Chase ' + (i + 1) + '/' + combos.length + '...');
+                var body = 'entity=getEligibleContainersForLoad&nodeId=' + encodeURIComponent(nodeId) + '&loadId=' + encodeURIComponent(c.planId);
+                return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ob/fetchdata', body).then(function(data) {
+                    var det = data && data.ret && data.ret.eligibleContainerDetails;
+                    if (!det) return;
+                    c.pctLoaded = (det.percentLoaded != null) ? +det.percentLoaded : null;
+                    c.pctStaged = (det.percentStaged != null) ? +det.percentStaged : null;
+                    c.containers = (det.eligibleContainers || []).map(function(ctn) {
+                        return {
+                            id: ctn.containerId || '',
+                            type: ctn.containerType || '',
+                            location: ctn.locationName || '',
+                            cube: (ctn.totalPackageVolume != null) ? +ctn.totalPackageVolume : 0,
+                            pctFull: (ctn.percentFull != null) ? +ctn.percentFull : null,
+                            pkgs: ctn.totalPackageCount || 0,
+                            cptMs: ctn.cpt || null,
+                            staged: !!ctn.staged,
+                            state: ctn.containerState || ''
+                        };
+                    });
+                }).catch(function(e) { console.warn('[Hydra] SDT Chase fetch failed', c.key, e); });
+            };
+        });
+        var _CONC = 10; var _bchain = Promise.resolve();
+        for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
+            (function(_batch) { _bchain = _bchain.then(function() { return Promise.all(_batch.map(function(_t) { return _t(); })); }); })(_thunks.slice(_bi, _bi + _CONC));
+        }
+        return _bchain.then(function() {
+            obTableData.sdtchase = combos;
+            console.log('[Hydra] SDT Chase loaded:', combos.length, 'combos,', combos.reduce(function(s, c) { return s + c.containers.length; }, 0), 'containers');
+        });
+    }
+
     function pullContainerDetails(nodeId) {
         // Only pull for selected routes/VRIDs - filter before fetching
         var selRoutes = getSelectedObRoutes();
@@ -13823,6 +13901,7 @@ if (k === 'eta') {
         if (obActiveTab === 'customstaged') { renderOBCustomStagedTable(targetEl); return; }
         if (obActiveTab === 'received')   { renderOBReceivedTable(targetEl);       return; }
         if (obActiveTab === 'autochutes')  { renderOBAutoChutesTable(targetEl);    return; }
+        if (obActiveTab === 'sdtchase')    { renderSdtChaseTable(targetEl);        return; }
         if (obActiveTab === 'armezz')      { renderOBArMezzTable(targetEl);        return; }
         tableWrap.innerHTML = '<div id="hydra-empty">' + obActiveTab.toUpperCase() + ' \u2014 coming soon</div>';
     }
@@ -14265,6 +14344,188 @@ if (k === 'eta') {
         document.addEventListener('click', function _cptdDismiss() {
             var p = document.getElementById('hydra-ws-popup');
             if (p) { p.style.display = 'none'; p.style.maxHeight = ''; p.style.maxWidth = ''; }
+        });
+        applyZoom();
+    }
+
+    // ═══ SDT Chase planner ═══
+    // Left rail: SDT-sorted route/cpt combos with live cube gauges.
+    // Right panel: selected trailer — gauge with target line, eligible floor
+    // containers (click to stage a what-if), greedy fill-to-target, pick list.
+    function _sdtChaseCombo() {
+        if (!sdtChaseSel || !Array.isArray(obTableData.sdtchase)) return null;
+        for (var i = 0; i < obTableData.sdtchase.length; i++) if (obTableData.sdtchase[i].key === sdtChaseSel) return obTableData.sdtchase[i];
+        return null;
+    }
+    function _sdtCountdown(ms) {
+        if (!ms) return { txt: '\u2014', color: 'var(--h-muted2, #7a8a9a)' };
+        var diff = Math.round((ms - Date.now()) / 60000);
+        var late = diff < 0; var a = Math.abs(diff);
+        var txt = (a >= 60 ? Math.floor(a / 60) + 'h ' + (a % 60) + 'm' : a + 'm');
+        return { txt: late ? txt + ' ago' : 'in ' + txt, color: late ? '#ef5350' : (diff < 60 ? '#ffa726' : '#66bb6a') };
+    }
+    // What-if math: current cube from percentLoaded x capacity; picks add their
+    // exact cube. Capacity is a per-site planning constant (settings-adjustable).
+    function _sdtChaseMath(c) {
+        var picks = sdtChasePicks[c.key] || {};
+        var curPct = c.pctLoaded != null ? c.pctLoaded : 0;
+        var curCube = curPct / 100 * sdtChaseCap;
+        var addCube = 0, nPicks = 0;
+        c.containers.forEach(function(ctn) { if (picks[ctn.id]) { addCube += ctn.cube; nPicks++; } });
+        var newPct = (curCube + addCube) / sdtChaseCap * 100;
+        return { curPct: curPct, curCube: curCube, addCube: addCube, newPct: newPct, nPicks: nPicks, picks: picks };
+    }
+    function _sdtGauge(pct, newPct, width) {
+        var w = width || 260;
+        var p1 = Math.min(100, Math.max(0, pct));
+        var p2 = Math.min(100, Math.max(0, newPct));
+        var tp = Math.min(100, Math.max(0, sdtChaseTarget));
+        var hit = newPct >= sdtChaseTarget;
+        return '<div style="position:relative;width:' + w + 'px;height:16px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:8px;overflow:hidden;display:inline-block;vertical-align:middle">'
+            + '<div style="position:absolute;left:0;top:0;bottom:0;width:' + (p2) + '%;background:' + (hit ? '#2e7d32' : '#546e7a') + ';opacity:0.55"></div>'
+            + '<div style="position:absolute;left:0;top:0;bottom:0;width:' + (p1) + '%;background:' + (hit ? '#43a047' : '#20d4f0') + '"></div>'
+            + '<div style="position:absolute;left:' + tp + '%;top:-2px;bottom:-2px;width:2px;background:#f9a825" title="Target ' + sdtChaseTarget + '%"></div>'
+            + '</div>';
+    }
+    function renderSdtChaseTable(targetEl) {
+        var tableWrap = targetEl || document.getElementById('hydra-table-wrap');
+        if (!tableWrap) return;
+        if (!Array.isArray(obTableData.sdtchase)) {
+            tableWrap.innerHTML = '<div id="hydra-empty">Click <strong>&#8635; Refresh</strong> to load SDT Chase.</div>';
+            return;
+        }
+        if (!obTableData.sdtchase.length) {
+            tableWrap.innerHTML = '<div id="hydra-empty">No loads match the current route/CPT filters.</div>';
+            return;
+        }
+        if (!_sdtChaseCombo()) sdtChaseSel = obTableData.sdtchase[0].key;
+        var sel = _sdtChaseCombo();
+
+        // ── Left rail: combo cards ──
+        var railHtml = obTableData.sdtchase.map(function(c) {
+            var m = _sdtChaseMath(c);
+            var cd = _sdtCountdown(c.sdtMs);
+            var isSel = c.key === sdtChaseSel;
+            var elig = c.containers.filter(function(x) { return !x.staged; }).length;
+            return '<div class="sdtchase-card" data-key="' + c.key.replace(/"/g, '&quot;') + '" style="cursor:pointer;padding:8px 10px;border:1px solid ' + (isSel ? '#20d4f0' : 'var(--h-border2, #3a4a5c)') + ';border-radius:6px;margin-bottom:6px;background:' + (isSel ? 'var(--h-bg4, #1a2535)' : 'var(--h-bg2, #16202c)') + '">'
+                + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
+                + '<span style="font-weight:700;color:var(--h-blue, #5090d0)">' + c.route + '</span>'
+                + '<span style="font-size:10px;color:' + cd.color + ';font-weight:700">' + cd.txt + '</span>'
+                + '</div>'
+                + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + (c.trailerCount > 1 ? ' \u00b7 ' + c.trailerCount + ' trailers' : '') + '</div>'
+                + '<div style="display:flex;align-items:center;gap:6px">' + _sdtGauge(m.curPct, m.newPct, 120)
+                + '<span style="font-size:10px;font-weight:700;color:' + (m.newPct >= sdtChaseTarget ? '#66bb6a' : 'var(--h-muted, #aab4c0)') + '">' + Math.round(m.newPct) + '%</span>'
+                + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)">' + elig + ' on floor' + (m.nPicks ? ' \u00b7 ' + m.nPicks + ' picked' : '') + '</span>'
+                + '</div></div>';
+        }).join('');
+
+        // ── Right planner ──
+        var m = _sdtChaseMath(sel);
+        var floor = sel.containers.filter(function(x) { return !x.staged; });
+        floor.sort(function(a, b) { return b.cube - a.cube; });
+        var stagedCount = sel.containers.length - floor.length;
+        var pHtml = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+            + '<div><span style="font-size:15px;font-weight:700;color:var(--h-ob-accent, #20d4f0)">' + sel.route + '</span>'
+            + ' <span class="hydra-copy-id" data-copy="' + sel.vrid + '" title="Click to copy" style="font-size:12px;color:var(--h-muted, #aab4c0)">' + sel.vrid + '</span>'
+            + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + '</span></div>'
+            + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
+            + 'Target <input type="number" id="hydra-sdtchase-target" min="1" max="120" value="' + sdtChaseTarget + '" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px">%'
+            + ' \u00b7 Capacity <input type="number" id="hydra-sdtchase-cap" min="100" max="10000" value="' + sdtChaseCap + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft'
+            + '</div></div>';
+        var hit = m.newPct >= sdtChaseTarget;
+        pHtml += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap">'
+            + _sdtGauge(m.curPct, m.newPct, 340)
+            + '<span style="font-size:13px;font-weight:700;color:' + (hit ? '#66bb6a' : 'var(--h-text, #e8eaf0)') + '">' + Math.round(m.curPct) + '%'
+            + (m.nPicks ? ' \u2192 ' + Math.round(m.newPct) + '%' : '') + '</span>'
+            + '<span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">' + Math.round(m.curCube) + (m.nPicks ? ' + ' + Math.round(m.addCube) : '') + ' / ' + sdtChaseCap + ' cu ft'
+            + (sel.pctStaged ? ' \u00b7 ' + Math.round(sel.pctStaged) + '% staged' : '') + '</span>'
+            + '</div>';
+        var needCube = Math.max(0, sdtChaseTarget / 100 * sdtChaseCap - m.curCube - m.addCube);
+        pHtml += '<div style="font-size:11px;color:' + (hit ? '#66bb6a' : '#ffa726') + ';margin-bottom:8px">'
+            + (hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(needCube) + ' cu ft to target')
+            + '</div>';
+        pHtml += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+            + '<button id="hydra-sdtchase-fill" class="hydra-btn" style="font-size:11px;padding:3px 10px">\u26a1 Fill to target</button>'
+            + '<button id="hydra-sdtchase-clear" class="hydra-btn" style="font-size:11px;padding:3px 10px">Clear picks</button>'
+            + '<button id="hydra-sdtchase-copy" class="hydra-btn" style="font-size:11px;padding:3px 10px">\ud83d\udccb Copy pick list</button>'
+            + '</div>';
+        if (!floor.length) {
+            pHtml += '<div style="color:var(--h-muted2, #7a8a9a);font-size:12px">No eligible containers on the floor for this load' + (stagedCount ? ' (' + stagedCount + ' already staged)' : '') + '.</div>';
+        } else {
+            pHtml += '<table class="hydra-table" style="font-size:11px"><thead><tr>'
+                + '<th></th><th>Container</th><th>Type</th><th>Location</th><th style="text-align:right">Cube</th><th style="text-align:right">Full</th><th style="text-align:right">Pkgs</th><th>CPT</th>'
+                + '</tr></thead><tbody>';
+            floor.forEach(function(ctn) {
+                var on = !!m.picks[ctn.id];
+                pHtml += '<tr class="sdtchase-ctn" data-cid="' + ctn.id.replace(/"/g, '&quot;') + '" style="cursor:pointer;' + (on ? 'background:rgba(32,212,240,0.12)' : '') + '">'
+                    + '<td style="text-align:center;color:' + (on ? '#20d4f0' : 'var(--h-dim, #4a5a6a)') + ';font-weight:700">' + (on ? '\u2713' : '+') + '</td>'
+                    + '<td><span class="hydra-copy-id" data-copy="' + ctn.id + '" title="Click to copy">' + ctn.id + '</span></td>'
+                    + '<td>' + (ctn.type || '\u2014') + '</td>'
+                    + '<td>' + (ctn.location || '\u2014') + '</td>'
+                    + '<td style="text-align:right;font-weight:700">' + ctn.cube + '</td>'
+                    + '<td style="text-align:right">' + (ctn.pctFull != null ? Math.round(ctn.pctFull) + '%' : '\u2014') + '</td>'
+                    + '<td style="text-align:right">' + ctn.pkgs + '</td>'
+                    + '<td>' + (ctn.cptMs ? msToLocal(ctn.cptMs) : '\u2014') + '</td>'
+                    + '</tr>';
+            });
+            pHtml += '</tbody></table>';
+        }
+
+        tableWrap.innerHTML = '<div style="display:flex;gap:14px;align-items:flex-start">'
+            + '<div style="min-width:250px;max-width:280px;max-height:75vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
+            + '<div style="flex:1;min-width:0">' + pHtml + '</div>'
+            + '</div>';
+
+        // ── Events ──
+        tableWrap.querySelectorAll('.sdtchase-card').forEach(function(el) {
+            el.addEventListener('click', function() { sdtChaseSel = el.dataset.key; renderSdtChaseTable(targetEl); });
+        });
+        tableWrap.querySelectorAll('.sdtchase-ctn').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                if (e.target && e.target.classList && e.target.classList.contains('hydra-copy-id')) return; // copy takes priority
+                var picks = sdtChasePicks[sel.key] = sdtChasePicks[sel.key] || {};
+                var cid = el.dataset.cid;
+                if (picks[cid]) delete picks[cid]; else picks[cid] = true;
+                renderSdtChaseTable(targetEl);
+            });
+        });
+        var _tgtIn = document.getElementById('hydra-sdtchase-target');
+        if (_tgtIn) _tgtIn.addEventListener('change', function() {
+            var v = parseFloat(this.value);
+            if (!isNaN(v) && v > 0) { sdtChaseTarget = v; try { saveAllSettings(); } catch (ex) {} renderSdtChaseTable(targetEl); }
+        });
+        var _capIn = document.getElementById('hydra-sdtchase-cap');
+        if (_capIn) _capIn.addEventListener('change', function() {
+            var v = parseFloat(this.value);
+            if (!isNaN(v) && v > 0) { sdtChaseCap = v; try { saveAllSettings(); } catch (ex) {} renderSdtChaseTable(targetEl); }
+        });
+        var _fillB = document.getElementById('hydra-sdtchase-fill');
+        if (_fillB) _fillB.addEventListener('click', function() {
+            // Greedy largest-first until the target is reached. Existing picks kept.
+            var picks = sdtChasePicks[sel.key] = sdtChasePicks[sel.key] || {};
+            var mm = _sdtChaseMath(sel);
+            var cube = mm.curCube + mm.addCube;
+            var goal = sdtChaseTarget / 100 * sdtChaseCap;
+            floor.forEach(function(ctn) {
+                if (cube >= goal) return;
+                if (picks[ctn.id]) return;
+                picks[ctn.id] = true; cube += ctn.cube;
+            });
+            renderSdtChaseTable(targetEl);
+        });
+        var _clrB = document.getElementById('hydra-sdtchase-clear');
+        if (_clrB) _clrB.addEventListener('click', function() { sdtChasePicks[sel.key] = {}; renderSdtChaseTable(targetEl); });
+        var _cpB = document.getElementById('hydra-sdtchase-copy');
+        if (_cpB) _cpB.addEventListener('click', function() {
+            var mm = _sdtChaseMath(sel);
+            var picked = floor.filter(function(ctn) { return mm.picks[ctn.id]; });
+            if (!picked.length) { setStatus('SDT Chase: no containers picked.'); return; }
+            var lines = ['Pick list \u2014 ' + sel.route + ' (' + sel.vrid + ') \u00b7 SDT ' + (sel.sdt || '?') + ' \u00b7 ' + Math.round(mm.curPct) + '% \u2192 ' + Math.round(mm.newPct) + '%'];
+            picked.forEach(function(ctn, i) { lines.push((i + 1) + '. ' + ctn.id + '  @ ' + (ctn.location || '?') + '  (' + ctn.cube + ' cu ft)'); });
+            navigator.clipboard.writeText(lines.join('\n')).then(function() {
+                var o = _cpB.textContent; _cpB.textContent = '\u2714 Copied';
+                setTimeout(function() { _cpB.textContent = o; }, 1500);
+            });
         });
         applyZoom();
     }
