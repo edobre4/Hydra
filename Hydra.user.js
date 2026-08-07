@@ -9517,19 +9517,25 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // combo. The response carries BOTH the trailer's percentLoaded/Staged and
     // the eligible floor containers with exact cube (cu ft), so a single call
     // per combo feeds the rail gauge and the planner list. ──
-    // EXACT loaded cube per TRAILER via Vista (two calls total):
-    //   1. getContainersDetailByCriteria state=Loaded -> every loaded container
-    //      with parentContainerId = YTD trailer id
-    //   2. getContainerDetails (batched) -> packageVolume (cm^3) per container
-    // Sum per trailer, then join YTD trailer id -> VRID via the SSP OB payload's
-    // trailer.trailerId (now carried on obvrids rows).
-    function fetchSdtLoadedCube(nodeId) {
+    // ── SDT Chase data layer (Vista is the source of truth) ──
+    // The SSP eligible-containers API misses containers, so the container
+    // universe comes from Vista instead:
+    //   getContainersDetailByCriteria state=Stacked  -> floor containers
+    //   getContainersDetailByCriteria state=Staged   -> staged containers
+    //   getContainersDetailByCriteria state=Loaded   -> in-trailer containers
+    //     (parentContainerId = YTD trailer id -> exact per-VRID loaded cube)
+    //   getContainerDetails (one shared batch)       -> packageVolume per ctn
+    // Vista carries route, cpt(ms), location, childCount (pkgs) and
+    // criticalPackages (CPT pkgs) per container. percentFull does NOT exist
+    // in Vista; the SSP eligible call is kept per combo purely to enrich
+    // percentFull (merge suggestions) and percentLoaded/Staged (hint).
+    function _sdtCriteria(nodeId, state) {
         var now = Date.now();
         var jsonObj = JSON.stringify({
             entity: 'getContainersDetailByCriteria',
             nodeId: nodeId,
             timeBucket: { fieldName: 'cpt', startTime: now - 24 * 3600000, endTime: now + 48 * 3600000 },
-            filterBy: { state: ['Loaded'], isMissing: [false] },
+            filterBy: { state: [state], isMissing: [false] },
             containerTypes: ['PALLET', 'GAYLORD', 'BAG', 'CART'],
             fetchCompoundContainerDetails: true,
             includeCriticalCptEnclosingContainers: true
@@ -9538,46 +9544,29 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getContainersDetailByCriteria', 'POST', body)
             .then(function(data) {
                 var groups = (data && data.ret && data.ret.getContainersDetailByCriteriaOutput && data.ret.getContainersDetailByCriteriaOutput.containerDetails) || [];
-                var parentOf = {}; var ids = [];
-                groups.forEach(function(g) {
-                    (g.containerDetails || []).forEach(function(c) {
-                        if (!c || c.type === 'TRAILER') return;
-                        var p = String(c.parentContainerId || '');
-                        if (p.indexOf('YTD') !== 0) return;
-                        parentOf[c.containerId] = p;
-                        ids.push(c.containerId);
+                var out = [];
+                groups.forEach(function(g) { (g.containerDetails || []).forEach(function(c) { if (c && c.type !== 'TRAILER') out.push(c); }); });
+                return out;
+            }).catch(function(e) { console.warn('[Hydra] SDT criteria ' + state + ' failed', e); return []; });
+    }
+    function _sdtDetailBatch(nodeId, ids) {
+        if (!ids.length) return Promise.resolve({});
+        var chunks = [];
+        for (var i = 0; i < ids.length; i += 300) chunks.push(ids.slice(i, i + 300));
+        var map = {};
+        var chain = Promise.resolve();
+        chunks.forEach(function(chunk) {
+            chain = chain.then(function() {
+                var jo = JSON.stringify({ entity: 'getContainerDetails', nodeId: nodeId, containerIds: chunk });
+                var b = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jo);
+                return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getContainerDetails', 'POST', b)
+                    .then(function(d) {
+                        var cmap = (d && d.ret && d.ret.getContainersDetailOutput && d.ret.getContainersDetailOutput.containerDetailMap) || {};
+                        Object.keys(cmap).forEach(function(k) { map[k] = cmap[k]; });
                     });
-                });
-                if (!ids.length) return {};
-                // Volume per container, batched (352 in one call verified; chunk defensively)
-                var chunks = [];
-                for (var i = 0; i < ids.length; i += 300) chunks.push(ids.slice(i, i + 300));
-                var byTrailer = {};
-                var chain = Promise.resolve();
-                chunks.forEach(function(chunk) {
-                    chain = chain.then(function() {
-                        var jo = JSON.stringify({ entity: 'getContainerDetails', nodeId: nodeId, containerIds: chunk });
-                        var b2 = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jo);
-                        return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getContainerDetails', 'POST', b2)
-                            .then(function(d2) {
-                                var cmap = (d2 && d2.ret && d2.ret.getContainersDetailOutput && d2.ret.getContainersDetailOutput.containerDetailMap) || {};
-                                Object.keys(cmap).forEach(function(cid) {
-                                    var det = cmap[cid];
-                                    var trailer = parentOf[cid];
-                                    if (!trailer || !det || det.packageVolume == null) return;
-                                    var e = byTrailer[trailer] = byTrailer[trailer] || { cube: 0, pkgs: 0, ctns: 0 };
-                                    e.cube += det.packageVolume * CUFT_CONVERSION;
-                                    e.pkgs += (det.contentCountMap && det.contentCountMap.PACKAGE) || 0;
-                                    e.ctns++;
-                                });
-                            });
-                    });
-                });
-                return chain.then(function() {
-                    console.log('[Hydra] SDT loaded-cube: ' + Object.keys(byTrailer).length + ' trailers from ' + ids.length + ' loaded containers');
-                    return byTrailer;
-                });
-            }).catch(function(e) { console.warn('[Hydra] SDT loaded-cube fetch failed', e); return {}; });
+            });
+        });
+        return chain.then(function() { return map; }).catch(function(e) { console.warn('[Hydra] SDT detail batch failed', e); return map; });
     }
 
     function pullSdtChase(nodeId) {
@@ -9591,7 +9580,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var key = r.route + '|' + r.cpt;
             var sMs = parseSSPDate(r.sdt) || 0;
             // Rep trailer = earliest SDT in the combo (the next one out is the
-            // one being loaded, so its percentLoaded is the gauge that matters)
+            // one being loaded, so its loaded cube is the gauge that matters)
             if (!comboBest[key] || (sMs && sMs < (comboBest[key].sdtMs || Infinity))) {
                 var prev = comboBest[key];
                 comboBest[key] = {
@@ -9608,48 +9597,107 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         combos.sort(function(a, b) { return (a.sdtMs || Infinity) - (b.sdtMs || Infinity); });
         if (!combos.length) { obTableData.sdtchase = []; return Promise.resolve(); }
         console.log('[Hydra] SDT Chase:', combos.length, 'route/cpt combos');
+
+        // SSP enrichment: percentFull per scannable id + trailer pct hints
+        var pctFullMap = {};
         var _thunks = combos.map(function(c, i) {
             return function() {
-                setStatus('SDT Chase ' + (i + 1) + '/' + combos.length + '...');
+                setStatus('SDT Chase enrich ' + (i + 1) + '/' + combos.length + '...');
                 var body = 'entity=getEligibleContainersForLoad&nodeId=' + encodeURIComponent(nodeId) + '&loadId=' + encodeURIComponent(c.planId);
                 return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ob/fetchdata', body).then(function(data) {
                     var det = data && data.ret && data.ret.eligibleContainerDetails;
                     if (!det) return;
                     c.pctLoaded = (det.percentLoaded != null) ? +det.percentLoaded : null;
                     c.pctStaged = (det.percentStaged != null) ? +det.percentStaged : null;
-                    c.containers = (det.eligibleContainers || []).map(function(ctn) {
-                        return {
-                            id: ctn.containerId || '',
-                            type: ctn.containerType || '',
-                            location: ctn.locationName || '',
-                            cube: (ctn.totalPackageVolume != null) ? +ctn.totalPackageVolume : 0,
-                            pctFull: (ctn.percentFull != null) ? +ctn.percentFull : null,
-                            pkgs: ctn.totalPackageCount || 0,
-                            cptMs: ctn.cpt || null,
-                            staged: !!ctn.staged,
-                            state: ctn.containerState || ''
-                        };
+                    (det.eligibleContainers || []).forEach(function(ctn) {
+                        if (ctn.containerId && ctn.percentFull != null) pctFullMap[ctn.containerId] = +ctn.percentFull;
                     });
-                }).catch(function(e) { console.warn('[Hydra] SDT Chase fetch failed', c.key, e); });
+                }).catch(function(e) { console.warn('[Hydra] SDT Chase enrich failed', c.key, e); });
             };
         });
         var _CONC = 10; var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) { _bchain = _bchain.then(function() { return Promise.all(_batch.map(function(_t) { return _t(); })); }); })(_thunks.slice(_bi, _bi + _CONC));
         }
-        var _cubeP = fetchSdtLoadedCube(nodeId);
-        return Promise.all([_bchain, _cubeP]).then(function(res) {
-            var loadedCubeMap = res[1] || {};
+
+        // Vista universe: three states, then ONE shared volume batch
+        setStatus('SDT Chase: pulling Vista containers...');
+        var _vistaP = Promise.all([
+            _sdtCriteria(nodeId, 'Stacked'),
+            _sdtCriteria(nodeId, 'Staged'),
+            _sdtCriteria(nodeId, 'Loaded')
+        ]).then(function(res) {
+            var stacked = res[0], staged = res[1], loaded = res[2];
+            var ids = [];
+            stacked.concat(staged).concat(loaded).forEach(function(c) { if (c.containerId) ids.push(c.containerId); });
+            return _sdtDetailBatch(nodeId, ids).then(function(dmap) {
+                // Per-trailer loaded cube (exact per VRID)
+                var byTrailer = {};
+                loaded.forEach(function(c) {
+                    var p = String(c.parentContainerId || '');
+                    if (p.indexOf('YTD') !== 0) return;
+                    var det = dmap[c.containerId];
+                    if (!det || det.packageVolume == null) return;
+                    var e = byTrailer[p] = byTrailer[p] || { cube: 0, pkgs: 0, ctns: 0 };
+                    e.cube += det.packageVolume * CUFT_CONVERSION;
+                    e.pkgs += (det.contentCountMap && det.contentCountMap.PACKAGE) || c.childCount || 0;
+                    e.ctns++;
+                });
+                // Floor + staged container objects
+                function toObj(c, isStaged) {
+                    var det = dmap[c.containerId];
+                    return {
+                        id: c.id || c.containerId,
+                        type: c.type || '',
+                        location: c.location || '',
+                        cube: (det && det.packageVolume != null) ? Math.round(det.packageVolume * CUFT_CONVERSION) : 0,
+                        pctFull: null, // enriched from SSP below
+                        pkgs: c.childCount || 0,
+                        cptPkgs: c.criticalPackages || 0,
+                        cptMs: c.cpt || null,
+                        staged: isStaged,
+                        state: c.isClosed ? 'CLOSED' : 'OPEN',
+                        _dest: (c.route && c.route.indexOf('->') !== -1) ? c.route.split('->')[1].trim() : (c.route || '')
+                    };
+                }
+                var universe = stacked.map(function(c) { return toObj(c, false); })
+                    .concat(staged.map(function(c) { return toObj(c, true); }));
+                return { byTrailer: byTrailer, universe: universe };
+            });
+        });
+
+        return Promise.all([_bchain, _vistaP]).then(function(res) {
+            var byTrailer = (res[1] && res[1].byTrailer) || {};
+            var universe = (res[1] && res[1].universe) || [];
+            // Assign each container to the combo of its route with the
+            // smallest CPT >= the container's CPT (lessOrEqual eligibility).
+            var byRoute = {};
             combos.forEach(function(c) {
-                // EXACT per-VRID: this combo's rep trailer summed from its own
-                // loaded containers. Absent = nothing loaded yet (cube 0).
-                var lc = c.trailerId ? loadedCubeMap[c.trailerId] : null;
+                var dest = (c.route.indexOf('->') !== -1) ? c.route.split('->')[1].trim() : c.route;
+                (byRoute[dest] = byRoute[dest] || []).push(c);
+            });
+            Object.keys(byRoute).forEach(function(d) { byRoute[d].sort(function(a, b) { return (a.cptMs || 0) - (b.cptMs || 0); }); });
+            var assigned = 0;
+            universe.forEach(function(ctn) {
+                var cands = byRoute[ctn._dest];
+                if (!cands) return;
+                for (var i = 0; i < cands.length; i++) {
+                    if (!ctn.cptMs || (cands[i].cptMs && cands[i].cptMs >= ctn.cptMs)) {
+                        ctn.pctFull = (pctFullMap[ctn.id] != null) ? pctFullMap[ctn.id] : null;
+                        cands[i].containers.push(ctn);
+                        assigned++;
+                        return;
+                    }
+                }
+            });
+            combos.forEach(function(c) {
+                var lc = c.trailerId ? byTrailer[c.trailerId] : null;
                 c.loadedCube = lc ? lc.cube : null;   // real cu ft in THIS trailer
                 c.loadedPkgs = lc ? lc.pkgs : null;
                 c.loadedCtns = lc ? lc.ctns : null;
             });
             obTableData.sdtchase = combos;
-            console.log('[Hydra] SDT Chase loaded:', combos.length, 'combos,', combos.reduce(function(s, c) { return s + c.containers.length; }, 0), 'containers,', combos.filter(function(c) { return c.loadedCube != null; }).length, 'with real cube');
+            console.log('[Hydra] SDT Chase loaded: ' + combos.length + ' combos, ' + assigned + '/' + universe.length + ' Vista containers assigned, ' + Object.keys(byTrailer).length + ' trailers with cube');
         });
     }
 
@@ -14648,13 +14696,14 @@ if (k === 'eta') {
                     + '<td style="text-align:right;font-weight:700">' + ctn.cube + '</td>'
                     + '<td style="text-align:right">' + (ctn.pctFull != null ? Math.round(ctn.pctFull) + '%' : '\u2014') + '</td>'
                     + '<td style="text-align:right">' + ctn.pkgs + '</td>'
+                    + '<td style="text-align:right">' + (ctn.cptPkgs != null ? ctn.cptPkgs : '\u2014') + '</td>'
                     + '<td>' + (ctn.cptMs ? msToLocal(ctn.cptMs) : '\u2014') + '</td>'
                     + '</tr>';
             }).join('');
         }
         function _tblHead(selectable) {
             return '<thead><tr>' + (selectable ? '<th></th>' : '')
-                + '<th>Container</th><th>Type</th><th>Location</th><th style="text-align:right">Cube</th><th style="text-align:right">Full</th><th style="text-align:right">Pkgs</th><th>CPT</th></tr></thead>';
+                + '<th>Container</th><th>Type</th><th>Location</th><th style="text-align:right">Cube</th><th style="text-align:right">Full</th><th style="text-align:right">Pkgs</th><th style="text-align:right">CPT Pkgs</th><th>CPT</th></tr></thead>';
         }
         function _filterBox(id, val, ph) {
             return '<input type="text" id="' + id + '" value="' + (val || '').replace(/"/g, '&quot;') + '" placeholder="' + ph + '" style="width:190px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);font-size:11px;padding:3px 8px;margin-left:10px">';
