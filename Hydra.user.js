@@ -4870,13 +4870,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var map = {};
             rows.forEach(function(e) {
                 if (!e || !e.load || !e.load.vrId) return;
-                // load.ranking = ILP unload rank ("1" = highest priority); null when unranked
-                var rk = e.load.ranking;
                 map[e.load.vrId] = {
                     planId: e.load.planId || null,
                     trailerId: (e.trailer && e.trailer.trailerId) || '',
-                    trailerNumber: (e.trailer && e.trailer.trailerNumber) || '',
-                    ranking: (rk != null && rk !== '' && !isNaN(parseInt(rk, 10))) ? parseInt(rk, 10) : null
+                    trailerNumber: (e.trailer && e.trailer.trailerNumber) || ''
                 };
             });
             _ibDockViewCache = { at: Date.now(), map: map };
@@ -4894,16 +4891,39 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
+    // ILP rank map: POST entity=getPrioritizedInboundDockView (the IB dock
+    // API's ILP view — NOT the default dock view, and NOT the Vista API).
+    // load.ranking = ILP unload rank ("1" = highest priority); null = unranked.
+    var _ilpRankCache = { at: 0, map: null };
+    function fetchIlpRankMap() {
+        if (_ilpRankCache.map && (Date.now() - _ilpRankCache.at) < 30000) {
+            return Promise.resolve(_ilpRankCache.map);
+        }
+        var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
+        var body = 'entity=getPrioritizedInboundDockView&nodeId=' + encodeURIComponent(nodeId) + '&isILPRankGroupingEnabled=true';
+        return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?', body).then(function(data) {
+            var rows = (data && data.ret && data.ret.aaData) || [];
+            var map = {};
+            rows.forEach(function(e) {
+                if (!e || !e.load || !e.load.vrId) return;
+                var rk = e.load.ranking;
+                if (rk != null && rk !== '' && !isNaN(parseInt(rk, 10))) map[e.load.vrId] = parseInt(rk, 10);
+            });
+            _ilpRankCache = { at: Date.now(), map: map };
+            console.log('[Hydra] ILP rank map loaded: ' + Object.keys(map).length + ' ranked loads');
+            return map;
+        });
+    }
+
     // ILP enricher: display-only compliance column. Skips the fetch entirely
-    // unless the user has turned the ILP column on.
+    // unless the user has turned the ILP column on — zero cost when off.
     function enrichRowsWithIlp(rows) {
         if (!ibVisibleCols.has('ilp')) return Promise.resolve();
-        return fetchIbDockViewMap().then(function(map) {
+        return fetchIlpRankMap().then(function(map) {
             if (!map) return;
             var n = 0;
             rows.forEach(function(r) {
-                var info = map[r.vrid];
-                if (info && info.ranking != null) { r.ilp = info.ranking; n++; }
+                if (map[r.vrid] != null) { r.ilp = map[r.vrid]; n++; }
             });
             console.log('[Hydra] ILP enricher: ' + n + '/' + rows.length + ' rows ranked');
         }).catch(function(e) { console.warn('[Hydra] ILP enrich failed:', e); });
