@@ -964,7 +964,7 @@
         var _acT2 = document.getElementById('hydra-ac-util-toggle');
         if (_acT2) { var _showAc2 = (_isOB && _tab === 'autochutes'); _acT2.style.display = _showAc2 ? 'inline-flex' : 'none'; if (_showAc2 && typeof updateAcUtilToggle === 'function') updateAcUtilToggle(); }
         var _acT2b90 = document.getElementById('hydra-ac-util90');
-        if (_acT2b90 && !(_isOB && _tab === 'autochutes')) _acT2b90.style.display = 'none';
+        if (_acT2b90 && !(_isOB && _tab === 'linearchutes')) _acT2b90.style.display = 'none';
         // SLA cutoff indicator -- keyed off the selected pane's view (IB panes).
         if (typeof updateSlaIndicator === 'function') updateSlaIndicator(p.view);
     }
@@ -1156,7 +1156,8 @@
     var AUTO_CHUTE_FILTER = 'AUTO-CHUTE';
     var AUTO_CHUTE_MODE   = 'cpt';
     var acUtilMode        = false; // Chute Matrix: show container utilization % instead of CPT counts
-    var acUtilHighOnly    = false; // Waterspider View toggle (Chute Matrix util mode + Custom View 1D)
+    var acUtilHighOnly    = false; // Waterspider View toggle (Custom View 1D only)
+    var acWsMode          = false; // Chute Matrix third mode: Waterspider View (util data + WS filter)
     var wsRedPct          = 90;    // Waterspider View: red = any container >= this % full
     var wsYellowPct       = 35;    // Waterspider View: yellow = PALLET >= this % (wrap-ready)
     var obWindowHours     = 12;    // OB VRIDs pull search window: 12 (SSP default view) or 24 (explicit date range)
@@ -3505,6 +3506,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 customStagedThreshold: (Array.isArray(CUSTOM_STAGED_THRESHOLD) ? CUSTOM_STAGED_THRESHOLD.join(',') : CUSTOM_STAGED_THRESHOLD),
             autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
             wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
+            acWsMode: acWsMode,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
             cptWindows:  cptWindows.map(function(w) { return Object.assign({}, w); }),
@@ -3644,6 +3646,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
         if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
         if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
+        if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
         if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
@@ -4378,6 +4381,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 autoChuteFilter: AUTO_CHUTE_FILTER,
                 autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
                 wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
+                acWsMode: acWsMode,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
                 autoChuteSep2:   AUTO_CHUTE_SEP2,
@@ -4550,6 +4554,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.autoChuteMode)   AUTO_CHUTE_MODE   = s.autoChuteMode;
             if (s.acUtilMode !== undefined) acUtilMode = !!s.acUtilMode;
             if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
+            if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
             if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
@@ -12048,10 +12053,13 @@ if (k === 'eta') {
     function updateAcUtilToggle() {
         var b = document.getElementById('hydra-ac-util-toggle');
         if (!b) return;
-        b.textContent = acUtilMode ? 'Utilization %' : 'CPT Packages';
-        b.style.color = acUtilMode ? '#20d4f0' : 'var(--h-muted, #aab4c0)';
-        b.style.borderColor = acUtilMode ? '#20d4f0' : 'var(--h-border2, #3a4a5c)';
-        b.title = acUtilMode ? 'Utilization % (red = full, get a water spider). Click for CPT packages.' : 'CPT package counts. Click for container utilization %.';
+        b.textContent = (acUtilMode && acWsMode) ? 'Waterspider View' : (acUtilMode ? 'Utilization %' : 'CPT Packages');
+        var _acCol = (acUtilMode && acWsMode) ? '#f9a825' : (acUtilMode ? '#20d4f0' : 'var(--h-muted, #aab4c0)');
+        b.style.color = _acCol;
+        b.style.borderColor = acUtilMode ? _acCol : 'var(--h-border2, #3a4a5c)';
+        b.title = (acUtilMode && acWsMode) ? 'Waterspider View: full containers + wrap-ready pallets only. Click for CPT packages.'
+                : acUtilMode ? 'Utilization % (red = full, get a water spider). Click for Waterspider View.'
+                : 'CPT package counts. Click for container utilization %.';
         updateUtil90Button();
     }
 
@@ -12069,8 +12077,7 @@ if (k === 'eta') {
     function updateUtil90Button() {
         var b90 = document.getElementById('hydra-ac-util90');
         if (!b90) return;
-        var show = (activeView === 'OB' && obActiveTab === 'autochutes' && acUtilMode) ||
-                   (activeView === 'OB' && obActiveTab === 'linearchutes' && oneDFilterUtil);
+        var show = (activeView === 'OB' && obActiveTab === 'linearchutes' && oneDFilterUtil);
         b90.style.display = show ? 'inline-flex' : 'none';
         b90.style.color = acUtilHighOnly ? '#20d4f0' : 'var(--h-muted, #aab4c0)';
         b90.style.borderColor = acUtilHighOnly ? '#20d4f0' : 'var(--h-border2, #3a4a5c)';
@@ -12545,7 +12552,7 @@ if (k === 'eta') {
         var lanes = AUTO_CHUTE_LANES.map(function(x) { return x.l; });
         var _acUtil = (d && d.chuteMap) ? false : (!!(d && d.util) || acUtilMode);
         var _acCM = !!(d && d.chuteMap);
-        var html = (_acUtil && acUtilHighOnly) ? wsLegendHtml() : ''; html += '<table id="hydra-table"><thead><tr>';
+        var html = (_acUtil && acWsMode) ? wsLegendHtml() : ''; html += '<table id="hydra-table"><thead><tr>';
         html += '<th style="background:#000;color:#fff;font-weight:700;padding:6px 12px;text-align:left">Lane</th>';
         slots.forEach(function(s) {
             html += '<th style="background:#000;color:#fff;font-weight:700;padding:6px 10px;text-align:center">' + (s || '—') + '</th>';
@@ -12563,7 +12570,7 @@ if (k === 'eta') {
                 // Waterspider View: keep only cells holding a red container
                 // (>= wsRedPct% full) or a wrap-ready pallet (>= wsYellowPct%).
                 var _ws = null;
-                if (_acUtil && acUtilHighOnly) {
+                if (_acUtil && acWsMode) {
                     if (cell && cell.containers) {
                         for (var _wi = 0; _wi < cell.containers.length; _wi++) {
                             var _wc = cell.containers[_wi];
@@ -16585,11 +16592,22 @@ if (k === 'eta') {
         var _acUtilBtn = document.getElementById('hydra-ac-util-toggle');
         if (_acUtilBtn) _acUtilBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            // Toggle only selects WHICH data to pull; Refresh actually pulls it.
-            acUtilMode = !acUtilMode;
+            // Cycle: CPT -> Utilization -> Waterspider -> CPT. CPT<->Util changes
+            // WHICH data gets pulled (Refresh loads it); Util->WS reuses the same
+            // utilization data, so re-render immediately when it's already loaded.
+            var _wasUtil = acUtilMode;
+            if (!acUtilMode) { acUtilMode = true; acWsMode = false; }
+            else if (!acWsMode) { acWsMode = true; }
+            else { acUtilMode = false; acWsMode = false; }
             try { saveAllSettings(); } catch (ex) {}
             updateAcUtilToggle();
-            setStatus('Chute Matrix mode: ' + (acUtilMode ? 'Utilization %' : 'CPT Packages') + ' \u2014 click Refresh to load.');
+            var _mode = (acUtilMode && acWsMode) ? 'Waterspider View' : (acUtilMode ? 'Utilization %' : 'CPT Packages');
+            if (_wasUtil && acUtilMode && obTableData.autochutes && obTableData.autochutes.util) {
+                if (typeof renderOBAutoChutesTable === 'function') renderOBAutoChutesTable();
+                setStatus('Chute Matrix mode: ' + _mode);
+            } else {
+                setStatus('Chute Matrix mode: ' + _mode + ' \u2014 click Refresh to load.');
+            }
         });
 
         // "\u226590% only" filter — no data pull needed, just re-render the active view
@@ -16599,8 +16617,7 @@ if (k === 'eta') {
             acUtilHighOnly = !acUtilHighOnly;
             try { saveAllSettings(); } catch (ex) {}
             updateUtil90Button();
-            if (obActiveTab === 'linearchutes' && typeof renderOBCustomStackedTable === 'function') renderOBCustomStackedTable();
-            else if (typeof renderChuteMatrix === 'function') renderChuteMatrix();
+            if (typeof renderOBCustomStackedTable === 'function') renderOBCustomStackedTable();
         });
 
         // OB VRIDs search window (Settings > Search Window)
