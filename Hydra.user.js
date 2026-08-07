@@ -9513,6 +9513,60 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // combo. The response carries BOTH the trailer's percentLoaded/Staged and
     // the eligible floor containers with exact cube (cu ft), so a single call
     // per combo feeds the rail gauge and the planner list. ──
+    // Real loaded cube per lane+cpt from the Vista LOADED stage (same query the
+    // Volume Calculator uses). Returns { 'LANE|cptMs' -> { cube (cu ft), pkgs } }.
+    // VRID-level properties aren't supported by this API (verified live), but
+    // lane+cpt IS the SDT Chase combo key, so the granularity matches exactly.
+    function fetchSdtLoadedCube(nodeId) {
+        function stageTs(dayOffset) {
+            var d = new Date();
+            d.setHours(19, 0, 0, 0);
+            d.setDate(d.getDate() + dayOffset);
+            return String(d.getTime());
+        }
+        function one(ts) {
+            var jsonObj = JSON.stringify({
+                nodeId: nodeId,
+                responseType: 'LOCATION',
+                entity: 'getCountsByLocation',
+                locationIdList: [ts + ':LOADED'],
+                segmentToMeasureTypeList: [{ segmentId: 'CONTAINERIZATION_COUNT', measureTypes: ['COUNT', 'VOLUME'] }],
+                propertyNameList: ['sort_center_id', 'container_type', 'cpt', 'lane'],
+                containerTypes: ['PACKAGE']
+            });
+            var reqBody = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+            return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getCountsByLocation', 'POST', reqBody)
+                .then(function(data) {
+                    return (data && data.ret && data.ret.getCountsByLocationOutput && data.ret.getCountsByLocationOutput.stagesCountMap) || {};
+                }).catch(function(e) { console.warn('[Hydra] SDT loaded-cube fetch failed', e); return {}; });
+        }
+        // Sort-day boundary is 19:00 local; query today AND tomorrow so combos
+        // on either side of the boundary resolve. Same lane+cpt keys merge.
+        return Promise.all([one(stageTs(0)), one(stageTs(1))]).then(function(maps) {
+            var out = {};
+            maps.forEach(function(m) {
+                Object.keys(m).forEach(function(k) {
+                    var entries = m[k]; if (!Array.isArray(entries)) entries = [entries];
+                    entries.forEach(function(e) {
+                        if (!e || !e.propertyMap || !e.propertyMap.lane) return;
+                        var lane = e.propertyMap.lane;
+                        if (lane.indexOf('->') !== -1) lane = lane.split('->')[1].trim();
+                        var cptMs = e.propertyMap.cpt ? Number(e.propertyMap.cpt) : 0;
+                        var cur = e.cptBasedFlowUnitsMap && e.cptBasedFlowUnitsMap.CURRENT;
+                        if (!cur) return;
+                        var key = lane + '|' + cptMs;
+                        out[key] = {
+                            cube: (Number(cur.VOLUME) || 0) * CUFT_CONVERSION,
+                            pkgs: Number(cur.COUNT) || 0
+                        };
+                    });
+                });
+            });
+            console.log('[Hydra] SDT loaded-cube map:', Object.keys(out).length, 'lane/cpt entries');
+            return out;
+        });
+    }
+
     function pullSdtChase(nodeId) {
         obTableData.sdtchase = null;
         var comboBest = {};
@@ -9567,9 +9621,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) { _bchain = _bchain.then(function() { return Promise.all(_batch.map(function(_t) { return _t(); })); }); })(_thunks.slice(_bi, _bi + _CONC));
         }
-        return _bchain.then(function() {
+        var _cubeP = fetchSdtLoadedCube(nodeId);
+        return Promise.all([_bchain, _cubeP]).then(function(res) {
+            var loadedCubeMap = res[1] || {};
+            combos.forEach(function(c) {
+                var lk = c.route + '|' + (c.cptMs || 0);
+                var lc = loadedCubeMap[lk];
+                c.loadedCube = lc ? lc.cube : null;   // real cu ft loaded (lane+cpt)
+                c.loadedPkgs = lc ? lc.pkgs : null;
+                // True capacity falls out of real cube + the dock's percentLoaded.
+                // Caveat: multi-trailer combos aggregate cube across trailers.
+                c.capEst = (c.loadedCube != null && c.pctLoaded > 0)
+                    ? c.loadedCube / (c.pctLoaded / 100) : null;
+            });
             obTableData.sdtchase = combos;
-            console.log('[Hydra] SDT Chase loaded:', combos.length, 'combos,', combos.reduce(function(s, c) { return s + c.containers.length; }, 0), 'containers');
+            console.log('[Hydra] SDT Chase loaded:', combos.length, 'combos,', combos.reduce(function(s, c) { return s + c.containers.length; }, 0), 'containers,', combos.filter(function(c) { return c.loadedCube != null; }).length, 'with real cube');
         });
     }
 
@@ -14369,11 +14435,15 @@ if (k === 'eta') {
     function _sdtChaseMath(c) {
         var picks = sdtChasePicks[c.key] || {};
         var curPct = c.pctLoaded != null ? c.pctLoaded : 0;
-        var curCube = curPct / 100 * sdtChaseCap;
+        // Prefer real cube when available (Vista LOADED stage); the settings
+        // capacity constant is only the fallback for trailers with no data.
+        var cap = (c.capEst && c.capEst > 0) ? c.capEst : sdtChaseCap;
+        var curCube = (c.loadedCube != null) ? c.loadedCube : (curPct / 100 * cap);
         var addCube = 0, nPicks = 0;
         c.containers.forEach(function(ctn) { if (picks[ctn.id]) { addCube += ctn.cube; nPicks++; } });
-        var newPct = (curCube + addCube) / sdtChaseCap * 100;
-        return { curPct: curPct, curCube: curCube, addCube: addCube, newPct: newPct, nPicks: nPicks, picks: picks };
+        var newPct = (curCube + addCube) / cap * 100;
+        return { curPct: curPct, curCube: curCube, addCube: addCube, newPct: newPct, nPicks: nPicks, picks: picks,
+                 cap: cap, real: c.loadedCube != null };
     }
     function _sdtGauge(pct, newPct, width) {
         var w = width || 260;
@@ -14454,10 +14524,10 @@ if (k === 'eta') {
             + _sdtGauge(m.curPct, m.newPct, 340)
             + '<span style="font-size:13px;font-weight:700;color:' + (hit ? '#66bb6a' : 'var(--h-text, #e8eaf0)') + '">' + Math.round(m.curPct) + '%'
             + (m.nPicks ? ' \u2192 ' + Math.round(m.newPct) + '%' : '') + '</span>'
-            + '<span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">' + Math.round(m.curCube) + (m.nPicks ? ' + ' + Math.round(m.addCube) : '') + ' / ' + sdtChaseCap + ' cu ft'
+            + '<span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">' + Math.round(m.curCube) + (m.nPicks ? ' + ' + Math.round(m.addCube) : '') + ' / ' + Math.round(m.cap) + ' cu ft' + (m.real ? '' : ' (est.)')
             + (sel.pctStaged ? ' \u00b7 ' + Math.round(sel.pctStaged) + '% staged' : '') + '</span>'
             + '</div>';
-        var needCube = Math.max(0, sdtChaseTarget / 100 * sdtChaseCap - m.curCube - m.addCube);
+        var needCube = Math.max(0, sdtChaseTarget / 100 * m.cap - m.curCube - m.addCube);
         pHtml += '<div style="font-size:11px;color:' + (hit ? '#66bb6a' : '#ffa726') + ';margin-bottom:8px">'
             + (hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(needCube) + ' cu ft to target')
             + '</div>';
@@ -14522,7 +14592,7 @@ if (k === 'eta') {
             var picks = sdtChasePicks[sel.key] = sdtChasePicks[sel.key] || {};
             var mm = _sdtChaseMath(sel);
             var cube = mm.curCube + mm.addCube;
-            var goal = sdtChaseTarget / 100 * sdtChaseCap;
+            var goal = sdtChaseTarget / 100 * mm.cap;
             floor.forEach(function(ctn) {
                 if (cube >= goal) return;
                 if (picks[ctn.id]) return;
