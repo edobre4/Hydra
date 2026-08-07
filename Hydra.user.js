@@ -1151,6 +1151,14 @@
     var sdtChaseAuto = {};        // comboKey -> { cid: true } live auto-suggestions (recomputed)
     var sdtChaseExcluded = {};    // comboKey -> { cid: true } suggestions the user rejected
     var sdtChaseAutoOn = false;   // auto-suggest mode toggle (session)
+    // Full-container cube thresholds per type (cu ft, persisted). Utilization
+    // = container cube / type threshold. GAYLORD uses the SHUTTLE value.
+    var sdtChaseTypeCap = { CART: 40, SHUTTLE: 60, PALLET: 60, BAG: 10 };
+    function sdtTypeCap(type) {
+        var t = (type || '').toUpperCase();
+        if (t === 'GAYLORD') t = 'SHUTTLE';
+        return sdtChaseTypeCap[t] > 0 ? sdtChaseTypeCap[t] : null;
+    }
     var sdtChaseTarget = 3200;    // fill target in CUBE (cu ft, persisted)
     var sdtChaseFloorFilter = ''; // text filter, stacked (floor) table
     var sdtChaseStagedFilter = ''; // text filter, staged table
@@ -3522,6 +3530,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
             wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
             sdtChaseTarget: sdtChaseTarget,
+            sdtChaseTypeCap: sdtChaseTypeCap,
             acWsMode: acWsMode,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
@@ -3664,6 +3673,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
         if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
         if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
+        if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
                 if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
@@ -4399,6 +4409,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
                 wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
                 sdtChaseTarget: sdtChaseTarget,
+                sdtChaseTypeCap: sdtChaseTypeCap,
                 acWsMode: acWsMode,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
@@ -4574,6 +4585,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
             if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
             if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
+            if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
                         if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
@@ -5407,6 +5419,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             '<div class="hydra-settings-row" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">' +
                                 '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:6px">Red: container &#8805;<input type="number" id="hydra-ws-red" min="1" max="200" style="width:56px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px">% full</label>' +
                                 '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:6px">Yellow: pallet &#8805;<input type="number" id="hydra-ws-yellow" min="1" max="200" style="width:56px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px">% (wrap-ready)</label>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="hydra-settings-section collapsed" id="hydra-section-sdtchase">' +
+                        '<div class="hydra-settings-section-title">SDT Chase</div>' +
+                        '<div class="hydra-settings-section-content">' +
+                            '<div class="hydra-settings-row" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">' +
+                                '<span style="color:var(--h-muted, #aab4c0);font-size:12px">Full-container cube (cu ft):</span>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Cart<input type="number" id="hydra-sdt-cap-cart" min="1" max="500" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Shuttle/Gaylord<input type="number" id="hydra-sdt-cap-shuttle" min="1" max="500" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Pallet<input type="number" id="hydra-sdt-cap-pallet" min="1" max="500" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Bag<input type="number" id="hydra-sdt-cap-bag" min="1" max="500" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
@@ -9598,28 +9622,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (!combos.length) { obTableData.sdtchase = []; return Promise.resolve(); }
         console.log('[Hydra] SDT Chase:', combos.length, 'route/cpt combos');
 
-        // SSP enrichment: percentFull per scannable id + trailer pct hints
-        var pctFullMap = {};
-        var _thunks = combos.map(function(c, i) {
-            return function() {
-                setStatus('SDT Chase enrich ' + (i + 1) + '/' + combos.length + '...');
-                var body = 'entity=getEligibleContainersForLoad&nodeId=' + encodeURIComponent(nodeId) + '&loadId=' + encodeURIComponent(c.planId);
-                return gmFetchSsp('https://trans-logistics.amazon.com/ssp/dock/hrz/ob/fetchdata', body).then(function(data) {
-                    var det = data && data.ret && data.ret.eligibleContainerDetails;
-                    if (!det) return;
-                    c.pctLoaded = (det.percentLoaded != null) ? +det.percentLoaded : null;
-                    c.pctStaged = (det.percentStaged != null) ? +det.percentStaged : null;
-                    (det.eligibleContainers || []).forEach(function(ctn) {
-                        if (ctn.containerId && ctn.percentFull != null) pctFullMap[ctn.containerId] = +ctn.percentFull;
-                    });
-                }).catch(function(e) { console.warn('[Hydra] SDT Chase enrich failed', c.key, e); });
-            };
-        });
-        var _CONC = 10; var _bchain = Promise.resolve();
-        for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
-            (function(_batch) { _bchain = _bchain.then(function() { return Promise.all(_batch.map(function(_t) { return _t(); })); }); })(_thunks.slice(_bi, _bi + _CONC));
-        }
-
         // Vista universe: three states, then ONE shared volume batch
         setStatus('SDT Chase: pulling Vista containers...');
         var _vistaP = Promise.all([
@@ -9666,9 +9668,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             });
         });
 
-        return Promise.all([_bchain, _vistaP]).then(function(res) {
-            var byTrailer = (res[1] && res[1].byTrailer) || {};
-            var universe = (res[1] && res[1].universe) || [];
+        return _vistaP.then(function(res1) {
+            var byTrailer = (res1 && res1.byTrailer) || {};
+            var universe = (res1 && res1.universe) || [];
             // Assign each container to the combo of its route with the
             // smallest CPT >= the container's CPT (lessOrEqual eligibility).
             var byRoute = {};
@@ -9683,7 +9685,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 if (!cands) return;
                 for (var i = 0; i < cands.length; i++) {
                     if (!ctn.cptMs || (cands[i].cptMs && cands[i].cptMs >= ctn.cptMs)) {
-                        ctn.pctFull = (pctFullMap[ctn.id] != null) ? pctFullMap[ctn.id] : null;
+                        var _tc = sdtTypeCap(ctn.type);
+                        ctn.pctFull = _tc ? (ctn.cube / _tc * 100) : null;
                         cands[i].containers.push(ctn);
                         assigned++;
                         return;
@@ -14667,7 +14670,6 @@ if (k === 'eta') {
             + _sdtGauge(m.curCube, m.newCube, 340)
             + '<span style="font-size:13px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-text, #e8eaf0)') + '">' + Math.round(m.curCube)
             + (m.nPicks ? ' + ' + Math.round(m.addCube) + ' = ' + Math.round(m.newCube) : '') + ' / ' + sdtChaseTarget + ' cu ft</span>'
-            + (m.noData && sel.pctLoaded > 0 ? '<span style="font-size:10px;color:#ffa726" title="Vista has no loaded containers for this trailer yet, but the dock shows it partially loaded">dock: ' + Math.round(sel.pctLoaded) + '% loaded, no cube data</span>' : '')
             + '</div>';
         pHtml += '<div style="font-size:11px;color:' + (m.hit ? '#66bb6a' : '#ffa726') + ';margin-bottom:8px">'
             + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, sdtChaseTarget - m.newCube)) + ' cu ft to target')
@@ -16385,6 +16387,14 @@ if (k === 'eta') {
             if (_wsR) _wsR.value = wsRedPct;
             var _wsY = document.getElementById('hydra-ws-yellow');
             if (_wsY) _wsY.value = wsYellowPct;
+            var _sdtCapC = document.getElementById('hydra-sdt-cap-cart');
+            if (_sdtCapC) _sdtCapC.value = sdtChaseTypeCap.CART;
+            var _sdtCapS = document.getElementById('hydra-sdt-cap-shuttle');
+            if (_sdtCapS) _sdtCapS.value = sdtChaseTypeCap.SHUTTLE;
+            var _sdtCapP = document.getElementById('hydra-sdt-cap-pallet');
+            if (_sdtCapP) _sdtCapP.value = sdtChaseTypeCap.PALLET;
+            var _sdtCapB = document.getElementById('hydra-sdt-cap-bag');
+            if (_sdtCapB) _sdtCapB.value = sdtChaseTypeCap.BAG;
             var _amShM = document.getElementById('hydra-armezz-show-moves');
             if (_amShM) _amShM.checked = !!arMezzShowMoves;
             var _amShT = document.getElementById('hydra-armezz-show-top5');
@@ -18280,6 +18290,17 @@ if (k === 'eta') {
         }
         _wsThrHandler('hydra-ws-red', function(v) { wsRedPct = v; });
         _wsThrHandler('hydra-ws-yellow', function(v) { wsYellowPct = v; });
+        function _sdtCapHandler(id, key) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', function() {
+                var v = parseFloat(this.value);
+                if (!isNaN(v) && v > 0) { sdtChaseTypeCap[key] = v; saveAllSettings(); }
+            });
+        }
+        _sdtCapHandler('hydra-sdt-cap-cart', 'CART');
+        _sdtCapHandler('hydra-sdt-cap-shuttle', 'SHUTTLE');
+        _sdtCapHandler('hydra-sdt-cap-pallet', 'PALLET');
+        _sdtCapHandler('hydra-sdt-cap-bag', 'BAG');
         function _amShowHandler(id, setter) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', function() {
