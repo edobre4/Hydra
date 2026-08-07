@@ -1140,6 +1140,8 @@
 
     // OB state
     var obTableData = {}, obActiveTab = 'obvrids', obSortKey = 'cpt', obSortDir = -1;
+    // CPT Performance late-filters (multi-select, session-only, all-off = show all)
+    var cptPerfFilters = { tdr: false, finish: false, adt: false, cpt: false };
     var obVridsSelectedOnly = false;  // OB VRIDs: show only selected routes
     var dynSel = {};              // { route: { cptStr: true } } session-scoped working set
     var dynSelSeeded = false;     // seeded from persistent settings once per session
@@ -14316,6 +14318,24 @@ if (k === 'eta') {
             return (typeof av2 === 'number' && typeof bv2 === 'number') ? (av2 - bv2) * obSortDir2 : String(av2).localeCompare(String(bv2)) * obSortDir2;
         });
 
+        // Late predicates — same definitions as the red cell flags below.
+        function _cptPerfLate(r) {
+            return {
+                tdr:    !!(r.tdrMs && r.sdtMs && r.tdrMs > r.sdtMs),
+                finish: !!(r.finishMs && r.sdtMs && r.finishMs > r.sdtMs),
+                adt:    !!(r.adtMs && r.sdtMs && r.adtMs > r.sdtMs + 30 * 60000),
+                cpt:    !!(r.cptMs && ((r.finishMs && r.finishMs > r.cptMs) || (r.tdrMs && r.tdrMs > r.cptMs)))
+            };
+        }
+        var _anyFilter = cptPerfFilters.tdr || cptPerfFilters.finish || cptPerfFilters.adt || cptPerfFilters.cpt;
+        if (_anyFilter) {
+            rows = rows.filter(function(r) {
+                var L = _cptPerfLate(r);
+                return (cptPerfFilters.tdr && L.tdr) || (cptPerfFilters.finish && L.finish) ||
+                       (cptPerfFilters.adt && L.adt) || (cptPerfFilters.cpt && L.cpt);
+            });
+        }
+
         var cols = [
             { key: 'vrid',        label: 'VRID' },
             { key: 'route',       label: 'Route' },
@@ -14324,7 +14344,8 @@ if (k === 'eta') {
             { key: 'adt',         label: 'ADT' },
             { key: 'tdrRelease',  label: 'TDR Release' },
             { key: 'finishTime',  label: 'Finish Time' },
-            { key: 'cptPerf',     label: 'CPT Performance %' }
+            { key: 'cptPerf',     label: 'CPT Performance %' },
+            { key: 'bridge',      label: 'Bridge' }
         ];
 
         var headHtml = '<tr>' + cols.map(function(c) {
@@ -14332,7 +14353,7 @@ if (k === 'eta') {
             return '<th class="' + sc + '" data-key="' + c.key + '">' + c.label + '</th>';
         }).join('') + '</tr>';
 
-        var rowsHtml = rows.map(function(r) {
+        var rowsHtml = rows.map(function(r, _ri) {
             // Determine if this is a "CPT truck" (SDT >= CPT)
             var isCptTruck = r.sdtMs && r.cptMs && r.sdtMs >= r.cptMs;
             var rowClass = isCptTruck ? 'data-row cpt-truck' : 'data-row';
@@ -14381,12 +14402,37 @@ if (k === 'eta') {
                     return '<td style="' + style + '">' + v + '%</td>';
                 }
 
+                // Bridge: free-text, session-only (lives on the row object so it
+                // survives sorts/filter toggles; cleared by the next data pull).
+                // resize:horizontal gives the user a drag handle to widen it.
+                if (col.key === 'bridge') {
+                    var _bv = (r.bridge || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                    return '<td style="padding:2px 4px"><textarea class="cptperf-bridge" data-idx="' + _ri + '" rows="1" placeholder="bridge\u2026" style="resize:horizontal;min-width:140px;width:140px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);font-size:11px;padding:3px 6px;vertical-align:middle">' + _bv + '</textarea></td>';
+                }
+
                 if (v == null || v === '\u2014') return '<td style="color:var(--h-dim2, #3a4a5a)">\u2014</td>';
                 return '<td' + (style ? ' style="' + style + '"' : '') + '>' + v + '</td>';
             }).join('') + '</tr>';
         }).join('');
 
-        tableWrap.innerHTML = '<table id="hydra-table"><thead>' + headHtml + '</thead><tbody>' + rowsHtml + '</tbody></table>';
+        // Segmented late-filter bar (multi-select) + Slack copy button
+        var _fbtn = function(key, label, first, last) {
+            var on = cptPerfFilters[key];
+            return '<button class="cptperf-filter" data-filter="' + key + '" style="font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer;white-space:nowrap;'
+                + (first ? 'border-radius:4px 0 0 4px;' : (last ? 'border-radius:0 4px 4px 0;' : 'border-radius:0;'))
+                + 'border:1px solid var(--h-border2, #3a4a5c);' + (first ? '' : 'border-left:none;')
+                + 'background:' + (on ? '#ef5350' : 'var(--h-bg2, #16202c)') + ';color:' + (on ? '#111' : 'var(--h-muted, #aab4c0)') + '">' + label + '</button>';
+        };
+        var barHtml = '<div style="display:flex;gap:12px;align-items:center;margin:2px 0 8px;flex-wrap:wrap">'
+            + '<span style="display:inline-flex;align-items:center">'
+            + _fbtn('tdr', 'TDR Late', true, false) + _fbtn('finish', 'Finish Late', false, false)
+            + _fbtn('adt', 'ADT Late', false, false) + _fbtn('cpt', 'CPT Late', false, true)
+            + '</span>'
+            + '<button id="hydra-cptperf-copy" style="font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Copy the visible table (incl. bridges) as Slack-ready text">\ud83d\udccb Copy for Slack</button>'
+            + '<span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">' + rows.length + ' loads</span>'
+            + '</div>';
+
+        tableWrap.innerHTML = barHtml + '<table id="hydra-table"><thead>' + headHtml + '</thead><tbody>' + rowsHtml + '</tbody></table>';
 
         // Sort click handlers
         tableWrap.querySelectorAll('#hydra-table thead th').forEach(function(th) {
@@ -14398,6 +14444,50 @@ if (k === 'eta') {
                 obSortKey = k;
                 saveAllSettings();
                 renderOBTable();
+            });
+        });
+
+        // Late-filter toggles (multi-select; all-off = show everything)
+        tableWrap.querySelectorAll('.cptperf-filter').forEach(function(b) {
+            b.addEventListener('click', function(e) {
+                e.stopPropagation();
+                cptPerfFilters[b.dataset.filter] = !cptPerfFilters[b.dataset.filter];
+                renderCptPerfTable(targetEl);
+            });
+        });
+
+        // Bridge inputs: write through to the row objects so sorts/filters keep text
+        tableWrap.querySelectorAll('.cptperf-bridge').forEach(function(ta) {
+            ta.addEventListener('input', function() {
+                var r = rows[parseInt(ta.dataset.idx, 10)];
+                if (r) r.bridge = ta.value;
+            });
+            ta.addEventListener('click', function(e) { e.stopPropagation(); });
+        });
+
+        // Copy for Slack: fixed-width code block of the visible rows
+        var _cpCopy = document.getElementById('hydra-cptperf-copy');
+        if (_cpCopy) _cpCopy.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var hdr = ['VRID', 'Route', 'CPT', 'SDT', 'ADT', 'TDR', 'Finish', 'Perf%', 'Bridge'];
+            var data = rows.map(function(r) {
+                return [r.vrid || '', r.route || '', r.cpt || '', r.sdt || '', r.adt || '',
+                        r.tdrRelease || '', r.finishTime || '', (r.cptPerf != null ? r.cptPerf + '%' : ''), (r.bridge || '').replace(/\s+/g, ' ')];
+            });
+            var w = hdr.map(function(h, i) {
+                return Math.max(h.length, data.reduce(function(m, row) { return Math.max(m, String(row[i]).length); }, 0));
+            });
+            function pad(s, n) { s = String(s); while (s.length < n) s += ' '; return s; }
+            var lines = [hdr.map(function(h, i) { return pad(h, w[i]); }).join('  ')];
+            lines.push(w.map(function(n) { return new Array(n + 1).join('-'); }).join('  '));
+            data.forEach(function(row) { lines.push(row.map(function(cell, i) { return pad(cell, w[i]); }).join('  ')); });
+            var _actF = [];
+            if (cptPerfFilters.tdr) _actF.push('TDR Late'); if (cptPerfFilters.finish) _actF.push('Finish Late');
+            if (cptPerfFilters.adt) _actF.push('ADT Late'); if (cptPerfFilters.cpt) _actF.push('CPT Late');
+            var txt = 'CPT Performance' + (_actF.length ? ' \u2014 ' + _actF.join(' + ') : '') + ' (' + rows.length + ' loads)\n```\n' + lines.join('\n') + '\n```';
+            navigator.clipboard.writeText(txt).then(function() {
+                var o = _cpCopy.textContent; _cpCopy.textContent = '\u2714 Copied';
+                setTimeout(function() { _cpCopy.textContent = o; }, 1500);
             });
         });
         applyZoom();
