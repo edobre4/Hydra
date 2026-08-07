@@ -10193,20 +10193,27 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         AUTO_CHUTE_LANES.forEach(function(ln) { laneSet[ln.l] = ln.s; });
         var slots = []; var slotSeen = {};
         AUTO_CHUTE_LANES.forEach(function(ln) { ln.s.forEach(function(x){ if(!slotSeen[x]){slotSeen[x]=1;slots.push(x);} }); });
-        // One planId per matching trailer (all of them, deduped).
-        var planSeen = {}; var combos = [];
+        // One call per ROUTE, not per trailer: eligible containers are scoped
+        // to the load's route, and eligibility is lessOrEqual-CPT, so the
+        // trailer with the LATEST CPT on a route covers every container the
+        // earlier trailers would return. Collapses ~150 POSTs to ~#lanes.
+        var routeBest = {};
         (obTableData.obvrids || []).forEach(function(r) {
             if (!dynSelMatches(r.route, r.cpt)) return;
-            if (!r.planId || planSeen[r.planId]) return;
-            planSeen[r.planId] = true;
-            combos.push({ route: r.route, cpt: r.cpt, planId: r.planId, loadId: r.loadId });
+            if (!r.planId) return;
+            var ms = parseCptMs(r.cpt) || 0;
+            if (!routeBest[r.route] || ms > routeBest[r.route]._cptMs) {
+                routeBest[r.route] = { route: r.route, cpt: r.cpt, planId: r.planId, loadId: r.loadId, _cptMs: ms };
+            }
         });
+        var combos = Object.keys(routeBest).map(function(k) { return routeBest[k]; });
         var grid = {};
         if (!combos.length) {
             obTableData.autochutes = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: 'util', util: true };
             return Promise.resolve();
         }
-        console.log('[Hydra] Chute Matrix (UTIL):', combos.length, 'loads');
+        console.log('[Hydra] Chute Matrix (UTIL):', combos.length, 'routes (one call each, latest-CPT trailer)');
+        var _acCtnSeen = {};
         var _thunks = [];
         combos.forEach(function(c, i) {
             _thunks.push(function() {
@@ -10221,11 +10228,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         var loc = ctn.locationName || '';
                         var ls = _acParseLaneSlot(loc, laneSet);
                         if (!ls) return;
+                        if (ctn.containerId) {
+                            if (_acCtnSeen[ctn.containerId]) return;
+                            _acCtnSeen[ctn.containerId] = true;
+                        }
                         var pct = (ctn.percentFull != null) ? +ctn.percentFull : null;
                         var cnt = ctn.sameCPTPackageCount || 0;
+                        // Per-container CPT from the API (epoch ms) is more accurate
+                        // than the queried load's CPT now that one call covers a route.
+                        var ctnCpt = ctn.cpt ? msToLocal(ctn.cpt) : c.cpt;
                         if (!grid[ls.lane]) grid[ls.lane] = {};
                         if (!grid[ls.lane][ls.slot]) grid[ls.lane][ls.slot] = { val: 0, containers: [] };
-                        grid[ls.lane][ls.slot].containers.push({ id: ctn.containerId || '', route: route, cpt: c.cpt, count: cnt, pct: pct, location: loc, type: ctn.containerType || '' });
+                        grid[ls.lane][ls.slot].containers.push({ id: ctn.containerId || '', route: route, cpt: ctnCpt, count: cnt, pct: pct, location: loc, type: ctn.containerType || '' });
                     });
                 }).catch(function(e){ console.warn('[Hydra] AC util fetch failed planId', c.planId, e); });
             });
