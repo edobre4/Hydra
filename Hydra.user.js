@@ -14557,6 +14557,7 @@ if (k === 'eta') {
                 .sort(function(a, b) { return b.cube - a.cube; });
             flr.forEach(function(ctn) {
                 if (cube >= tgt || ctnCount >= sdtChaseMaxCtns) return;
+                if (!(ctn.pkgs > 0)) return; // empty containers add nothing, waste slots
                 if (claimed[ctn.id] || man[ctn.id] || exc[ctn.id]) return;
                 auto[ctn.id] = true; claimed[ctn.id] = true; cube += ctn.cube; ctnCount++;
             });
@@ -14591,7 +14592,7 @@ if (k === 'eta') {
     // stays <= 95%. Greedy fullest-first with the largest partner that fits;
     // "move the emptier into the fuller" is the suggested action.
     function _sdtMergePairs(containers) {
-        var cands = containers.filter(function(c) { return c.state === 'CLOSED' && c.pctFull != null && c.id; });
+        var cands = containers.filter(function(c) { return c.state === 'CLOSED' && c.pctFull != null && c.id && c.pkgs > 0; });
         cands.sort(function(a, b) { return b.pctFull - a.pctFull; });
         var used = {}, pairs = [];
         for (var i = 0; i < cands.length; i++) {
