@@ -15358,6 +15358,14 @@ if (k === 'eta') {
                                 setStatus('\u2714 ' + data.length + ' OB loads, ' + acCount + ' AC lanes \u2014 ' + new Date().toLocaleTimeString());
                             });
                         }
+                        if (_fobtab === 'sdtchase') {
+                            setStatus('Pulling SDT Chase...');
+                            return pullSdtChase(node).then(function() {
+                                _paint(function(){ renderOBTabs(); renderOBTable(); });
+                                var sCount = Array.isArray(obTableData.sdtchase) ? obTableData.sdtchase.length : 0;
+                                setStatus('\u2714 ' + data.length + ' OB loads, ' + sCount + ' SDT combos \u2014 ' + new Date().toLocaleTimeString());
+                            });
+                        }
                         if (_fobtab === 'received') {
                             setStatus('Pulling Received...');
                             return pullReceived(node).then(function() {
