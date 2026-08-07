@@ -9492,6 +9492,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // NOTE: This API requires POST with CSRF token (not GET).
     function pullOBLoadFullness(nodeId) {
         if (!obDockProgressEnabled) return Promise.resolve({});
+        return pullOBLoadFullnessCore(nodeId);
+    }
+    function pullOBLoadFullnessCore(nodeId) {
         var vrids = (obTableData.obvrids || []);
         if (!vrids.length) return Promise.resolve({});
         // Build load IDs from sesameLoadMeta (preferred) or obTableData planId (fallback)
@@ -9622,6 +9625,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (!combos.length) { obTableData.sdtchase = []; return Promise.resolve(); }
         console.log('[Hydra] SDT Chase:', combos.length, 'route/cpt combos');
 
+        // OB fill logic: percentLoaded per VRID (one bulk call). Combined with
+        // the real loaded cube this derives each trailer's full-capacity cube.
+        var _fillP = pullOBLoadFullnessCore(nodeId).catch(function() { return {}; });
+
         // Vista universe: three states, then ONE shared volume batch
         setStatus('SDT Chase: pulling Vista containers...');
         var _vistaP = Promise.all([
@@ -9668,7 +9675,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             });
         });
 
-        return _vistaP.then(function(res1) {
+        return Promise.all([_vistaP, _fillP]).then(function(_res) {
+            var res1 = _res[0], fillMap = _res[1] || {};
             var byTrailer = (res1 && res1.byTrailer) || {};
             var universe = (res1 && res1.universe) || [];
             // Assign each container to the combo of its route with the
@@ -9698,6 +9706,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 c.loadedCube = lc ? lc.cube : null;   // real cu ft in THIS trailer
                 c.loadedPkgs = lc ? lc.pkgs : null;
                 c.loadedCtns = lc ? lc.ctns : null;
+                // Per-trailer target from the OB fill logic: real cube / fill%
+                // = the cube the OB system calls 100%. Clamped to sane bounds.
+                // Empty trailers (no cube or no fill%) use the manual override.
+                var fillPct = (fillMap[c.vrid] != null) ? +fillMap[c.vrid] : null;
+                c.obFillPct = fillPct;
+                if (c.loadedCube > 0 && fillPct > 0) {
+                    c.targetCube = Math.min(6000, Math.max(c.loadedCube, c.loadedCube / (fillPct / 100)));
+                    c.targetSrc = 'ob';
+                } else {
+                    c.targetCube = null; // renderer falls back to the override
+                    c.targetSrc = 'override';
+                }
             });
             obTableData.sdtchase = combos;
             console.log('[Hydra] SDT Chase loaded: ' + combos.length + ' combos, ' + assigned + '/' + universe.length + ' Vista containers assigned, ' + Object.keys(byTrailer).length + ' trailers with cube');
@@ -14523,12 +14543,13 @@ if (k === 'eta') {
             var auto = sdtChaseAuto[c.key] = {};
             var man = sdtChaseManual[c.key] || {};
             var exc = sdtChaseExcluded[c.key] || {};
+            var tgt = (c.targetCube && c.targetCube > 0) ? c.targetCube : sdtChaseTarget;
             var cube = (c.loadedCube != null) ? c.loadedCube : 0;
             c.containers.forEach(function(ctn) { if (man[ctn.id]) cube += ctn.cube; });
             var flr = c.containers.filter(function(x) { return !x.staged; })
                 .sort(function(a, b) { return b.cube - a.cube; });
             flr.forEach(function(ctn) {
-                if (cube >= sdtChaseTarget) return;
+                if (cube >= tgt) return;
                 if (claimed[ctn.id] || man[ctn.id] || exc[ctn.id]) return;
                 auto[ctn.id] = true; claimed[ctn.id] = true; cube += ctn.cube;
             });
@@ -14538,21 +14559,23 @@ if (k === 'eta') {
     // picks add exact cube, progress measured against the cube target.
     function _sdtChaseMath(c) {
         var picks = _sdtEffPicks(c.key);
+        var target = (c.targetCube && c.targetCube > 0) ? c.targetCube : sdtChaseTarget;
         var curCube = (c.loadedCube != null) ? c.loadedCube : 0;
         var addCube = 0, nPicks = 0;
         c.containers.forEach(function(ctn) { if (picks[ctn.id]) { addCube += ctn.cube; nPicks++; } });
         var newCube = curCube + addCube;
-        return { curCube: curCube, addCube: addCube, newCube: newCube,
-                 pct: sdtChaseTarget > 0 ? newCube / sdtChaseTarget * 100 : 0,
-                 hit: newCube >= sdtChaseTarget, nPicks: nPicks, picks: picks,
+        return { curCube: curCube, addCube: addCube, newCube: newCube, target: target,
+                 fromOb: c.targetSrc === 'ob',
+                 pct: target > 0 ? newCube / target * 100 : 0,
+                 hit: newCube >= target, nPicks: nPicks, picks: picks,
                  noData: c.loadedCube == null };
     }
-    function _sdtGauge(curCube, newCube, width) {
+    function _sdtGauge(curCube, newCube, target, width) {
         var w = width || 260;
-        var p1 = sdtChaseTarget > 0 ? Math.min(100, curCube / sdtChaseTarget * 100) : 0;
-        var p2 = sdtChaseTarget > 0 ? Math.min(100, newCube / sdtChaseTarget * 100) : 0;
-        var hit = newCube >= sdtChaseTarget;
-        return '<div style="position:relative;width:' + w + 'px;height:16px;background:var(--h-bg3, #1c2836);border:1px solid ' + (hit ? '#43a047' : 'var(--h-border2, #3a4a5c)') + ';border-radius:8px;overflow:hidden;display:inline-block;vertical-align:middle" title="Target ' + sdtChaseTarget + ' cu ft">'
+        var p1 = target > 0 ? Math.min(100, curCube / target * 100) : 0;
+        var p2 = target > 0 ? Math.min(100, newCube / target * 100) : 0;
+        var hit = newCube >= target;
+        return '<div style="position:relative;width:' + w + 'px;height:16px;background:var(--h-bg3, #1c2836);border:1px solid ' + (hit ? '#43a047' : 'var(--h-border2, #3a4a5c)') + ';border-radius:8px;overflow:hidden;display:inline-block;vertical-align:middle" title="Target ' + Math.round(target) + ' cu ft">'
             + '<div style="position:absolute;left:0;top:0;bottom:0;width:' + p2 + '%;background:' + (hit ? '#2e7d32' : '#546e7a') + ';opacity:0.55"></div>'
             + '<div style="position:absolute;left:0;top:0;bottom:0;width:' + p1 + '%;background:' + (hit ? '#43a047' : '#20d4f0') + '"></div>'
             + '</div>';
@@ -14630,7 +14653,7 @@ if (k === 'eta') {
                 + '</div>'
                 + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + (c.trailerCount > 1 ? ' \u00b7 ' + c.trailerCount + ' trailers' : '') + '</div>'
                 + '<div style="font-size:10px;color:var(--h-muted, #aab4c0);margin:0 0 4px">in trailer: <b>' + (c.loadedPkgs != null ? c.loadedPkgs.toLocaleString() : '0') + '</b> pkgs \u00b7 <b>' + (c.loadedCtns != null ? c.loadedCtns : '0') + '</b> ctns</div>'
-                + '<div style="display:flex;align-items:center;gap:6px">' + _sdtGauge(m.curCube, m.newCube, 110)
+                + '<div style="display:flex;align-items:center;gap:6px">' + _sdtGauge(m.curCube, m.newCube, m.target, 110)
                 + '<span style="font-size:10px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-muted, #aab4c0)') + '">' + Math.round(m.newCube) + '</span>'
                 + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)">' + elig + ' on floor' + (m.nPicks ? ' \u00b7 ' + m.nPicks + ' picked' : '') + '</span>'
                 + '</div></div>';
@@ -14664,15 +14687,16 @@ if (k === 'eta') {
             + ' <span class="hydra-copy-id" data-copy="' + sel.vrid + '" title="Click to copy" style="font-size:12px;color:var(--h-muted, #aab4c0)">' + sel.vrid + '</span>'
             + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + '</span></div>'
             + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
-            + 'Target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft'
+            + '<span title="Used only for trailers with no loaded-cube data yet. Trailers with data derive their target from the OB fill logic.">Empty trailer target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft</span>'
             + '</div></div>';
         pHtml += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap">'
-            + _sdtGauge(m.curCube, m.newCube, 340)
+            + _sdtGauge(m.curCube, m.newCube, m.target, 340)
             + '<span style="font-size:13px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-text, #e8eaf0)') + '">' + Math.round(m.curCube)
-            + (m.nPicks ? ' + ' + Math.round(m.addCube) + ' = ' + Math.round(m.newCube) : '') + ' / ' + sdtChaseTarget + ' cu ft</span>'
+            + (m.nPicks ? ' + ' + Math.round(m.addCube) + ' = ' + Math.round(m.newCube) : '') + ' / ' + Math.round(m.target) + ' cu ft</span>'
+            + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)" title="' + (m.fromOb ? 'Target derived from OB fill: real loaded cube / percent loaded' : 'No loaded data yet — using the empty-trailer override') + '">' + (m.fromOb ? 'OB fill' : 'override') + '</span>'
             + '</div>';
         pHtml += '<div style="font-size:11px;color:' + (m.hit ? '#66bb6a' : '#ffa726') + ';margin-bottom:8px">'
-            + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, sdtChaseTarget - m.newCube)) + ' cu ft to target')
+            + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, m.target - m.newCube)) + ' cu ft to target')
             + '</div>';
         pHtml += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<button id="hydra-sdtchase-auto" class="hydra-btn" style="font-size:11px;padding:3px 10px;' + (sdtChaseAutoOn ? 'background:#f9a825;color:#111;font-weight:700' : '') + '" title="Live suggestions for every trailer, earliest SDT first. Your picks and rejections are respected and reshuffle the rest.">\u26a1 Auto suggest: ' + (sdtChaseAutoOn ? 'ON' : 'OFF') + '</button>'
@@ -14836,7 +14860,7 @@ if (k === 'eta') {
             var mm = _sdtChaseMath(sel);
             var picked = floorAll.filter(function(ctn) { return mm.picks[ctn.id]; });
             if (!picked.length) { setStatus('SDT Chase: no containers picked.'); return; }
-            var lines = ['Pick list \u2014 ' + sel.route + ' (' + sel.vrid + ') \u00b7 SDT ' + (sel.sdt || '?') + ' \u00b7 ' + Math.round(mm.curCube) + ' \u2192 ' + Math.round(mm.newCube) + ' / ' + sdtChaseTarget + ' cu ft'];
+            var lines = ['Pick list \u2014 ' + sel.route + ' (' + sel.vrid + ') \u00b7 SDT ' + (sel.sdt || '?') + ' \u00b7 ' + Math.round(mm.curCube) + ' \u2192 ' + Math.round(mm.newCube) + ' / ' + Math.round(mm.target) + ' cu ft'];
             picked.forEach(function(ctn, i) { lines.push((i + 1) + '. ' + ctn.id + '  @ ' + (ctn.location || '?') + '  (' + ctn.cube + ' cu ft)'); });
             navigator.clipboard.writeText(lines.join('\n')).then(function() {
                 var o = _cpB.textContent; _cpB.textContent = '\u2714 Copied';
