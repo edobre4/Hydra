@@ -10188,7 +10188,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return { lane: lane, slot: slot };
     }
     function pullAutoChutesUtil(nodeId) {
-        obTableData.autochutes = null;
+        obTableData.autochutesUtil = null;
         var laneSet = {};
         AUTO_CHUTE_LANES.forEach(function(ln) { laneSet[ln.l] = ln.s; });
         var slots = []; var slotSeen = {};
@@ -10206,7 +10206,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var combos = Object.keys(comboBest).map(function(k) { return comboBest[k]; });
         var grid = {};
         if (!combos.length) {
-            obTableData.autochutes = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: 'util', util: true };
+            obTableData.autochutesUtil = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: 'util', util: true };
             return Promise.resolve();
         }
         console.log('[Hydra] Chute Matrix (UTIL):', combos.length, 'routes/cpt combos (one call each)');
@@ -10257,13 +10257,16 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     cell.val = (haveAny && totCap > 0) ? Math.round((totPkgs / totCap) * 100) : 0;
                 });
             });
-            obTableData.autochutes = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: 'util', util: true };
+            obTableData.autochutesUtil = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: 'util', util: true };
             console.log('[Hydra] Chute Matrix (UTIL): cells', Object.keys(grid).reduce(function(s,l){return s+Object.keys(grid[l]).length;},0));
         });
     }
     function pullAutoChutes(nodeId) {
-        if (acUtilMode) return pullAutoChutesUtil(nodeId);
-        return pullAutoChutesSSP(nodeId);
+        // Pull BOTH datasets on every refresh so switching between CPT /
+        // Utilization / Waterspider modes never needs another refresh.
+        return Promise.all([pullAutoChutesUtil(nodeId), pullAutoChutesSSP(nodeId)]).then(function() {
+            obTableData.autochutes = acUtilMode ? obTableData.autochutesUtil : obTableData.autochutesCpt;
+        });
     }
 
     // STEM chute label parser (used by chute map)
@@ -10292,7 +10295,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             combos.push({ vrid: r.vrid, route: r.route, cpt: r.cpt, loadId: r.loadId, planId: r.planId });
         });
         if (!combos.length) {
-            obTableData.autochutes = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: AUTO_CHUTE_MODE };
+            obTableData.autochutesCpt = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: AUTO_CHUTE_MODE };
             return Promise.resolve();
         }
         console.log('[Hydra] Chute Matrix (SSP fallback): pulling', combos.length, 'loads');
@@ -10367,7 +10370,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             })(_thunks.slice(_bi, _bi + _CONC));
         }
         return _bchain.then(function() {
-            obTableData.autochutes = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: AUTO_CHUTE_MODE };
+            obTableData.autochutesCpt = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: AUTO_CHUTE_MODE };
             var cellCount = Object.keys(grid).reduce(function(s, l) { return s + Object.keys(grid[l]).length; }, 0);
             console.log('[Hydra] Chute Matrix (SSP fallback):', cellCount, 'cells with data');
         });
@@ -16605,11 +16608,14 @@ if (k === 'eta') {
         // gets pulled (Refresh loads it); Util<->WS reuses the same utilization
         // data, so switching between those re-renders immediately when loaded.
         function _setAcMode(util, ws, label) {
-            var _wasUtil = acUtilMode;
             acUtilMode = util; acWsMode = ws;
             try { saveAllSettings(); } catch (ex) {}
             updateAcUtilToggle();
-            if (util && _wasUtil && obTableData.autochutes && obTableData.autochutes.util) {
+            // Both datasets are pulled on every refresh — switching modes just
+            // swaps in the cached one. Refresh only needed if never loaded.
+            var cached = util ? obTableData.autochutesUtil : obTableData.autochutesCpt;
+            if (cached) {
+                obTableData.autochutes = cached;
                 if (typeof renderOBAutoChutesTable === 'function') renderOBAutoChutesTable();
                 setStatus('Chute Matrix mode: ' + label);
             } else {
