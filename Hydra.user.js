@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.52
+// @version      3.53
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -398,6 +398,7 @@
         { key: 'equip', label: '', type: 'str' },
         { key: 'vrid', label: 'VRID', type: 'str' },
         { key: 'route', label: 'Route', type: 'str' },
+        { key: 'ilp', label: 'ILP', type: 'num' },
         { key: 'status', label: 'Status', type: 'str' },
         { key: 'location', label: 'Door', type: 'str' },
         { key: 'progress', label: 'Progress', type: 'num' },
@@ -4857,9 +4858,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // trailerId (YTR... format) and trailerNumber that the start/complete
     // actions require. Cached for 30s; keyed by VRID.
     var _ibDockViewCache = { at: 0, map: null };
-    function fetchIbDockViewInfo(vrid) {
+    function fetchIbDockViewMap() {
         if (_ibDockViewCache.map && (Date.now() - _ibDockViewCache.at) < 30000) {
-            return Promise.resolve(_ibDockViewCache.map[vrid] || null);
+            return Promise.resolve(_ibDockViewCache.map);
         }
         var nodeId = (document.getElementById('hydra-node-input').value || 'ORD9').toUpperCase();
         var url = 'https://trans-logistics.amazon.com/ssp/dock/hrz/ib/fetchdata?entity=getDefaultInboundDockView&nodeId=' + encodeURIComponent(nodeId);
@@ -4869,19 +4870,43 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var map = {};
             rows.forEach(function(e) {
                 if (!e || !e.load || !e.load.vrId) return;
+                // load.ranking = ILP unload rank ("1" = highest priority); null when unranked
+                var rk = e.load.ranking;
                 map[e.load.vrId] = {
                     planId: e.load.planId || null,
                     trailerId: (e.trailer && e.trailer.trailerId) || '',
-                    trailerNumber: (e.trailer && e.trailer.trailerNumber) || ''
+                    trailerNumber: (e.trailer && e.trailer.trailerNumber) || '',
+                    ranking: (rk != null && rk !== '' && !isNaN(parseInt(rk, 10))) ? parseInt(rk, 10) : null
                 };
             });
             _ibDockViewCache = { at: Date.now(), map: map };
             console.log('[Hydra] IB dock view loaded: ' + Object.keys(map).length + ' loads');
-            return map[vrid] || null;
+            return map;
         }).catch(function(e) {
             console.warn('[Hydra] IB dock view fetch failed:', e);
             return null;
         });
+    }
+
+    function fetchIbDockViewInfo(vrid) {
+        return fetchIbDockViewMap().then(function(map) {
+            return (map && map[vrid]) || null;
+        });
+    }
+
+    // ILP enricher: display-only compliance column. Skips the fetch entirely
+    // unless the user has turned the ILP column on.
+    function enrichRowsWithIlp(rows) {
+        if (!ibVisibleCols.has('ilp')) return Promise.resolve();
+        return fetchIbDockViewMap().then(function(map) {
+            if (!map) return;
+            var n = 0;
+            rows.forEach(function(r) {
+                var info = map[r.vrid];
+                if (info && info.ranking != null) { r.ilp = info.ranking; n++; }
+            });
+            console.log('[Hydra] ILP enricher: ' + n + '/' + rows.length + ' rows ranked');
+        }).catch(function(e) { console.warn('[Hydra] ILP enrich failed:', e); });
     }
 
     function startUnloadTrailer(vrid, planId) {
@@ -5479,7 +5504,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.52') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.53') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -6129,6 +6154,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         containerizedPct: 0,
                         isPA:          paDoorNum != null,
                         paDoorNum:     paDoorNum,
+                        ilp:           null,
                     };
 
                     if (row.total > 0) {
@@ -6159,8 +6185,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         applyIbEtas(etaMap || {}, rows);
                     }, function(e){ hydraTraceFail(_etaTraceD, e); });
                     var _obrPD = enrichRowsWithObRoutes(rows).then(function(){ return enrichRowsWithCptPlus(rows); }).then(function(){ return enrichRowsWithXdContainers(rows); }).then(null, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
+                    var _ilpPD = enrichRowsWithIlp(rows);
                     var _yrdPD = fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(null, function(e){ console.warn('[Hydra] yard/TDR:', e); });
-                    return Promise.all([_etaPD, _obrPD, _yrdPD]).then(function(){ return rows; });
+                    return Promise.all([_etaPD, _obrPD, _yrdPD, _ilpPD]).then(function(){ return rows; });
                 }
                 // ETAs (slow, sequential) -> start NOW that fast calls are done -> apply + patch
                 var _etaTrace = hydraTraceStart('fetchETAs');
@@ -6174,6 +6201,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }, function(e){ hydraTraceFail(_etaTrace, e); });
                 // OB routes -> CPT+ -> patch after each
                 enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); return enrichRowsWithXdContainers(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
+                // ILP ranks (only fetches if column enabled) -> patch
+                enrichRowsWithIlp(rows).then(function(){ _patch(); });
                 // Yard state -> TDR status -> patch
                 fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] yard/TDR:', e); });
                 return rows;
@@ -11470,6 +11499,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 if (_sortKey === 'dwell') { av = a.doorSinceMs ? (Date.now() - a.doorSinceMs) : -1; bv = b.doorSinceMs ? (Date.now() - b.doorSinceMs) : -1; }
                 if (_sortKey === 'yardDwell') { av = a.yardSinceMs ? (Date.now() - a.yardSinceMs) : -1; bv = b.yardSinceMs ? (Date.now() - b.yardSinceMs) : -1; }
                 if (_sortKey === 'eta') { av = a.etaMs; bv = b.etaMs; }
+                if (_sortKey === 'ilp') { av = (a.ilp != null) ? a.ilp : 1e9; bv = (b.ilp != null) ? b.ilp : 1e9; }
                 if (_sortKey === 'criticalPull') { av = a.criticalPullMs; bv = b.criticalPullMs; }
                 if (_sortKey === 'progress') {
                     av = a.total > 0 ? (a.total - a.remaining) / a.total : 0;
@@ -11651,6 +11681,9 @@ if (k === 'eta') {
                     var etaTxt = formatEtaCountdown(r.etaMs);
                     var etaColor = r.etaMs < Date.now() ? '#ef5350' : 'var(--h-text, #e8eaf0)';
                     return '<td style="color:' + etaColor + '">' + etaTxt + '</td>';
+                }
+                if (k === 'ilp') {
+                    return '<td>' + (r.ilp != null ? r.ilp : '\u2014') + '</td>';
                 }
                 if (k === 'dwell') {
                     // Door dwell = time since the trailer was put on its current
