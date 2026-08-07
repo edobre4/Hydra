@@ -9449,7 +9449,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     cpt:      elem.load.criticalPullTime       || '\u2014',
                     status:   fmtStatus || '\u2014',
                     location: loc       || '\u2014',
-                    planId:   (elem.load && elem.load.planId) || ''
+                    planId:   (elem.load && elem.load.planId) || '',
+                    trailerId: (elem.trailer && elem.trailer.trailerId) || ''
                 });
             });
             return result;
@@ -9513,58 +9514,67 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // combo. The response carries BOTH the trailer's percentLoaded/Staged and
     // the eligible floor containers with exact cube (cu ft), so a single call
     // per combo feeds the rail gauge and the planner list. ──
-    // Real loaded cube per lane+cpt from the Vista LOADED stage (same query the
-    // Volume Calculator uses). Returns { 'LANE|cptMs' -> { cube (cu ft), pkgs } }.
-    // VRID-level properties aren't supported by this API (verified live), but
-    // lane+cpt IS the SDT Chase combo key, so the granularity matches exactly.
+    // EXACT loaded cube per TRAILER via Vista (two calls total):
+    //   1. getContainersDetailByCriteria state=Loaded -> every loaded container
+    //      with parentContainerId = YTD trailer id
+    //   2. getContainerDetails (batched) -> packageVolume (cm^3) per container
+    // Sum per trailer, then join YTD trailer id -> VRID via the SSP OB payload's
+    // trailer.trailerId (now carried on obvrids rows).
     function fetchSdtLoadedCube(nodeId) {
-        function stageTs(dayOffset) {
-            var d = new Date();
-            d.setHours(19, 0, 0, 0);
-            d.setDate(d.getDate() + dayOffset);
-            return String(d.getTime());
-        }
-        function one(ts) {
-            var jsonObj = JSON.stringify({
-                nodeId: nodeId,
-                responseType: 'LOCATION',
-                entity: 'getCountsByLocation',
-                locationIdList: [ts + ':LOADED'],
-                segmentToMeasureTypeList: [{ segmentId: 'CONTAINERIZATION_COUNT', measureTypes: ['COUNT', 'VOLUME'] }],
-                propertyNameList: ['sort_center_id', 'container_type', 'cpt', 'lane'],
-                containerTypes: ['PACKAGE']
-            });
-            var reqBody = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
-            return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getCountsByLocation', 'POST', reqBody)
-                .then(function(data) {
-                    return (data && data.ret && data.ret.getCountsByLocationOutput && data.ret.getCountsByLocationOutput.stagesCountMap) || {};
-                }).catch(function(e) { console.warn('[Hydra] SDT loaded-cube fetch failed', e); return {}; });
-        }
-        // Sort-day boundary is 19:00 local; query today AND tomorrow so combos
-        // on either side of the boundary resolve. Same lane+cpt keys merge.
-        return Promise.all([one(stageTs(0)), one(stageTs(1))]).then(function(maps) {
-            var out = {};
-            maps.forEach(function(m) {
-                Object.keys(m).forEach(function(k) {
-                    var entries = m[k]; if (!Array.isArray(entries)) entries = [entries];
-                    entries.forEach(function(e) {
-                        if (!e || !e.propertyMap || !e.propertyMap.lane) return;
-                        var lane = e.propertyMap.lane;
-                        if (lane.indexOf('->') !== -1) lane = lane.split('->')[1].trim();
-                        var cptMs = e.propertyMap.cpt ? Number(e.propertyMap.cpt) : 0;
-                        var cur = e.cptBasedFlowUnitsMap && e.cptBasedFlowUnitsMap.CURRENT;
-                        if (!cur) return;
-                        var key = lane + '|' + cptMs;
-                        out[key] = {
-                            cube: (Number(cur.VOLUME) || 0) * CUFT_CONVERSION,
-                            pkgs: Number(cur.COUNT) || 0
-                        };
+        var now = Date.now();
+        var jsonObj = JSON.stringify({
+            entity: 'getContainersDetailByCriteria',
+            nodeId: nodeId,
+            timeBucket: { fieldName: 'cpt', startTime: now - 24 * 3600000, endTime: now + 48 * 3600000 },
+            filterBy: { state: ['Loaded'], isMissing: [false] },
+            containerTypes: ['PALLET', 'GAYLORD', 'BAG', 'CART'],
+            fetchCompoundContainerDetails: true,
+            includeCriticalCptEnclosingContainers: true
+        });
+        var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+        return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getContainersDetailByCriteria', 'POST', body)
+            .then(function(data) {
+                var groups = (data && data.ret && data.ret.getContainersDetailByCriteriaOutput && data.ret.getContainersDetailByCriteriaOutput.containerDetails) || [];
+                var parentOf = {}; var ids = [];
+                groups.forEach(function(g) {
+                    (g.containerDetails || []).forEach(function(c) {
+                        if (!c || c.type === 'TRAILER') return;
+                        var p = String(c.parentContainerId || '');
+                        if (p.indexOf('YTD') !== 0) return;
+                        parentOf[c.containerId] = p;
+                        ids.push(c.containerId);
                     });
                 });
-            });
-            console.log('[Hydra] SDT loaded-cube map:', Object.keys(out).length, 'lane/cpt entries');
-            return out;
-        });
+                if (!ids.length) return {};
+                // Volume per container, batched (352 in one call verified; chunk defensively)
+                var chunks = [];
+                for (var i = 0; i < ids.length; i += 300) chunks.push(ids.slice(i, i + 300));
+                var byTrailer = {};
+                var chain = Promise.resolve();
+                chunks.forEach(function(chunk) {
+                    chain = chain.then(function() {
+                        var jo = JSON.stringify({ entity: 'getContainerDetails', nodeId: nodeId, containerIds: chunk });
+                        var b2 = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jo);
+                        return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getContainerDetails', 'POST', b2)
+                            .then(function(d2) {
+                                var cmap = (d2 && d2.ret && d2.ret.getContainersDetailOutput && d2.ret.getContainersDetailOutput.containerDetailMap) || {};
+                                Object.keys(cmap).forEach(function(cid) {
+                                    var det = cmap[cid];
+                                    var trailer = parentOf[cid];
+                                    if (!trailer || !det || det.packageVolume == null) return;
+                                    var e = byTrailer[trailer] = byTrailer[trailer] || { cube: 0, pkgs: 0, ctns: 0 };
+                                    e.cube += det.packageVolume * CUFT_CONVERSION;
+                                    e.pkgs += (det.contentCountMap && det.contentCountMap.PACKAGE) || 0;
+                                    e.ctns++;
+                                });
+                            });
+                    });
+                });
+                return chain.then(function() {
+                    console.log('[Hydra] SDT loaded-cube: ' + Object.keys(byTrailer).length + ' trailers from ' + ids.length + ' loaded containers');
+                    return byTrailer;
+                });
+            }).catch(function(e) { console.warn('[Hydra] SDT loaded-cube fetch failed', e); return {}; });
     }
 
     function pullSdtChase(nodeId) {
@@ -9582,6 +9592,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 comboBest[key] = {
                     key: key, route: r.route, cpt: r.cpt, cptMs: parseSSPDate(r.cpt),
                     sdt: r.sdt, sdtMs: sMs, vrid: r.vrid, planId: r.planId,
+                    trailerId: r.trailerId || '',
                     trailerCount: prev ? prev.trailerCount : 0,
                     pctLoaded: null, pctStaged: null, containers: []
                 };
@@ -9625,13 +9636,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return Promise.all([_bchain, _cubeP]).then(function(res) {
             var loadedCubeMap = res[1] || {};
             combos.forEach(function(c) {
-                var lk = c.route + '|' + (c.cptMs || 0);
-                var lc = loadedCubeMap[lk];
-                c.loadedCube = lc ? lc.cube : null;   // real cu ft loaded (lane+cpt)
+                // EXACT per-VRID: this combo's rep trailer summed from its own
+                // loaded containers. No trailer on door yet -> falls back to est.
+                var lc = c.trailerId ? loadedCubeMap[c.trailerId] : null;
+                c.loadedCube = lc ? lc.cube : null;   // real cu ft in THIS trailer
                 c.loadedPkgs = lc ? lc.pkgs : null;
-                // True capacity falls out of real cube + the dock's percentLoaded.
-                // Caveat: multi-trailer combos aggregate cube across trailers.
-                c.capEst = (c.loadedCube != null && c.pctLoaded > 0)
+                c.loadedCtns = lc ? lc.ctns : null;
+                // True capacity from real cube + the dock's percentLoaded.
+                c.capEst = (c.loadedCube != null && c.loadedCube > 0 && c.pctLoaded > 0)
                     ? c.loadedCube / (c.pctLoaded / 100) : null;
             });
             obTableData.sdtchase = combos;
