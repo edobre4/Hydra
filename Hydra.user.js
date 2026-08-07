@@ -14579,7 +14579,7 @@ if (k === 'eta') {
             + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, sdtChaseTarget - m.newCube)) + ' cu ft to target')
             + '</div>';
         pHtml += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-            + '<button id="hydra-sdtchase-fill" class="hydra-btn" style="font-size:11px;padding:3px 10px">\u26a1 Suggest picks</button>'
+            + '<button id="hydra-sdtchase-auto" class="hydra-btn" style="font-size:11px;padding:3px 10px">\u26a1 Auto suggest (all trailers)</button>'
             + '<button id="hydra-sdtchase-clear" class="hydra-btn" style="font-size:11px;padding:3px 10px">Clear picks</button>'
             + '<button id="hydra-sdtchase-copy" class="hydra-btn" style="font-size:11px;padding:3px 10px">\ud83d\udccb Copy pick list</button>'
             + '</div>';
@@ -14714,16 +14714,30 @@ if (k === 'eta') {
             var v = parseFloat(this.value);
             if (!isNaN(v) && v >= 150) { sdtChaseTarget = v; try { saveAllSettings(); } catch (ex) {} renderSdtChaseTable(targetEl); }
         });
-        var _fillB = document.getElementById('hydra-sdtchase-fill');
-        if (_fillB) _fillB.addEventListener('click', function() {
-            // Greedy largest-first until the cube target is reached; keeps picks.
-            var picks = sdtChasePicks[sel.key] = sdtChasePicks[sel.key] || {};
-            var mm = _sdtChaseMath(sel);
-            var cube = mm.newCube;
-            floorAll.forEach(function(ctn) {
-                if (cube >= sdtChaseTarget) return;
-                if (picks[ctn.id]) return;
-                picks[ctn.id] = true; cube += ctn.cube;
+        var _autoB = document.getElementById('hydra-sdtchase-auto');
+        if (_autoB) _autoB.addEventListener('click', function() {
+            // Auto suggest across EVERY trailer: earliest SDT claims first.
+            // A container can be eligible for multiple combos of the same
+            // route (lessOrEqual-CPT), so a global claimed-set stops two
+            // trailers from being suggested the same container. Existing
+            // manual picks are kept and count as claims.
+            var claimed = {};
+            var all = obTableData.sdtchase || [];
+            all.forEach(function(c) {
+                var p = sdtChasePicks[c.key];
+                if (p) Object.keys(p).forEach(function(cid) { claimed[cid] = true; });
+            });
+            all.forEach(function(c) {
+                var picks = sdtChasePicks[c.key] = sdtChasePicks[c.key] || {};
+                var mm = _sdtChaseMath(c);
+                var cube = mm.newCube;
+                var flr = c.containers.filter(function(x) { return !x.staged; })
+                    .sort(function(a, b) { return b.cube - a.cube; });
+                flr.forEach(function(ctn) {
+                    if (cube >= sdtChaseTarget) return;
+                    if (claimed[ctn.id] || picks[ctn.id]) return;
+                    picks[ctn.id] = true; claimed[ctn.id] = true; cube += ctn.cube;
+                });
             });
             renderSdtChaseTable(targetEl);
         });
