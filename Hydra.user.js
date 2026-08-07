@@ -14529,7 +14529,6 @@ if (k === 'eta') {
             + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + '</span></div>'
             + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
             + 'Target <input type="number" id="hydra-sdtchase-target" min="1" max="120" value="' + sdtChaseTarget + '" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px">%'
-            + ' \u00b7 Capacity <input type="number" id="hydra-sdtchase-cap" min="100" max="10000" value="' + sdtChaseCap + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft'
             + '</div></div>';
         var hit = m.newPct >= sdtChaseTarget;
         pHtml += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap">'
@@ -14592,11 +14591,6 @@ if (k === 'eta') {
         if (_tgtIn) _tgtIn.addEventListener('change', function() {
             var v = parseFloat(this.value);
             if (!isNaN(v) && v > 0) { sdtChaseTarget = v; try { saveAllSettings(); } catch (ex) {} renderSdtChaseTable(targetEl); }
-        });
-        var _capIn = document.getElementById('hydra-sdtchase-cap');
-        if (_capIn) _capIn.addEventListener('change', function() {
-            var v = parseFloat(this.value);
-            if (!isNaN(v) && v > 0) { sdtChaseCap = v; try { saveAllSettings(); } catch (ex) {} renderSdtChaseTable(targetEl); }
         });
         var _fillB = document.getElementById('hydra-sdtchase-fill');
         if (_fillB) _fillB.addEventListener('click', function() {
