@@ -10193,26 +10193,23 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         AUTO_CHUTE_LANES.forEach(function(ln) { laneSet[ln.l] = ln.s; });
         var slots = []; var slotSeen = {};
         AUTO_CHUTE_LANES.forEach(function(ln) { ln.s.forEach(function(x){ if(!slotSeen[x]){slotSeen[x]=1;slots.push(x);} }); });
-        // One call per ROUTE, not per trailer: eligible containers are scoped
-        // to the load's route, and eligibility is lessOrEqual-CPT, so the
-        // trailer with the LATEST CPT on a route covers every container the
-        // earlier trailers would return. Collapses ~150 POSTs to ~#lanes.
-        var routeBest = {};
+        // One call per ROUTE/CPT COMBO, not per trailer: all trailers of the
+        // same route+cpt return the identical eligible-container set (verified
+        // empirically against live data), so query the last trailer seen per
+        // combo. Collapses ~150 POSTs to ~#combos.
+        var comboBest = {};
         (obTableData.obvrids || []).forEach(function(r) {
             if (!dynSelMatches(r.route, r.cpt)) return;
             if (!r.planId) return;
-            var ms = parseCptMs(r.cpt) || 0;
-            if (!routeBest[r.route] || ms > routeBest[r.route]._cptMs) {
-                routeBest[r.route] = { route: r.route, cpt: r.cpt, planId: r.planId, loadId: r.loadId, _cptMs: ms };
-            }
+            comboBest[r.route + '|' + r.cpt] = { route: r.route, cpt: r.cpt, planId: r.planId, loadId: r.loadId };
         });
-        var combos = Object.keys(routeBest).map(function(k) { return routeBest[k]; });
+        var combos = Object.keys(comboBest).map(function(k) { return comboBest[k]; });
         var grid = {};
         if (!combos.length) {
             obTableData.autochutes = { grid: grid, lanes: AUTO_CHUTE_LANES.map(function(x){return x.l;}), slots: slots, mode: 'util', util: true };
             return Promise.resolve();
         }
-        console.log('[Hydra] Chute Matrix (UTIL):', combos.length, 'routes (one call each, latest-CPT trailer)');
+        console.log('[Hydra] Chute Matrix (UTIL):', combos.length, 'routes/cpt combos (one call each)');
         var _acCtnSeen = {};
         var _thunks = [];
         combos.forEach(function(c, i) {
@@ -10619,19 +10616,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             obTableData.linearchutes.forEach(function(r){ r.util = null; r.utilNA = true; });
             return Promise.resolve();
         }
-        // Util API queries by planId (unique per trailer). A loadId (route/cpt) may
-        // span multiple trailers; pull once per loadId using the LAST planId seen.
-        // Collect EVERY distinct planId across matching rows -- a load's
-        // eligible containers span ALL its trailers/planIds, so last-one-wins
-        // per loadId dropped containers staged against other planIds (they
-        // rendered "-" despite the API returning their percentFull).
-        var _planSeen = {};
-        var planIds = [];
+        // One call per route/cpt combo (loadId): verified against live data
+        // that every trailer of the same combo returns the identical eligible
+        // container set, so the last planId seen per loadId covers them all.
+        // (An old comment here claimed per-planId responses differed; that was
+        // re-tested 2026-08-07 with multi-trailer combos and does not hold.)
+        var _loadPlan = {};
         (obTableData.obvrids || []).forEach(function(r) {
             if (!r.loadId || !r.planId) return;
             if (!dynSelMatches(r.route, r.cpt)) return;
-            if (!_planSeen[r.planId]) { _planSeen[r.planId] = true; planIds.push(r.planId); }
+            _loadPlan[r.loadId] = r.planId;
         });
+        var planIds = Object.keys(_loadPlan).map(function(k) { return _loadPlan[k]; });
         if (!planIds.length) return Promise.resolve();
 
         var utilMap = {};
