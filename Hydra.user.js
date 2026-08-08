@@ -13755,7 +13755,7 @@ if (k === 'eta') {
         }
         html += '</div>'; // end left panel
         } // end arMezzShowMoves
-        html += '<div>'; // tables column
+        html += '<div style="flex:1;min-width:0">'; // tables column
 
         // Renders one chute cell <td>. Shared by the normal (lanes-as-rows)
         // and rotated (chutes-as-rows) layouts so styling/overlay/tooltip
