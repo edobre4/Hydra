@@ -9631,7 +9631,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         (obTableData.obvrids || []).forEach(function(r) {
             if (!r.planId) return;
             if (!dynSelMatches(r.route, r.cpt)) return;
-            var key = r.route + '|' + r.cpt;
+            // Parallel loading: every ACTIVE trailer (loading/paused/ready)
+            // gets its own card — collapsing them hid trailers when a lane
+            // loads several at once. Inactive trailers group per route|cpt.
+            var _active = _repScore(r) <= 2;
+            var key = _active ? (r.route + '|' + r.cpt + '|' + r.vrid) : (r.route + '|' + r.cpt);
             var sMs = parseSSPDate(r.sdt) || 0;
             var prevC = comboBest[key];
             var better = !prevC
@@ -9738,7 +9742,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     if (!ctn.cptMs || (cands[i].cptMs && cands[i].cptMs >= ctn.cptMs)) {
                         var _tc = sdtTypeCap(ctn.type);
                         ctn.pctFull = _tc ? (ctn.cube / _tc * 100) : null;
-                        cands[i].containers.push(ctn);
+                        // Shared pool: every sibling card of this route+cpt
+                        // (parallel trailers) lists the container; auto-suggest
+                        // claims keep it on only one trailer's plan.
+                        var _cpt = cands[i].cptMs;
+                        for (var j = i; j < cands.length; j++) {
+                            if (cands[j].cptMs !== _cpt) break;
+                            cands[j].containers.push(ctn);
+                        }
                         assigned++;
                         return;
                     }
@@ -14847,7 +14858,11 @@ if (k === 'eta') {
         // same-station rule), grouped by route.
         var _gShort = function(sf) { return String(sf || '').replace(/-?PARENT$/i, '').replace(/^[A-Z0-9]+->/, ''); };
         var gHtml = '';
+        var _gSeen = {};
         (obTableData.sdtchase || []).forEach(function(c) {
+            var _gk = c.route + '|' + c.cpt; // siblings share the pool — once
+            if (_gSeen[_gk]) return;
+            _gSeen[_gk] = true;
             var gp = _sdtMergePairs(c.containers, /CART/i.test(c.route || ''));
             if (!gp.length) return;
             gHtml += '<div style="margin-bottom:6px"><div style="font-weight:700;color:var(--h-blue, #5090d0);font-size:11px;margin-bottom:2px">' + c.route + (c.key === sdtChaseSel ? ' \u25c0' : '') + '</div>';
