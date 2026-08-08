@@ -426,9 +426,6 @@
         { key: 'aat', label: 'AAT', type: 'str' },
         { key: 'dwell', label: 'Dwell', type: 'num' },
         { key: 'yardDwell', label: 'Yard Dwell', type: 'num' },
-        { key: 'lcStatus', label: 'Lifecycle', type: 'str' },
-        { key: 'lcTdr', label: 'Cmpl\u2192TDR', type: 'num' },
-        { key: 'lcMove', label: 'TDR\u2192Move', type: 'num' },
         { key: 'eta', label: 'ETA', type: 'str' },
         { key: 'obRoutes', label: 'OB Routes', type: 'obRoutes' },
     ];
@@ -12136,71 +12133,14 @@ if (k === 'eta') {
                 if (k === 'ilp') {
                     return '<td>' + (r.ilp != null ? r.ilp : '\u2014') + '</td>';
                 }
-                if (k === 'lcStatus') {
-                    if (r.status !== 'COMPLETED') return '<td>\u2014</td>';
-                    if (!lifecycleEnabled) return '<td style="color:var(--h-dim, #4a5a6a)" title="Enable lifecycle tracking in Settings > Inbound Lifecycle">off</td>';
-                    var rec = lifecycleMap[r.vrid];
-                    if (!rec) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
-                    if (rec.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found for this VRID in the queried window/types">no events</td>';
-                    var chip = '', bg = '', tip = '';
-                    if (rec.state === 'moved') { chip = 'MOVED' + (rec.dest ? ' \u2192 ' + rec.dest : ''); bg = '#2e7d32'; tip = 'Off the door' + (rec.door ? ' (was ' + rec.door + ')' : ''); }
-                    else if (rec.state === 'inTransit') { chip = 'IN TRANSIT \u00b7 ' + _lcAge(rec.moveMs); bg = '#546e7a'; tip = 'Hostler hooked (Attach Load), not dropped yet' + (rec.door ? ' \u2014 was on ' + rec.door : ''); }
-                    else if (rec.state === 'tdrOnDoor') {
-                        var age = rec.tdrMs ? Math.round((Date.now() - rec.tdrMs) / 60000) : 0;
-                        var late = age >= lifecycleSlaMove;
-                        chip = 'TDR\u2019D ON DOOR ' + (rec.door || '?') + ' \u00b7 ' + _lcAge(rec.tdrMs);
-                        bg = late ? '#b71c1c' : '#e65100';
-                        tip = 'TDR out, still on the door \u2014 no move yet';
-                    } else {
-                        var base = rec.completeMs || null;
-                        if (base) {
-                            var age2 = Math.round((Date.now() - base) / 60000);
-                            var late2 = age2 >= lifecycleSlaTdr;
-                            chip = 'NO TDR \u00b7 ' + _lcAge(base);
-                            bg = late2 ? '#b71c1c' : '#e65100';
-                            tip = 'Completed, no TDR out yet (network target: ' + lifecycleSlaTdr + ' min)';
-                        } else {
-                            chip = 'NO TDR'; bg = '#e65100'; tip = 'Completed, no TDR event found';
-                        }
-                    }
-                    return '<td><span class="hydra-lc-chip" data-lcvrid="' + r.vrid + '" style="background:' + bg + ';color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:3px;cursor:pointer;white-space:nowrap" title="' + tip + ' \u2014 click for the full event history">' + chip + '</span></td>';
-                }
-                if (k === 'lcTdr') {
-                    var rec1 = lifecycleMap[r.vrid];
-                    if (!rec1 || !rec1.completeMs || !rec1.tdrMs) return '<td>\u2014</td>';
-                    var m1 = Math.round((rec1.tdrMs - rec1.completeMs) / 60000);
-                    if (m1 < 0) m1 = 0; // TDR before completion happens (seen live) — that's a pass
-                    var c1 = m1 >= lifecycleSlaTdr ? '#ef5350' : '#66bb6a';
-                    return '<td style="color:' + c1 + ';font-weight:700" title="Complete \u2192 TDR-out (SLA ' + lifecycleSlaTdr + ' min)">' + (m1 >= 60 ? Math.floor(m1 / 60) + 'h ' + (m1 % 60) + 'm' : m1 + 'm') + '</td>';
-                }
-                if (k === 'lcMove') {
-                    var rec2 = lifecycleMap[r.vrid];
-                    var base2 = rec2 ? Math.max(rec2.tdrMs || 0, rec2.completeMs || 0) : 0;
-                    if (!rec2 || !base2 || !rec2.moveMs) return '<td>\u2014</td>';
-                    var m2 = Math.round((rec2.moveMs - base2) / 60000);
-                    var c2 = m2 >= lifecycleSlaMove ? '#ef5350' : '#66bb6a';
-                    return '<td style="color:' + c2 + ';font-weight:700" title="Done (TDR/complete) \u2192 hostler pickup (threshold ' + lifecycleSlaMove + ' min)">' + _lcDur(base2, rec2.moveMs) + '</td>';
-                }
-                if (k === 'dwell') {
-                    // Door dwell = time since the trailer was put on its current
-                    // dock door (from YMS yard state). Blank if not on a door or
-                    // YMS hasn't been pulled yet.
-                    if (!r.doorSinceMs || r.doorSinceMs > Date.now()) return '<td>—</td>';
-                    var dwMin = Math.round((Date.now() - r.doorSinceMs) / 60000);
-                    var dwTxt = dwMin >= 60 ? Math.floor(dwMin / 60) + 'h ' + (dwMin % 60) + 'm' : dwMin + 'm';
-                    var dwColor = dwMin > 240 ? '#ff4444' : dwMin > 120 ? '#ff9800' : '#4caf50';
-                    return '<td style="color:' + dwColor + ';font-weight:600" title="On door since ' + msToLocal(r.doorSinceMs) + '">' + dwTxt + '</td>';
-                }
-                if (k === 'yardDwell') {
-                    // Yard dwell = time since yard check-in (from YMS). Blank if
-                    // the trailer isn't in the yard state yet.
-                    if (!r.yardSinceMs || r.yardSinceMs > Date.now()) return '<td>—</td>';
-                    var ydMin = Math.round((Date.now() - r.yardSinceMs) / 60000);
-                    var ydTxt = ydMin >= 60 ? Math.floor(ydMin / 60) + 'h ' + (ydMin % 60) + 'm' : ydMin + 'm';
-                    var ydColor = ydMin > 480 ? '#ff4444' : ydMin > 240 ? '#ff9800' : '#4caf50';
-                    return '<td style="color:' + ydColor + ';font-weight:600" title="In yard since ' + msToLocal(r.yardSinceMs) + '">' + ydTxt + '</td>';
-                }
                 if (k === 'location') {
+                    // Completed trailers: show the door the trailer was on at
+                    // completion (from YMS lifecycle events) — SSP blanks it.
+                    if (r.status === 'COMPLETED' && lifecycleEnabled) {
+                        var _lcr = lifecycleMap[r.vrid];
+                        if (_lcr && _lcr.door) return '<td title="Location at completion (YMS event history)">' + _lcr.door + '</td>';
+                        if (!_lcr) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
+                    }
                     // Door column with visual cues:
                     //   • Purple bg: PA-assigned trailer, door is open (no conflict)
                     //   • Red text + ⚠ icon: PA-assigned trailer, door is occupied (conflict)
