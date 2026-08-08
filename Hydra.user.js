@@ -10007,7 +10007,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // each type is queried explicitly like the CPT Performance pull does.
     // TDR_RELEASE + OB_DOCK_COMPLETED are confirmed-valid names; the others
     // are candidates — refine against the YMS event-history dropdown.
-    var LIFECYCLE_EVENT_TYPES = ['IB_DOCK_COMPLETED', 'TDR_RELEASE', 'MOVE_REQUEST_CREATED', 'MOVE_COMPLETED'];
+    // Confirmed from the ORD9 event report: IB Dock Completed, TDR - Release,
+    // Attach Load / Detach Load (hostler hook + drop = the physical move).
+    var LIFECYCLE_EVENT_TYPES = ['IB_DOCK_COMPLETED', 'TDR_RELEASE', 'ATTACH_LOAD', 'DETACH_LOAD'];
     function pullYmsEventsOfType(nodeId, vrid, eventType, startSec, endSec, token) {
         var payload = JSON.stringify({
             firstRow: 0, rowCount: 100,
@@ -10050,15 +10052,28 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     function _lcDerive(evs, row) {
         var rec = { events: evs, completeMs: null, tdrMs: null, moveMs: null, offMs: null, door: null, dest: null };
         evs.forEach(function(e) {
-            var t = e.type.toUpperCase();
-            if (/IB_DOCK_COMPLETED|UNLOAD.*COMPLET|COMPLET.*UNLOAD/.test(t)) { rec.completeMs = e.ts; if (e.location) rec.door = e.location; }
-            else if (/TDR_RELEASE|TDR.*OUT|RELEASE.*TDR/.test(t)) { rec.tdrMs = e.ts; if (e.location) rec.door = e.location; }
-            else if (/MOVE.*CREAT|MOVE.*REQUEST|CREATE.*MOVE/.test(t)) { if (rec.tdrMs && e.ts >= rec.tdrMs && !rec.moveMs) rec.moveMs = e.ts; }
-            else if (/MOVE.*COMPLET|CHECKOUT|DEPART/.test(t)) { if (e.ts && (!rec.offMs || e.ts > rec.offMs)) { rec.offMs = e.ts; if (e.location) rec.dest = e.location; } }
+            var t = e.type.toUpperCase().replace(/[\s-]+/g, '_');
+            if (/IB_DOCK_COMPLETED/.test(t)) { rec.completeMs = e.ts; if (e.location) rec.door = e.location; }
+            else if (/TDR_+RELEASE/.test(t)) { rec.tdrMs = e.ts; if (e.location) rec.door = e.location; }
         });
-        // Fallbacks: door from the row's live location; complete from row data
+        // Physical move = first Attach Load AFTER the trailer was done (TDR'd
+        // or completed); the following Detach Load gives the destination.
+        // SSP emits an administrative Detach at completion time — the
+        // attach-first sequence rule filters it out naturally.
+        var doneMs = Math.max(rec.tdrMs || 0, rec.completeMs || 0);
+        if (doneMs) {
+            evs.forEach(function(e) {
+                var t = e.type.toUpperCase().replace(/[\s-]+/g, '_');
+                if (/ATTACH_LOAD/.test(t) && e.ts > doneMs && !rec.moveMs) rec.moveMs = e.ts;
+                else if (/DETACH_LOAD/.test(t) && rec.moveMs && e.ts >= rec.moveMs && !rec.offMs) {
+                    rec.offMs = e.ts;
+                    if (e.location) rec.dest = e.location;
+                }
+            });
+        }
+        // Fallbacks: door from the row's live location
         if (!rec.door && row && row.location && row.location !== '\u2014') rec.door = row.location;
-        rec.state = rec.offMs ? 'moved' : (rec.moveMs ? 'movePending' : (rec.tdrMs ? 'tdrOnDoor' : 'noTdr'));
+        rec.state = rec.offMs ? 'moved' : (rec.moveMs ? 'inTransit' : (rec.tdrMs ? 'tdrOnDoor' : 'noTdr'));
         return rec;
     }
     // Pull lifecycle for every completed IB trailer (opt-in; batched like the
@@ -12129,7 +12144,7 @@ if (k === 'eta') {
                     if (rec.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found for this VRID in the queried window/types">no events</td>';
                     var chip = '', bg = '', tip = '';
                     if (rec.state === 'moved') { chip = 'MOVED' + (rec.dest ? ' \u2192 ' + rec.dest : ''); bg = '#2e7d32'; tip = 'Off the door' + (rec.door ? ' (was ' + rec.door + ')' : ''); }
-                    else if (rec.state === 'movePending') { chip = 'MOVE PENDING'; bg = '#546e7a'; tip = 'Move created, not executed yet' + (rec.door ? ' \u2014 door ' + rec.door : ''); }
+                    else if (rec.state === 'inTransit') { chip = 'IN TRANSIT \u00b7 ' + _lcAge(rec.moveMs); bg = '#546e7a'; tip = 'Hostler hooked (Attach Load), not dropped yet' + (rec.door ? ' \u2014 was on ' + rec.door : ''); }
                     else if (rec.state === 'tdrOnDoor') {
                         var age = rec.tdrMs ? Math.round((Date.now() - rec.tdrMs) / 60000) : 0;
                         var late = age >= lifecycleSlaMove;
@@ -12154,15 +12169,17 @@ if (k === 'eta') {
                     var rec1 = lifecycleMap[r.vrid];
                     if (!rec1 || !rec1.completeMs || !rec1.tdrMs) return '<td>\u2014</td>';
                     var m1 = Math.round((rec1.tdrMs - rec1.completeMs) / 60000);
+                    if (m1 < 0) m1 = 0; // TDR before completion happens (seen live) — that's a pass
                     var c1 = m1 >= lifecycleSlaTdr ? '#ef5350' : '#66bb6a';
-                    return '<td style="color:' + c1 + ';font-weight:700" title="Complete \u2192 TDR-out (SLA ' + lifecycleSlaTdr + ' min)">' + _lcDur(rec1.completeMs, rec1.tdrMs) + '</td>';
+                    return '<td style="color:' + c1 + ';font-weight:700" title="Complete \u2192 TDR-out (SLA ' + lifecycleSlaTdr + ' min)">' + (m1 >= 60 ? Math.floor(m1 / 60) + 'h ' + (m1 % 60) + 'm' : m1 + 'm') + '</td>';
                 }
                 if (k === 'lcMove') {
                     var rec2 = lifecycleMap[r.vrid];
-                    if (!rec2 || !rec2.tdrMs || !rec2.moveMs) return '<td>\u2014</td>';
-                    var m2 = Math.round((rec2.moveMs - rec2.tdrMs) / 60000);
+                    var base2 = rec2 ? Math.max(rec2.tdrMs || 0, rec2.completeMs || 0) : 0;
+                    if (!rec2 || !base2 || !rec2.moveMs) return '<td>\u2014</td>';
+                    var m2 = Math.round((rec2.moveMs - base2) / 60000);
                     var c2 = m2 >= lifecycleSlaMove ? '#ef5350' : '#66bb6a';
-                    return '<td style="color:' + c2 + ';font-weight:700" title="TDR-out \u2192 move created (threshold ' + lifecycleSlaMove + ' min)">' + _lcDur(rec2.tdrMs, rec2.moveMs) + '</td>';
+                    return '<td style="color:' + c2 + ';font-weight:700" title="Done (TDR/complete) \u2192 hostler pickup (threshold ' + lifecycleSlaMove + ' min)">' + _lcDur(base2, rec2.moveMs) + '</td>';
                 }
                 if (k === 'dwell') {
                     // Door dwell = time since the trailer was put on its current
