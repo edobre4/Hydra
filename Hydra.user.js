@@ -15061,7 +15061,9 @@ if (k === 'eta') {
             _railList = _railList.filter(function(c) {
                 return (c.route || '').toLowerCase().indexOf(_ft) !== -1 ||
                        (c.cpt || '').toLowerCase().indexOf(_ft) !== -1 ||
-                       (c.vrid || '').toLowerCase().indexOf(_ft) !== -1;
+                       (c.vrid || '').toLowerCase().indexOf(_ft) !== -1 ||
+                       (c.door || '').toLowerCase().indexOf(_ft) !== -1 ||
+                       (c.status || '').toLowerCase().indexOf(_ft) !== -1;
             });
             if (!_railList.length) {
                 tableWrap.innerHTML = '<div id="hydra-empty">No SDT Chase loads match the search.</div>';
