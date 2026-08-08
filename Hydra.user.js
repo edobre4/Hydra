@@ -6320,8 +6320,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); return enrichRowsWithXdContainers(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
                 // ILP ranks (only fetches if column enabled) -> patch
                 enrichRowsWithIlp(rows).then(function(){ _patch(); });
-                // Trailer lifecycle: 4 yard-wide queries when enabled -> patch
-                pullLifecycleEvents().then(function(){ _patch(); });
                 // Yard state -> TDR status -> patch
                 fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] yard/TDR:', e); });
                 return rows;
@@ -10100,78 +10098,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         }).catch(function(e) { delete _lcPending[vrid]; console.warn('[Hydra] Lifecycle pull failed for ' + vrid, e); });
     }
 
-    // Bulk pull: ONE yard-wide query per event type (4 requests total, any
-    // trailer count) joined client-side by the event's load identifier.
-    function _lcEventVrid(ev) {
-        var raw = ev.raw || {};
-        var cand = raw.loadIdentifier || raw.loadId || raw.vrid || raw.vrId || raw.load || null;
-        if (cand && typeof cand === 'object') cand = cand.identifier || cand.vrId || cand.id || null;
-        if (typeof cand === 'string') {
-            var m = cand.match(/1[0-9][0-9A-Z]{7}/); // VRID pattern anywhere in the field
-            if (m) return m[0];
-            return cand;
-        }
-        // last resort: scan all string fields for a VRID-shaped token
-        for (var k in raw) {
-            if (typeof raw[k] === 'string') {
-                var m2 = raw[k].match(/\b1[0-9][0-9A-Z]{7}\b/);
-                if (m2) return m2[0];
-            }
-        }
-        return null;
-    }
-    function pullLifecycleEvents() {
-        if (!lifecycleEnabled || _lifecyclePulling) return Promise.resolve();
-        var rows = (ibTableData || []).filter(function(r) {
-            if (!r.vrid || r.status !== 'COMPLETED') return false;
-            var rec = lifecycleMap[r.vrid];
-            return !(rec && (rec.state === 'moved' || rec.door)); // keep resolved records
-        });
-        if (!rows.length) return Promise.resolve();
-        _lifecyclePulling = true;
-        var nodeId = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
-        var nowSec = Math.floor(Date.now() / 1000);
-        var startSec = nowSec - 2 * 86400;
-        setStatus('Lifecycle: 4 yard-wide event queries...');
-        return fetchYmsSecurityToken(false).then(function(token) {
-            if (!token) return;
-            return Promise.all(LIFECYCLE_EVENT_TYPES.map(function(et) {
-                return pullYmsEventsOfType(nodeId, '', et, startSec, nowSec, token, 999);
-            })).then(function(lists) {
-                var byVrid = {};
-                var total = 0, unmatched = 0;
-                lists.forEach(function(l) {
-                    l.forEach(function(ev) {
-                        total++;
-                        var vid = _lcEventVrid(ev);
-                        if (!vid) { unmatched++; return; }
-                        (byVrid[vid] = byVrid[vid] || []).push(ev);
-                    });
-                });
-                // one-time shape log so the join can be verified/fixed on real data
-                if (total > 0 && !window._lcShapeLogged) {
-                    window._lcShapeLogged = true;
-                    var sample = null;
-                    lists.some(function(l) { if (l.length) { sample = l[0].raw; return true; } return false; });
-                    console.log('[Hydra] Lifecycle event fields:', sample ? Object.keys(sample).join(', ') : 'n/a',
-                        '| events:', total, '| unmatched:', unmatched, '| vrids matched:', Object.keys(byVrid).length);
-                }
-                rows.forEach(function(r) {
-                    var evs = byVrid[r.vrid];
-                    if (evs && evs.length) {
-                        evs.sort(function(a, b) { return a.ts - b.ts; });
-                        lifecycleMap[r.vrid] = _lcDerive(evs, r);
-                    }
-                    // no events for this vrid: leave unset so the ⟳ pull
-                    // fallback stays available (yard-wide window may miss)
-                });
-                console.log('[Hydra] Lifecycle: ' + Object.keys(lifecycleMap).length + ' trailers tracked');
-            });
-        }).then(function() {
-            _lifecyclePulling = false;
-            if (ibActiveTab === 'completed' || ibActiveTab === 'all') renderIBTable();
-        }).catch(function(e) { _lifecyclePulling = false; console.warn('[Hydra] Lifecycle bulk failed', e); });
-    }
     // Cell helpers for the Completed tab columns
     function _lcAge(ms) {
         var min = Math.round((Date.now() - ms) / 60000);
@@ -12449,7 +12375,7 @@ if (k === 'eta') {
             var lo = Math.min(dragAnchor, dragCurrent), hi = Math.max(dragAnchor, dragCurrent);
             if (!isDragging) {
                 var row = dataRows[dragAnchor], vrid = row ? row.dataset.vrid : null;
-                if (vrid && e.target.tagName !== 'A' && !e.target.dataset.routeClick && !e.target.dataset.action) {
+                if (vrid && e.target.tagName !== 'A' && !e.target.dataset.routeClick && !e.target.dataset.action && !(e.target.closest && e.target.closest('.hydra-lc-pull'))) {
                     if (e.shiftKey && lastClickIdx !== null) {
                         var slo = Math.min(lastClickIdx, dragAnchor), shi = Math.max(lastClickIdx, dragAnchor);
                         for (var i = slo; i <= shi; i++) { ibSelectedIds.add(dataRows[i].dataset.vrid); dataRows[i].classList.add('selected'); }
@@ -18546,8 +18472,7 @@ if (k === 'eta') {
         if (_lcEn) _lcEn.addEventListener('change', function() {
             lifecycleEnabled = this.checked;
             saveAllSettings();
-            if (lifecycleEnabled) pullLifecycleEvents();
-            else if (ibActiveTab === 'completed') renderIBTable();
+            if (ibActiveTab === 'completed' || ibActiveTab === 'all') renderIBTable();
         });
         function _lcThrHandler(id, setter) {
             var el = document.getElementById(id);
