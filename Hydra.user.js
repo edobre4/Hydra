@@ -9454,22 +9454,37 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     };
 
     function pullOBDock(nodeId) {
-        var url = 'https://trans-logistics.amazon.com/ssp/dock/ob/fetchdata?entity=getDefaultOutboundDockView&nodeId=' + nodeId;
-        // 24h window: use the parameterized dock view (same response shape) with
-        // an explicit date range instead of SSP's default ~12h view.
+        var defUrl = 'https://trans-logistics.amazon.com/ssp/dock/ob/fetchdata?entity=getDefaultOutboundDockView&nodeId=' + nodeId;
+        // Extended window (>12h): the parameterized dock view widens the
+        // horizon BUT its loadCategories filter drops some current statuses
+        // (verified live: FINISHED_LOADING loads vanish — no category name
+        // covers them). So pull BOTH and union: the default view is
+        // authoritative for what's happening now, the windowed view extends
+        // the future horizon.
+        var fetches = [gmFetchRaw(defUrl)];
         if (obWindowHours > 12) {
             var _obStart = Date.now() - 4 * 3600000; // keep recent departures visible like the default view
             var _obEnd = Date.now() + obWindowHours * 3600000;
-            url = 'https://trans-logistics.amazon.com/ssp/dock/hrz/ob/fetchdata?entity=getOutboundDockView'
+            fetches.push(gmFetchRaw('https://trans-logistics.amazon.com/ssp/dock/hrz/ob/fetchdata?entity=getOutboundDockView'
                 + '&nodeId=' + nodeId
                 + '&startDate=' + _obStart
                 + '&endDate=' + _obEnd
                 + '&loadCategories=outboundScheduled%2CoutboundInProgress%2CoutboundReadyToDepart%2CoutboundDeparted'
-                + '&shippingPurposeType=TRANSSHIPMENT%2CNON-TRANSSHIPMENT';
+                + '&shippingPurposeType=TRANSSHIPMENT%2CNON-TRANSSHIPMENT').catch(function(e) {
+                    console.warn('[Hydra] OB windowed view failed, default only:', e);
+                    return null;
+                }));
         }
-        return gmFetchRaw(url).then(function(text) {
-            var data = JSON.parse(text);
-            var loads = (data && data.ret && data.ret.aaData) ? data.ret.aaData : [];
+        return Promise.all(fetches).then(function(texts) {
+            var loads = [];
+            texts.forEach(function(text) {
+                if (!text) return;
+                try {
+                    var data = JSON.parse(text);
+                    var rows = (data && data.ret && data.ret.aaData) ? data.ret.aaData : [];
+                    loads = loads.concat(rows);
+                } catch (e) { console.warn('[Hydra] OB dock parse failed for one source', e); }
+            });
             var seen = {};
             var result = [];
             loads.forEach(function(elem) {
