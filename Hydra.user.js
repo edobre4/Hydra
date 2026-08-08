@@ -13771,8 +13771,8 @@ if (k === 'eta') {
         // data-armezz-* attrs so hover tooltips/popups work unchanged. ===
         html += '<table style="border-collapse:collapse;font-size:12px;margin-bottom:12px;min-width:520px">';
         html += '<thead><tr>';
-        ['Lane', 'AAs', 'Rate', 'WIP', '\u0394 WIP', 'WIP / AA'].forEach(function(h, hi) {
-            html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 2 ? 'right' : 'left') + '">' + h + '</th>';
+        ['Lane', 'AAs', 'Rate', 'WIP', '\u0394 WIP', 'WIP / AA', 'Associates'].forEach(function(h, hi) {
+            html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 2 && hi <= 5 ? 'right' : 'left') + '">' + h + '</th>';
         });
         html += '</tr></thead><tbody>';
         var _llRowIdx = 0;
@@ -13804,33 +13804,17 @@ if (k === 'eta') {
                 html += '<td style="padding:4px 10px;text-align:right;' + wipStyle + '">' + (cd.wip || 0) + '</td>';
                 html += '<td style="padding:4px 10px;text-align:right;color:' + dColor + ';font-weight:600" title="WIP change over the last ' + arMezzMinutes + ' min">' + dTxt + '</td>';
                 html += '<td style="padding:4px 10px;text-align:right;color:' + (wipPerAa != null && wipPerAa >= 60 ? '#f87171' : 'var(--h-text,#e8eaf0)') + '" title="WIP divided by associates in the lane">' + (wipPerAa != null ? wipPerAa : (cd.wip > 0 ? '\u221e' : '\u2014')) + '</td>';
+                var _laneLbl = _amLaneLabel(Ll) + Lc;
+                var _cardsHtml = (cd.roster || []).map(function(a) {
+                    var col = a.scanning ? '#4ade80' : '#fbbf24';
+                    var bd = a.scanning ? '#2e7d32' : '#b45309';
+                    return '<span class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + _laneLbl + '" data-scanning="' + (a.scanning ? 1 : 0) + '" style="display:inline-block;cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;color:' + col + ';margin:1px 2px 1px 0;white-space:nowrap">' + a.login + '</span>';
+                }).join('');
+                html += '<td style="padding:3px 8px;max-width:340px">' + (_cardsHtml || '<span style="color:var(--h-dim,#4a5a6a)">\u2014</span>') + '</td>';
                 html += '</tr>';
             });
         }
         html += '</tbody></table>';
-        // Associate cards: drag one onto a lane row to reassign via RightStation
-        var _llCards = [];
-        for (var _cl = 1; _cl <= maxLane; _cl++) {
-            if (!grid[_cl]) continue;
-            Object.keys(grid[_cl]).forEach(function(_cc) {
-                var _cell = grid[_cl][_cc];
-                (_cell.roster || []).forEach(function(a) {
-                    _llCards.push({ login: a.login, rate: a.rate, scanning: a.scanning, lane: _amLaneLabel(_cl) + _cc });
-                });
-            });
-        }
-        _llCards.sort(function(a, b) { return a.lane < b.lane ? -1 : (a.lane > b.lane ? 1 : 0); });
-        html += '<div style="margin-bottom:12px">';
-        html += '<div style="font-size:11px;font-weight:700;color:#22d3ee;margin-bottom:5px">Associates \u00b7 ' + _llCards.length + ' <span style="font-weight:400;color:var(--h-muted2,#7a8a9a)">\u2014 hover for details \u00b7 click or drag to reassign (RightStation)</span></div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
-        _llCards.forEach(function(a) {
-            var col = a.scanning ? '#4ade80' : '#fbbf24';
-            var bd = a.scanning ? '#2e7d32' : '#b45309';
-            html += '<div class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + a.lane + '" data-scanning="' + (a.scanning ? 1 : 0) + '" style="cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:5px;padding:3px 8px;font-size:10px;white-space:nowrap">'
-                + '<span style="color:' + col + ';font-weight:700">' + a.login + '</span>'
-                + '</div>';
-        });
-        html += '</div></div>';
         // Drag & drop wiring (after innerHTML lands — defer one tick)
         setTimeout(function() {
             var wrapEl = targetEl || document.getElementById('hydra-table-wrap');
