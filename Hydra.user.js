@@ -14696,7 +14696,7 @@ if (k === 'eta') {
         var floor = _tblFilter(floorAll, sdtChaseFloorFilter);
         var staged = _tblFilter(stagedAll, sdtChaseStagedFilter);
         var received = _tblFilter(receivedAll, sdtChaseRecvFilter);
-        _sdtLastFloorCids = floor.map(function(c) { return c.id; });
+        _sdtLastFloorCids = floor.concat(staged).concat(received).map(function(c) { return c.id; });
 
         // Crossdock (CART routes): containers only merge when they share a
         // delivery station — the stacking filter encodes it, so require an
@@ -14774,14 +14774,14 @@ if (k === 'eta') {
         pHtml += _sdtCard; // staged card open
         pHtml += '<div style="display:flex;align-items:center;margin-bottom:6px"><span style="font-weight:700;font-size:12px;color:var(--h-muted, #aab4c0)">Staged \u00b7 ' + staged.length + (sdtChaseStagedFilter ? '/' + stagedAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-sfilter', sdtChaseStagedFilter, 'filter staged\u2026') + '</div>';
         pHtml += staged.length
-            ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(false) + '<tbody>' + _ctnRows(staged, null, false) + '</tbody></table>'
+            ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(true) + '<tbody>' + _ctnRows(staged, m.picks, true) + '</tbody></table>'
             : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px">No staged containers' + (sdtChaseStagedFilter ? ' match the filter' : '') + '.</div>';
         pHtml += '</div>'; // end staged card
         // Received table — informational
         pHtml += _sdtCard; // received card open
         pHtml += '<div style="display:flex;align-items:center;margin-bottom:6px"><span style="font-weight:700;font-size:12px;color:var(--h-muted, #aab4c0)">Received \u00b7 ' + received.length + (sdtChaseRecvFilter ? '/' + receivedAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-rfilter', sdtChaseRecvFilter, 'filter received\u2026') + '</div>';
         pHtml += received.length
-            ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(false) + '<tbody>' + _ctnRows(received, null, false) + '</tbody></table>'
+            ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(true) + '<tbody>' + _ctnRows(received, m.picks, true) + '</tbody></table>'
             : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px">No received containers' + (sdtChaseRecvFilter ? ' match the filter' : '') + '.</div>';
         pHtml += '</div>'; // end received card
 
@@ -14806,6 +14806,29 @@ if (k === 'eta') {
         }
 
         mHtml += '</div>'; // end merge card
+        // Global merges: every trailer's pairs (CART routes use the
+        // same-station rule), grouped by route.
+        var _gShort = function(sf) { return String(sf || '').replace(/-?PARENT$/i, '').replace(/^[A-Z0-9]+->/, ''); };
+        var gHtml = '';
+        (obTableData.sdtchase || []).forEach(function(c) {
+            var gp = _sdtMergePairs(c.containers, /CART/i.test(c.route || ''));
+            if (!gp.length) return;
+            gHtml += '<div style="margin-bottom:6px"><div style="font-weight:700;color:var(--h-blue, #5090d0);font-size:11px;margin-bottom:2px">' + c.route + (c.key === sdtChaseSel ? ' \u25c0' : '') + '</div>';
+            gp.forEach(function(p) {
+                gHtml += '<div style="font-size:10px;color:var(--h-muted, #aab4c0);padding-left:6px;margin-bottom:2px">'
+                    + '<span class="hydra-copy-id" data-copy="' + p.from.id + '">' + p.from.id + '</span> (' + Math.round(p.from.pctFull) + '%) \u2192 '
+                    + '<span class="hydra-copy-id" data-copy="' + p.into.id + '">' + p.into.id + '</span> (' + Math.round(p.into.pctFull) + '%)'
+                    + ' <span style="color:#66bb6a;font-weight:700">= ' + Math.round(p.sum) + '%</span>'
+                    + (/CART/i.test(c.route || '') && p.into.sf ? ' <span style="color:#20d4f0">' + _gShort(p.into.sf) + '</span>' : '')
+                    + '</div>';
+            });
+            gHtml += '</div>';
+        });
+        mHtml += _sdtCard.replace('margin-bottom:12px', 'margin:12px 0 0');
+        mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Global merge suggestions</div>';
+        mHtml += gHtml || '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No merge opportunities anywhere.</div>';
+        mHtml += '</div>'; // end global merge card
+
         tableWrap.innerHTML = '<div style="display:flex;gap:14px;align-items:flex-start">'
             + '<div style="min-width:240px;max-width:270px;max-height:75vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
             + '<div style="flex:1;min-width:0">' + pHtml + '</div>'
@@ -14833,9 +14856,7 @@ if (k === 'eta') {
         // IB-style selection on the floor table: click toggle, shift-range,
         // drag-select (additive), Ctrl+A via sdtChaseSelectAll.
         (function() {
-            var tbl = document.getElementById('hydra-sdtchase-floor');
-            if (!tbl) return;
-            var dataRows = Array.from(tbl.querySelectorAll('tbody tr.sdt-floor-row'));
+            var dataRows = Array.from(tableWrap.querySelectorAll('tr.sdt-floor-row'));
             if (!dataRows.length) return;
             // picks live in manual/auto sets now
             var dragAnchor = null, dragCurrent = null, isDragging = false, lastClickIdx = null;
@@ -14850,7 +14871,7 @@ if (k === 'eta') {
             var onMove = function(e) {
                 if (dragAnchor === null) return;
                 var t = document.elementFromPoint(e.clientX, e.clientY);
-                var row = t && t.closest ? t.closest('#hydra-sdtchase-floor tbody tr.sdt-floor-row') : null;
+                var row = t && t.closest ? t.closest('tr.sdt-floor-row') : null;
                 if (!row) return;
                 var tidx = dataRows.indexOf(row);
                 if (tidx === -1 || tidx === dragCurrent) return;
