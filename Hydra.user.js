@@ -9616,45 +9616,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // during the pull keeps showing the previous dataset instead of an
         // empty screen. The new combos are swapped in atomically at the end.
         var comboBest = {};
-        // Rep trailer = the one being LOADED (that's where picks physically
-        // go); ties broken by earliest SDT. Finished/departed trailers only
-        // represent the combo when nothing else is active.
-        function _repScore(r) {
-            var s = (r.status || '').toUpperCase();
-            if (s.indexOf('LOADING IN PROGRESS') !== -1) return 0;
-            if (s.indexOf('LOADING PAUSED') !== -1) return 1;
-            if (s.indexOf('READY FOR LOAD') !== -1) return 2;
-            if (s.indexOf('FINISHED') !== -1) return 4;
-            if (s.indexOf('DEPART') !== -1 || s.indexOf('COMPLETED') !== -1) return 5;
-            return 3;
-        }
+        // ONE CARD PER VRID — no grouping. Trailers of the same route+cpt
+        // share the eligible container pool downstream.
         (obTableData.obvrids || []).forEach(function(r) {
-            if (!r.planId) return;
+            if (!r.planId || !r.vrid) return;
             if (!dynSelMatches(r.route, r.cpt)) return;
-            // Parallel loading: every ACTIVE trailer (loading/paused/ready)
-            // gets its own card — collapsing them hid trailers when a lane
-            // loads several at once. Inactive trailers group per route|cpt.
-            var _active = _repScore(r) <= 2;
-            var key = _active ? (r.route + '|' + r.cpt + '|' + r.vrid) : (r.route + '|' + r.cpt);
-            var sMs = parseSSPDate(r.sdt) || 0;
-            var prevC = comboBest[key];
-            var better = !prevC
-                || _repScore(r) < prevC._repScore
-                || (_repScore(r) === prevC._repScore && sMs && sMs < (prevC.sdtMs || Infinity));
-            if (better) {
-                var prev = comboBest[key];
-                comboBest[key] = {
-                    _repScore: _repScore(r),
-                    key: key, route: r.route, cpt: r.cpt, cptMs: parseSSPDate(r.cpt),
-                    sdt: r.sdt, sdtMs: sMs, vrid: r.vrid, planId: r.planId,
-                    trailerId: r.trailerId || '',
-                    door: (r.location && r.location !== '\u2014') ? r.location : '',
-                    status: (r.status && r.status !== '\u2014') ? r.status : '',
-                    trailerCount: prev ? prev.trailerCount : 0,
-                    pctLoaded: null, pctStaged: null, containers: []
-                };
-            }
-            comboBest[key].trailerCount++;
+            var key = r.route + '|' + r.cpt + '|' + r.vrid;
+            if (comboBest[key]) return;
+            comboBest[key] = {
+                key: key, route: r.route, cpt: r.cpt, cptMs: parseSSPDate(r.cpt),
+                sdt: r.sdt, sdtMs: parseSSPDate(r.sdt) || 0, vrid: r.vrid, planId: r.planId,
+                trailerId: r.trailerId || '',
+                door: (r.location && r.location !== '\u2014') ? r.location : '',
+                status: (r.status && r.status !== '\u2014') ? r.status : '',
+                pctLoaded: null, pctStaged: null, containers: []
+            };
         });
         var combos = Object.keys(comboBest).map(function(k) { return comboBest[k]; });
         combos.sort(function(a, b) { return (a.sdtMs || Infinity) - (b.sdtMs || Infinity); });
@@ -14712,7 +14688,7 @@ if (k === 'eta') {
                 + '</span>'
                 + '<span style="font-size:10px;color:' + cd.color + ';font-weight:700">' + cd.txt + '</span>'
                 + '</div>'
-                + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + (c.trailerCount > 1 ? ' \u00b7 ' + c.trailerCount + ' trailers' : '') + '</div>'
+                + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">' + (c.vrid || '') + ' \u00b7 SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + '</div>'
                 + '<div style="display:flex;align-items:center;gap:6px;margin:2px 0 4px">'
                 + '<span style="background:var(--h-bg3, #1c2836);border:1px solid #20d4f0;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:800;color:#20d4f0" title="Containers in trailer">' + (c.loadedCtns != null ? c.loadedCtns : '0') + ' ctns</span>'
                 + '<span style="background:var(--h-bg3, #1c2836);border:1px solid #66bb6a;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:800;color:#66bb6a" title="Cube loaded in trailer">' + (c.loadedCube != null ? Math.round(c.loadedCube).toLocaleString() : '0') + ' cu ft</span>'
