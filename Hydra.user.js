@@ -9649,8 +9649,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 // Per-trailer loaded cube (exact per VRID)
                 var byTrailer = {};
                 loaded.forEach(function(c) {
+                    // Trailer id prefix varies by site: YTD at MDW5, YTR at
+                    // ORD9, ... — accept any YT-prefixed equipment id.
                     var p = String(c.parentContainerId || '');
-                    if (p.indexOf('YTD') !== 0) return;
+                    if (!/^YT[A-Z0-9]/.test(p)) return;
                     var det = dmap[c.containerId];
                     if (!det || det.packageVolume == null) return;
                     var e = byTrailer[p] = byTrailer[p] || { cube: 0, pkgs: 0, ctns: 0 };
