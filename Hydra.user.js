@@ -6320,8 +6320,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); return enrichRowsWithXdContainers(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
                 // ILP ranks (only fetches if column enabled) -> patch
                 enrichRowsWithIlp(rows).then(function(){ _patch(); });
-                // Trailer lifecycle (opt-in) -> patch
-                pullLifecycleEvents().then(function(){ _patch(); });
                 // Yard state -> TDR status -> patch
                 fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] yard/TDR:', e); });
                 return rows;
@@ -10073,8 +10071,34 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         rec.state = rec.offMs ? 'moved' : (rec.moveMs ? 'inTransit' : (rec.tdrMs ? 'tdrOnDoor' : 'noTdr'));
         return rec;
     }
-    // Pull lifecycle for every completed IB trailer (opt-in; batched like the
-    // CPT Performance pull). Terminal (moved-off) records are never re-pulled.
+    // On-demand: pull lifecycle events for ONE trailer (click-to-load from
+    // the Completed tab's location cell).
+    var _lcPending = {};
+    function pullLifecycleFor(vrid) {
+        if (!vrid || _lcPending[vrid]) return;
+        _lcPending[vrid] = true;
+        if (ibActiveTab === 'completed' || ibActiveTab === 'all') renderIBTable();
+        var nodeId = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var nowSec = Math.floor(Date.now() / 1000);
+        var startSec = nowSec - 2 * 86400;
+        var row = (ibTableData || []).find(function(r) { return r.vrid === vrid; }) || null;
+        fetchYmsSecurityToken(false).then(function(token) {
+            if (!token) { delete _lcPending[vrid]; setStatus('Lifecycle: YMS token unavailable'); return; }
+            return Promise.all(LIFECYCLE_EVENT_TYPES.map(function(et) {
+                return pullYmsEventsOfType(nodeId, vrid, et, startSec, nowSec, token);
+            })).then(function(lists) {
+                var evs = [];
+                lists.forEach(function(l) { evs = evs.concat(l); });
+                evs.sort(function(a, b) { return a.ts - b.ts; });
+                lifecycleMap[vrid] = evs.length ? _lcDerive(evs, row)
+                    : { events: [], completeMs: null, tdrMs: null, moveMs: null, offMs: null, door: null, dest: null, state: 'noEvents' };
+                delete _lcPending[vrid];
+                renderIBTable();
+            });
+        }).catch(function(e) { delete _lcPending[vrid]; console.warn('[Hydra] Lifecycle pull failed for ' + vrid, e); });
+    }
+
+    // Bulk pull retained for possible future use (not auto-run).
     function pullLifecycleEvents() {
         if (!lifecycleEnabled || _lifecyclePulling) return Promise.resolve();
         var rows = (ibTableData || []).filter(function(r) {
@@ -12136,12 +12160,14 @@ if (k === 'eta') {
                     return '<td>' + (r.ilp != null ? r.ilp : '\u2014') + '</td>';
                 }
                 if (k === 'location') {
-                    // Completed trailers: show the door the trailer was on at
-                    // completion (from YMS lifecycle events) — SSP blanks it.
+                    // Completed trailers: click the cell to pull that trailer's
+                    // YMS events and show the door it was on at completion.
                     if (r.status === 'COMPLETED' && lifecycleEnabled) {
                         var _lcr = lifecycleMap[r.vrid];
                         if (_lcr && _lcr.door) return '<td title="Location at completion (YMS event history)">' + _lcr.door + '</td>';
-                        if (!_lcr) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
+                        if (_lcr && _lcr.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found">none</td>';
+                        if (_lcPending[r.vrid]) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
+                        return '<td><span class="hydra-lc-pull" data-lcpull="' + r.vrid + '" style="color:var(--h-blue, #5090d0);cursor:pointer;font-weight:700" title="Click to pull this trailer\u2019s location from YMS">\u27f3 pull</span></td>';
                     }
                     // Door column with visual cues:
                     //   • Purple bg: PA-assigned trailer, door is open (no conflict)
@@ -18634,6 +18660,14 @@ if (k === 'eta') {
         // Resize handles
         setupResize();
     }
+
+        // Lifecycle: click-to-pull on a completed trailer's location cell
+        document.addEventListener('click', function(e) {
+            var el = e.target.closest ? e.target.closest('.hydra-lc-pull') : null;
+            if (!el) return;
+            e.stopPropagation();
+            pullLifecycleFor(el.dataset.lcpull);
+        });
 
         // Lifecycle chip click -> full YMS event history popup (audit trail)
         document.addEventListener('click', function(e) {
