@@ -13700,7 +13700,7 @@ if (k === 'eta') {
         html += '<option value="15"' + (arMezzMinutes===15?' selected':'') + '>15 min</option>';
         html += '<option value="30"' + (arMezzMinutes===30?' selected':'') + '>30 min</option>';
         html += '</select>';
-        html += '<button id="hydra-armezz-toggle" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600">' + (arMezzShowRates ? 'Show WIP' : 'Show Scan Rates') + '</button>';
+        html += '<button id="hydra-armezz-toggle" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600">' + (arMezzShowRates ? (_amLL ? 'Show Logins' : 'Show WIP') : 'Show Scan Rates') + '</button>';
         // QBCC overlays are AR-mezz hardware features — hidden on linear mezz
         var ovBtns = _amLL ? [] : [{id:'priority',label:'Priority'},{id:'amzl',label:'AMZL'},{id:'perspective',label:'Perspective'},{id:'serpenteye',label:'Omnisight'}];
         if (ovBtns.length) html += '<span style="width:1px;height:16px;background:var(--h-border2,#3a4a5c)"></span>';
