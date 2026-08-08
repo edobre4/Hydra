@@ -13405,6 +13405,15 @@ if (k === 'eta') {
         var _amLLMhe = {};  // label -> MHE (equipment) name for section headers
         (function() {
             var seen = {};
+            // Classic AR-mezz aliases VETO linear mode: sites like ORD9 have a
+            // shipping sorter alongside the mezz, and sorter stations alone
+            // must not flip the whole view (bug seen live: ORD9 rendered
+            // S10-S132 and lost the mezz).
+            var _classic = (arMezzData || []).some(function(ws) {
+                var al = (ws.workstation && ws.workstation.workstationAlias) || '';
+                return /Lane\s+\d+\s+Chute\s+\d+/i.test(al) || /\b2\d{4}\b/.test(al + ' ' + ((ws.workstation && ws.workstation.workstationId) || ''));
+            });
+            if (_classic) return;
             (arMezzData || []).forEach(function(ws) {
                 var alias = (ws.workstation && ws.workstation.workstationAlias) || '';
                 var p = _llParse(alias);
