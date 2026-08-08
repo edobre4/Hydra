@@ -1163,6 +1163,7 @@
     var sdtChaseTarget = 3200;    // fill target in CUBE (cu ft, persisted)
     var sdtChaseFloorFilter = ''; // text filter, stacked (floor) table
     var sdtChaseStagedFilter = ''; // text filter, staged table
+    var sdtChaseRecvFilter = '';  // text filter, received table
     var _sdtLastFloorCids = [];   // visible floor container ids (Ctrl+A scope)
     var obVridsSelectedOnly = false;  // OB VRIDs: show only selected routes
     var dynSel = {};              // { route: { cptStr: true } } session-scoped working set
@@ -9642,11 +9643,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var _vistaP = Promise.all([
             _sdtCriteria(nodeId, 'Stacked'),
             _sdtCriteria(nodeId, 'Staged'),
-            _sdtCriteria(nodeId, 'Loaded')
+            _sdtCriteria(nodeId, 'Loaded'),
+            _sdtCriteria(nodeId, 'InFacilityReceived')
         ]).then(function(res) {
-            var stacked = res[0], staged = res[1], loaded = res[2];
+            var stacked = res[0], staged = res[1], loaded = res[2], received = res[3];
             var ids = [];
-            stacked.concat(staged).concat(loaded).forEach(function(c) { if (c.containerId) ids.push(c.containerId); });
+            stacked.concat(staged).concat(loaded).concat(received).forEach(function(c) { if (c.containerId) ids.push(c.containerId); });
             return _sdtDetailBatch(nodeId, ids).then(function(dmap) {
                 // Per-trailer loaded cube (exact per VRID)
                 var byTrailer = {};
@@ -9663,7 +9665,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     e.ctns++;
                 });
                 // Floor + staged container objects
-                function toObj(c, isStaged) {
+                function toObj(c, stage) {
                     var det = dmap[c.containerId];
                     return {
                         id: c.id || c.containerId,
@@ -9674,13 +9676,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         pkgs: c.childCount || 0,
                         cptPkgs: c.criticalPackages || 0,
                         cptMs: c.cpt || null,
-                        staged: isStaged,
+                        stage: stage,
+                        staged: stage === 'staged',
                         state: c.isClosed ? 'CLOSED' : 'OPEN',
                         _dest: (c.route && c.route.indexOf('->') !== -1) ? c.route.split('->')[1].trim() : (c.route || '')
                     };
                 }
-                var universe = stacked.map(function(c) { return toObj(c, false); })
-                    .concat(staged.map(function(c) { return toObj(c, true); }));
+                var universe = stacked.map(function(c) { return toObj(c, 'stacked'); })
+                    .concat(staged.map(function(c) { return toObj(c, 'staged'); }))
+                    .concat(received.map(function(c) { return toObj(c, 'received'); }));
                 return { byTrailer: byTrailer, universe: universe };
             });
         });
@@ -14660,10 +14664,12 @@ if (k === 'eta') {
 
         // ── Planner (center) ──
         var m = _sdtChaseMath(sel);
-        var floorAll = sel.containers.filter(function(x) { return !x.staged; });
-        var stagedAll = sel.containers.filter(function(x) { return x.staged; });
+        var floorAll = sel.containers.filter(function(x) { return x.stage === 'stacked' || !x.stage; });
+        var stagedAll = sel.containers.filter(function(x) { return x.stage === 'staged'; });
+        var receivedAll = sel.containers.filter(function(x) { return x.stage === 'received'; });
         floorAll.sort(function(a, b) { return b.cube - a.cube; });
         stagedAll.sort(function(a, b) { return b.cube - a.cube; });
+        receivedAll.sort(function(a, b) { return b.cube - a.cube; });
         function _tblFilter(list, txt) {
             if (!txt) return list;
             var t = txt.toLowerCase();
@@ -14675,9 +14681,13 @@ if (k === 'eta') {
         }
         var floor = _tblFilter(floorAll, sdtChaseFloorFilter);
         var staged = _tblFilter(stagedAll, sdtChaseStagedFilter);
+        var received = _tblFilter(receivedAll, sdtChaseRecvFilter);
         _sdtLastFloorCids = floor.map(function(c) { return c.id; });
 
-        var mergePairs = _sdtMergePairs(sel.containers);
+        // Crossdock (CART routes): containers can only merge when they share a
+        // delivery station, which our data can't determine — block suggestions.
+        var _isCartXd = /CART/i.test(sel.route || '');
+        var mergePairs = _isCartXd ? [] : _sdtMergePairs(sel.containers);
         var mergeIds = {};
         mergePairs.forEach(function(p) { mergeIds[p.into.id] = true; mergeIds[p.from.id] = true; });
 
@@ -14752,11 +14762,20 @@ if (k === 'eta') {
             ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(false) + '<tbody>' + _ctnRows(staged, null, false) + '</tbody></table>'
             : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px">No staged containers' + (sdtChaseStagedFilter ? ' match the filter' : '') + '.</div>';
         pHtml += '</div>'; // end staged card
+        // Received table — informational
+        pHtml += _sdtCard; // received card open
+        pHtml += '<div style="display:flex;align-items:center;margin-bottom:6px"><span style="font-weight:700;font-size:12px;color:var(--h-muted, #aab4c0)">Received \u00b7 ' + received.length + (sdtChaseRecvFilter ? '/' + receivedAll.length : '') + '</span>' + _filterBox('hydra-sdtchase-rfilter', sdtChaseRecvFilter, 'filter received\u2026') + '</div>';
+        pHtml += received.length
+            ? '<table class="hydra-table" style="font-size:11px">' + _tblHead(false) + '<tbody>' + _ctnRows(received, null, false) + '</tbody></table>'
+            : '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px">No received containers' + (sdtChaseRecvFilter ? ' match the filter' : '') + '.</div>';
+        pHtml += '</div>'; // end received card
 
         // ── Merge panel (right) ──
         var mHtml = _sdtCard.replace('margin-bottom:12px', 'margin-bottom:0'); // merge card
         mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Merge suggestions</div>';
-        if (!mergePairs.length) {
+        if (_isCartXd) {
+            mHtml += '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">CART crossdock route \u2014 merges disabled (containers can only merge with the same delivery station).</div>';
+        } else if (!mergePairs.length) {
             mHtml += '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No closed containers can be merged under 95%.</div>';
         } else {
             mergePairs.forEach(function(p) {
@@ -14782,7 +14801,8 @@ if (k === 'eta') {
         });
         // Filter boxes: re-render on input, restore focus + caret
         [['hydra-sdtchase-ffilter', function(v) { sdtChaseFloorFilter = v; }],
-         ['hydra-sdtchase-sfilter', function(v) { sdtChaseStagedFilter = v; }]].forEach(function(cfg) {
+         ['hydra-sdtchase-sfilter', function(v) { sdtChaseStagedFilter = v; }],
+         ['hydra-sdtchase-rfilter', function(v) { sdtChaseRecvFilter = v; }]].forEach(function(cfg) {
             var el = document.getElementById(cfg[0]);
             if (el) el.addEventListener('input', function() {
                 cfg[1](this.value);
