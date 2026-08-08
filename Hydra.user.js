@@ -9620,6 +9620,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     key: key, route: r.route, cpt: r.cpt, cptMs: parseSSPDate(r.cpt),
                     sdt: r.sdt, sdtMs: sMs, vrid: r.vrid, planId: r.planId,
                     trailerId: r.trailerId || '',
+                    door: (r.location && r.location !== '\u2014') ? r.location : '',
                     trailerCount: prev ? prev.trailerCount : 0,
                     pctLoaded: null, pctStaged: null, containers: []
                 };
@@ -14639,7 +14640,9 @@ if (k === 'eta') {
             var elig = c.containers.filter(function(x) { return !x.staged; }).length;
             return '<div class="sdtchase-card" data-key="' + c.key.replace(/"/g, '&quot;') + '" style="cursor:pointer;padding:8px 10px;border:1px solid ' + (isSel ? '#20d4f0' : 'var(--h-border2, #3a4a5c)') + ';border-radius:6px;margin-bottom:6px;background:' + (isSel ? 'var(--h-bg4, #1a2535)' : 'var(--h-bg2, #16202c)') + '">'
                 + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
-                + '<span style="font-weight:700;color:var(--h-blue, #5090d0)">' + c.route + '</span>'
+                + '<span style="font-weight:700;color:var(--h-blue, #5090d0)">' + c.route
+                + (c.door ? ' <span style="background:#20d4f0;color:#111;font-weight:800;font-size:10px;padding:1px 6px;border-radius:3px;vertical-align:middle" title="Dock door">' + c.door + '</span>' : '')
+                + '</span>'
                 + '<span style="font-size:10px;color:' + cd.color + ';font-weight:700">' + cd.txt + '</span>'
                 + '</div>'
                 + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + (c.trailerCount > 1 ? ' \u00b7 ' + c.trailerCount + ' trailers' : '') + '</div>'
