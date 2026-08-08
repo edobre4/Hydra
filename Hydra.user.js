@@ -9616,16 +9616,31 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // during the pull keeps showing the previous dataset instead of an
         // empty screen. The new combos are swapped in atomically at the end.
         var comboBest = {};
+        // Rep trailer = the one being LOADED (that's where picks physically
+        // go); ties broken by earliest SDT. Finished/departed trailers only
+        // represent the combo when nothing else is active.
+        function _repScore(r) {
+            var s = (r.status || '').toUpperCase();
+            if (s.indexOf('LOADING IN PROGRESS') !== -1) return 0;
+            if (s.indexOf('LOADING PAUSED') !== -1) return 1;
+            if (s.indexOf('READY FOR LOAD') !== -1) return 2;
+            if (s.indexOf('FINISHED') !== -1) return 4;
+            if (s.indexOf('DEPART') !== -1 || s.indexOf('COMPLETED') !== -1) return 5;
+            return 3;
+        }
         (obTableData.obvrids || []).forEach(function(r) {
             if (!r.planId) return;
             if (!dynSelMatches(r.route, r.cpt)) return;
             var key = r.route + '|' + r.cpt;
             var sMs = parseSSPDate(r.sdt) || 0;
-            // Rep trailer = earliest SDT in the combo (the next one out is the
-            // one being loaded, so its loaded cube is the gauge that matters)
-            if (!comboBest[key] || (sMs && sMs < (comboBest[key].sdtMs || Infinity))) {
+            var prevC = comboBest[key];
+            var better = !prevC
+                || _repScore(r) < prevC._repScore
+                || (_repScore(r) === prevC._repScore && sMs && sMs < (prevC.sdtMs || Infinity));
+            if (better) {
                 var prev = comboBest[key];
                 comboBest[key] = {
+                    _repScore: _repScore(r),
                     key: key, route: r.route, cpt: r.cpt, cptMs: parseSSPDate(r.cpt),
                     sdt: r.sdt, sdtMs: sMs, vrid: r.vrid, planId: r.planId,
                     trailerId: r.trailerId || '',
@@ -9648,29 +9663,34 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
         // Vista universe: three states, then ONE shared volume batch
         setStatus('SDT Chase: pulling Vista containers...');
+        // Rep trailer ids: the trailer IS a container in Vista — one
+        // getContainerDetails batch returns each trailer's COMPLETE totals
+        // (packageVolume + contentCountMap), fluid-loaded packages included.
+        // (The old per-container parent join missed fluid: verified live,
+        // 113NZKRG2 = 4,272 containerized + 1,125 fluid pkgs.)
+        var _trailerIds = [];
+        combos.forEach(function(c) { if (c.trailerId && _trailerIds.indexOf(c.trailerId) === -1) _trailerIds.push(c.trailerId); });
         var _vistaP = Promise.all([
             _sdtCriteria(nodeId, 'Stacked'),
             _sdtCriteria(nodeId, 'Staged'),
-            _sdtCriteria(nodeId, 'Loaded'),
             _sdtCriteria(nodeId, 'InFacilityReceived')
         ]).then(function(res) {
-            var stacked = res[0], staged = res[1], loaded = res[2], received = res[3];
-            var ids = [];
-            stacked.concat(staged).concat(loaded).concat(received).forEach(function(c) { if (c.containerId) ids.push(c.containerId); });
+            var stacked = res[0], staged = res[1], received = res[2];
+            var ids = _trailerIds.slice();
+            stacked.concat(staged).concat(received).forEach(function(c) { if (c.containerId) ids.push(c.containerId); });
             return _sdtDetailBatch(nodeId, ids).then(function(dmap) {
-                // Per-trailer loaded cube (exact per VRID)
                 var byTrailer = {};
-                loaded.forEach(function(c) {
-                    // Trailer id prefix varies by site: YTD at MDW5, YTR at
-                    // ORD9, ... — accept any YT-prefixed equipment id.
-                    var p = String(c.parentContainerId || '');
-                    if (!/^YT[A-Z0-9]/.test(p)) return;
-                    var det = dmap[c.containerId];
+                _trailerIds.forEach(function(tid) {
+                    var det = dmap[tid];
                     if (!det || det.packageVolume == null) return;
-                    var e = byTrailer[p] = byTrailer[p] || { cube: 0, pkgs: 0, ctns: 0 };
-                    e.cube += det.packageVolume * CUFT_CONVERSION;
-                    e.pkgs += (det.contentCountMap && det.contentCountMap.PACKAGE) || c.childCount || 0;
-                    e.ctns++;
+                    var ccm = det.contentCountMap || {};
+                    var ctns = 0;
+                    Object.keys(ccm).forEach(function(k) { if (k !== 'PACKAGE') ctns += ccm[k] || 0; });
+                    byTrailer[tid] = {
+                        cube: det.packageVolume * CUFT_CONVERSION,
+                        pkgs: ccm.PACKAGE || 0,
+                        ctns: ctns
+                    };
                 });
                 // Floor + staged container objects
                 function toObj(c, stage) {
