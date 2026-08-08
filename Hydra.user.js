@@ -10002,13 +10002,17 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
-    // Pull the FULL event list for one VRID (eventType='' = all events).
-    // Reuses the CPT Performance YMS event-report machinery.
-    function pullYmsAllEvents(nodeId, vrid, startSec, endSec, token) {
+    // Event types the lifecycle derivation queries per trailer. Blank
+    // eventType is NOT a wildcard on this API (verified live: 0 events), so
+    // each type is queried explicitly like the CPT Performance pull does.
+    // TDR_RELEASE + OB_DOCK_COMPLETED are confirmed-valid names; the others
+    // are candidates — refine against the YMS event-history dropdown.
+    var LIFECYCLE_EVENT_TYPES = ['IB_DOCK_COMPLETED', 'TDR_RELEASE', 'MOVE_REQUEST_CREATED', 'MOVE_COMPLETED'];
+    function pullYmsEventsOfType(nodeId, vrid, eventType, startSec, endSec, token) {
         var payload = JSON.stringify({
             firstRow: 0, rowCount: 100,
             yard: nodeId,
-            eventType: '',
+            eventType: eventType,
             location: '', vehicleType: '', vehicleOwner: '', vehicleNumber: '',
             loadIdentifierType: '', loadIdentifier: vrid,
             seal: '', userId: '',
@@ -10073,15 +10077,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var startSec = nowSec - 2 * 86400;
         return fetchYmsSecurityToken(false).then(function(token) {
             if (!token) return;
-            var BATCH = 5, idx = 0;
+            var BATCH = 3, idx = 0; // 3 trailers x 4 event types = 12 in flight
             function batch() {
                 if (idx >= rows.length) return;
                 var slice = rows.slice(idx, idx + BATCH);
                 idx += BATCH;
                 setStatus('Lifecycle ' + Math.min(idx, rows.length) + '/' + rows.length + '...');
                 return Promise.all(slice.map(function(r) {
-                    return pullYmsAllEvents(nodeId, r.vrid, startSec, nowSec, token).then(function(evs) {
+                    return Promise.all(LIFECYCLE_EVENT_TYPES.map(function(et) {
+                        return pullYmsEventsOfType(nodeId, r.vrid, et, startSec, nowSec, token);
+                    })).then(function(lists) {
+                        var evs = [];
+                        lists.forEach(function(l) { evs = evs.concat(l); });
+                        evs.sort(function(a, b) { return a.ts - b.ts; });
                         if (evs.length) lifecycleMap[r.vrid] = _lcDerive(evs, r);
+                        else lifecycleMap[r.vrid] = { events: [], completeMs: null, tdrMs: null, moveMs: null, offMs: null, door: (r.location && r.location !== '\u2014') ? r.location : null, dest: null, state: 'noEvents' };
                     });
                 })).then(batch);
             }
@@ -12116,6 +12126,7 @@ if (k === 'eta') {
                     if (!lifecycleEnabled) return '<td style="color:var(--h-dim, #4a5a6a)" title="Enable lifecycle tracking in Settings > Inbound Lifecycle">off</td>';
                     var rec = lifecycleMap[r.vrid];
                     if (!rec) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
+                    if (rec.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found for this VRID in the queried window/types">no events</td>';
                     var chip = '', bg = '', tip = '';
                     if (rec.state === 'moved') { chip = 'MOVED' + (rec.dest ? ' \u2192 ' + rec.dest : ''); bg = '#2e7d32'; tip = 'Off the door' + (rec.door ? ' (was ' + rec.door + ')' : ''); }
                     else if (rec.state === 'movePending') { chip = 'MOVE PENDING'; bg = '#546e7a'; tip = 'Move created, not executed yet' + (rec.door ? ' \u2014 door ' + rec.door : ''); }
