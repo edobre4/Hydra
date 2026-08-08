@@ -13818,6 +13818,17 @@ if (k === 'eta') {
             html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 2 && hi <= 5 ? 'right' : 'left') + '">' + h + '</th>';
         });
         html += '</tr></thead><tbody>';
+        // Per-MHE totals (AAs, WIP, WIP/AA) shown in each section header
+        var _mheTotals = {};
+        for (var Tl = 1; Tl <= maxLane; Tl++) {
+            if (!grid[Tl]) continue;
+            var _tm = _amLLMhe[_amLL[Tl]] || 'Other';
+            var _tt = _mheTotals[_tm] = _mheTotals[_tm] || { aa: 0, wip: 0 };
+            Object.keys(grid[Tl]).forEach(function(Tc) {
+                var _tc = grid[Tl][Tc];
+                if (_tc) { _tt.aa += _tc.assocCount || 0; _tt.wip += _tc.wip || 0; }
+            });
+        }
         var _llRowIdx = 0;
         var _llCurMhe = null;
         for (var Ll = 1; Ll <= maxLane; Ll++) {
@@ -13825,7 +13836,14 @@ if (k === 'eta') {
             var _rowMhe = _amLLMhe[_amLL[Ll]] || 'Other';
             if (_rowMhe !== _llCurMhe) {
                 _llCurMhe = _rowMhe;
-                html += '<tr><td colspan="7" style="padding:8px 10px 4px;font-size:11px;font-weight:700;color:var(--h-muted,#aab4c0);text-transform:uppercase;letter-spacing:0.6px;border-bottom:1px solid var(--h-border2,#3a4a5c)">' + _llCurMhe + '</td></tr>';
+                var _mt = _mheTotals[_llCurMhe] || { aa: 0, wip: 0 };
+                var _mtPer = _mt.aa > 0 ? Math.round(_mt.wip / _mt.aa) : null;
+                html += '<tr><td colspan="7" style="padding:8px 10px 4px;font-size:11px;border-bottom:1px solid var(--h-border2,#3a4a5c)">'
+                    + '<span style="font-weight:700;color:var(--h-muted,#aab4c0);text-transform:uppercase;letter-spacing:0.6px">' + _llCurMhe + '</span>'
+                    + '<span style="margin-left:14px;color:#4ade80;font-weight:700">' + _mt.aa + ' AA' + (_mt.aa === 1 ? '' : 's') + '</span>'
+                    + '<span style="margin-left:10px;color:#fbbf24;font-weight:700">WIP ' + _mt.wip.toLocaleString() + '</span>'
+                    + '<span style="margin-left:10px;color:' + (_mtPer != null && _mtPer >= 60 ? '#f87171' : 'var(--h-text,#e8eaf0)') + ';font-weight:700" title="WIP per associate on this sorter">' + (_mtPer != null ? _mtPer + ' / AA' : (_mt.wip > 0 ? '\u221e / AA' : '\u2014')) + '</span>'
+                    + '</td></tr>';
             }
             var LcKeys = Object.keys(grid[Ll]).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
             LcKeys.forEach(function(Lc) {
