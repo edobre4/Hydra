@@ -13812,7 +13812,7 @@ if (k === 'eta') {
         // === Letter-lane layout: LINEAR table — one row per lane-chute with
         // the numbers that matter: AAs, WIP + trend, rates, flow. Rows keep
         // data-armezz-* attrs so hover tooltips/popups work unchanged. ===
-        html += '<table style="border-collapse:collapse;font-size:12px;margin-bottom:12px;min-width:520px">';
+        html += '<table style="border-collapse:collapse;font-size:12px;margin:0 auto 12px;min-width:520px">';
         html += '<thead><tr>';
         ['Lane', 'AAs', 'Rate', 'WIP', '\u0394 WIP', 'WIP / AA', 'Associates'].forEach(function(h, hi) {
             html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 2 && hi <= 5 ? 'right' : 'left') + '">' + h + '</th>';
