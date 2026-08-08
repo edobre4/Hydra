@@ -9658,22 +9658,42 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
         // Vista universe: three states, then ONE shared volume batch
         setStatus('SDT Chase: pulling Vista containers...');
-        // Rep trailer ids: the trailer IS a container in Vista — one
-        // getContainerDetails batch returns each trailer's COMPLETE totals
-        // (packageVolume + contentCountMap), fluid-loaded packages included.
-        // (The old per-container parent join missed fluid: verified live,
-        // 113NZKRG2 = 4,272 containerized + 1,125 fluid pkgs.)
+        // Trailer totals: the trailer IS a container in Vista, but its
+        // packageVolume DOUBLE-COUNTS containerized volume (verified live at
+        // DEN5: trailer said 2,880 cu ft, its 17 gaylords sum to exactly
+        // 1,440 — ratio 2.000; fluid counts once). True loaded cube =
+        // trailer packageVolume MINUS the loaded containers' volumes.
+        // Counts (contentCountMap) are correct at trailer level.
         var _trailerIds = [];
         combos.forEach(function(c) { if (c.trailerId && _trailerIds.indexOf(c.trailerId) === -1) _trailerIds.push(c.trailerId); });
         var _vistaP = Promise.all([
             _sdtCriteria(nodeId, 'Stacked'),
             _sdtCriteria(nodeId, 'Staged'),
-            _sdtCriteria(nodeId, 'InFacilityReceived')
+            _sdtCriteria(nodeId, 'InFacilityReceived'),
+            _sdtCriteria(nodeId, 'Loaded')
         ]).then(function(res) {
-            var stacked = res[0], staged = res[1], received = res[2];
+            var stacked = res[0], staged = res[1], received = res[2], loaded = res[3];
             var ids = _trailerIds.slice();
             stacked.concat(staged).concat(received).forEach(function(c) { if (c.containerId) ids.push(c.containerId); });
+            // loaded children: map container -> parent trailer for the subtraction
+            var _loadedParent = {};
+            loaded.forEach(function(c) {
+                var p = String(c.parentContainerId || '');
+                if (/^YT[A-Z0-9]/.test(p) && c.containerId) {
+                    _loadedParent[c.containerId] = p;
+                    ids.push(c.containerId);
+                }
+            });
             return _sdtDetailBatch(nodeId, ids).then(function(dmap) {
+                // sum loaded-container volume per trailer (the duplicated part)
+                var _kidVol = {};
+                Object.keys(_loadedParent).forEach(function(cid) {
+                    var det = dmap[cid];
+                    if (det && det.packageVolume != null) {
+                        var t = _loadedParent[cid];
+                        _kidVol[t] = (_kidVol[t] || 0) + det.packageVolume;
+                    }
+                });
                 var byTrailer = {};
                 _trailerIds.forEach(function(tid) {
                     var det = dmap[tid];
@@ -9681,8 +9701,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     var ccm = det.contentCountMap || {};
                     var ctns = 0;
                     Object.keys(ccm).forEach(function(k) { if (k !== 'PACKAGE') ctns += ccm[k] || 0; });
+                    var vol = det.packageVolume - (_kidVol[tid] || 0);
+                    if (vol < 0) vol = det.packageVolume; // defensive: never negative
                     byTrailer[tid] = {
-                        cube: det.packageVolume * CUFT_CONVERSION,
+                        cube: vol * CUFT_CONVERSION,
                         pkgs: ccm.PACKAGE || 0,
                         ctns: ctns
                     };
