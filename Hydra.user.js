@@ -9621,6 +9621,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     sdt: r.sdt, sdtMs: sMs, vrid: r.vrid, planId: r.planId,
                     trailerId: r.trailerId || '',
                     door: (r.location && r.location !== '\u2014') ? r.location : '',
+                    status: (r.status && r.status !== '\u2014') ? r.status : '',
                     trailerCount: prev ? prev.trailerCount : 0,
                     pctLoaded: null, pctStaged: null, containers: []
                 };
@@ -14684,7 +14685,9 @@ if (k === 'eta') {
         var pHtml = _sdtCard;
         pHtml += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
             + '<div><span style="font-size:15px;font-weight:700;color:var(--h-ob-accent, #20d4f0)">' + sel.route + '</span>'
+            + (sel.door ? ' <span style="background:#20d4f0;color:#111;font-weight:800;font-size:11px;padding:1px 7px;border-radius:3px" title="Dock door">' + sel.door + '</span>' : '')
             + ' <span class="hydra-copy-id" data-copy="' + sel.vrid + '" title="Click to copy" style="font-size:12px;color:var(--h-muted, #aab4c0)">' + sel.vrid + '</span>'
+            + (sel.status ? ' <span class="badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;background:var(--h-bg4, #1a2535);border:1px solid var(--h-border2, #3a4a5c);color:var(--h-muted, #aab4c0)">' + sel.status.toUpperCase() + '</span>' : '')
             + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + '</span></div>'
             + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
             + '<span title="Used only for trailers with no loaded-cube data yet. Trailers with data derive their target from the OB fill logic.">Empty trailer target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft</span>'
