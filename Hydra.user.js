@@ -13820,7 +13820,7 @@ if (k === 'eta') {
                     return '<span style="color:' + col + '">' + a.login + '</span><span style="color:var(--h-muted2,#7a8a9a);font-size:10px"> ' + a.rate + '</span>';
                 }).join(' \u00b7 ');
                 var wipStyle = cd.wip >= 100 ? 'color:#f87171;font-weight:700' : 'color:var(--h-text,#e8eaf0);font-weight:700';
-                html += '<tr data-armezz-l="' + Ll + '" data-armezz-c="' + Lc + '" style="background:' + altBg + ';' + stBg + 'border-bottom:1px solid rgba(255,255,255,0.04)">';
+                html += '<tr data-armezz-l="' + Ll + '" data-armezz-c="' + Lc + '" class="hydra-ll-row" data-assignws="' + (cd.assignWsId || '') + '" data-lanelabel="' + _amLaneLabel(Ll) + Lc + '" style="background:' + altBg + ';' + stBg + 'border-bottom:1px solid rgba(255,255,255,0.04)">';
                 html += '<td style="padding:4px 10px;font-weight:700;color:#22d3ee">' + _amLaneLabel(Ll) + Lc + '</td>';
                 html += '<td style="padding:4px 10px;font-weight:700;color:' + (cd.assocCount ? (cd.scanning ? '#4ade80' : '#fbbf24') : 'var(--h-dim,#4a5a6a)') + '">' + (cd.assocCount || '') + '</td>';
                 html += '<td style="padding:4px 10px;font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (roster || '\u2014') + '</td>';
@@ -13833,6 +13833,39 @@ if (k === 'eta') {
             });
         }
         html += '</tbody></table>';
+        // Drag & drop wiring (after innerHTML lands — defer one tick)
+        setTimeout(function() {
+            var wrapEl = targetEl || document.getElementById('hydra-table-wrap');
+            if (!wrapEl) return;
+            var dragging = null;
+            wrapEl.querySelectorAll('.hydra-ll-aacard').forEach(function(card) {
+                card.addEventListener('dragstart', function(e) {
+                    dragging = card.dataset.login;
+                    try { e.dataTransfer.setData('text/plain', dragging); } catch (ex) {}
+                });
+            });
+            wrapEl.querySelectorAll('tr.hydra-ll-row').forEach(function(row) {
+                if (!row.dataset.assignws) return; // no assignable workstation
+                row.addEventListener('dragover', function(e) { e.preventDefault(); row.style.outline = '2px solid #22d3ee'; });
+                row.addEventListener('dragleave', function() { row.style.outline = ''; });
+                row.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    row.style.outline = '';
+                    var login = dragging || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+                    dragging = null;
+                    if (!login) return;
+                    var laneLabel = row.dataset.lanelabel;
+                    setStatus('Reassigning ' + login + ' \u2192 ' + laneLabel + '...');
+                    wattSaveAssignment(login, row.dataset.assignws).then(function() {
+                        setStatus('\u2714 ' + login + ' reassigned to ' + laneLabel + ' (RightStation)');
+                        fetchStaffingAssignments().catch(function(){});
+                        fetchArMezzData().then(function() { renderOBArMezzTable(); }).catch(function(){});
+                    }).catch(function(err) {
+                        setStatus('\u26a0 Reassign failed for ' + login + ': ' + ((err && err.message) || err));
+                    });
+                });
+            });
+        }, 0);
                 } else {
         // Lane pair groups (optional): A = lane 1, B = 2/3, C = 4/5 ... matching
         // the AR Field Overview lettering. Vertical separators at group starts.
