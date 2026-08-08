@@ -1309,12 +1309,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var obDockProgressEnabled = true; // toggle for OB progress pills on dock panel
     var sesamePaDoorInfo = {};    // { doorNum -> { vrid, route } } for dock panel PA overlay
     var sesameLoadMeta   = {};    // { vrid -> { planIdentifier, buildingCode, currentDoor } } for PA assign popup
-    // ── Trailer lifecycle tracking (Completed tab) ──
-    var lifecycleEnabled = false;         // opt-in: pulls YMS event history per completed trailer
-    var lifecycleSlaTdr = 5;              // min: complete -> TDR-out SLA (network target)
-    var lifecycleSlaMove = 10;            // min: TDR-out -> move-created threshold
-    var lifecycleMap = {};                // vrid -> { events[], completeMs, tdrMs, moveMs, offMs, door, dest, state }
-    var _lifecyclePulling = false;
+    // ── Completed-trailer location (click ⟳ to pull from YMS events) ──
+    var lifecycleMap = {};                // vrid -> { events[], door, ... }
     var ymsSecurityToken     = null;   // cached JWT from window.ymsSecurityToken
     var ymsSecurityTokenAt   = 0;      // timestamp when token was fetched (ms)
     var ymsEquipmentMap      = {};     // visitId -> { equipmentId, equipmentVersion }
@@ -3539,7 +3535,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseTarget: sdtChaseTarget,
             sdtChaseTypeCap: sdtChaseTypeCap,
             sdtChaseMaxCtns: sdtChaseMaxCtns,
-            lifecycleEnabled: lifecycleEnabled, lifecycleSlaTdr: lifecycleSlaTdr, lifecycleSlaMove: lifecycleSlaMove,
             acWsMode: acWsMode,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
@@ -3684,9 +3679,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
         if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
         if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
-        if (s.lifecycleEnabled !== undefined) lifecycleEnabled = !!s.lifecycleEnabled;
-        if (+s.lifecycleSlaTdr > 0) lifecycleSlaTdr = +s.lifecycleSlaTdr;
-        if (+s.lifecycleSlaMove > 0) lifecycleSlaMove = +s.lifecycleSlaMove;
                 if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
@@ -4424,7 +4416,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseTarget: sdtChaseTarget,
                 sdtChaseTypeCap: sdtChaseTypeCap,
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
-                lifecycleEnabled: lifecycleEnabled, lifecycleSlaTdr: lifecycleSlaTdr, lifecycleSlaMove: lifecycleSlaMove,
                 acWsMode: acWsMode,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
@@ -4602,9 +4593,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
             if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
             if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
-            if (s.lifecycleEnabled !== undefined) lifecycleEnabled = !!s.lifecycleEnabled;
-            if (+s.lifecycleSlaTdr > 0) lifecycleSlaTdr = +s.lifecycleSlaTdr;
-            if (+s.lifecycleSlaMove > 0) lifecycleSlaMove = +s.lifecycleSlaMove;
                         if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
@@ -5328,18 +5316,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
                     '<!-- INBOUND -->' +
                     '<div class="hydra-settings-category"><div class="hydra-settings-category-header">Inbound</div></div>' +
-                    '<div class="hydra-settings-section collapsed" id="hydra-section-lifecycle">' +
-                        '<div class="hydra-settings-section-title">Trailer Lifecycle</div>' +
-                        '<div class="hydra-settings-section-content">' +
-                            '<div class="hydra-settings-row" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px"><input type="checkbox" id="hydra-lc-enabled" style="accent-color:var(--h-blue, #5090d0);width:14px;height:14px;cursor:pointer">Track completed trailers (pulls YMS event history per completed trailer)</label>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Complete\u2192TDR SLA<input type="number" id="hydra-lc-sla-tdr" min="1" max="120" style="width:48px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px">min</label>' +
-                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">TDR\u2192Move threshold<input type="number" id="hydra-lc-sla-move" min="1" max="240" style="width:48px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px">min</label>' +
-                            '</div>' +
-                        '</div>' +
-                    '</div>' +
                     '<!-- CPT SLA Section (IB) -->' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-cptsla">' +
                         '<div class="hydra-settings-section-title">CPT SLA</div>' +
@@ -10098,16 +10074,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         }).catch(function(e) { delete _lcPending[vrid]; console.warn('[Hydra] Lifecycle pull failed for ' + vrid, e); });
     }
 
-    // Cell helpers for the Completed tab columns
-    function _lcAge(ms) {
-        var min = Math.round((Date.now() - ms) / 60000);
-        return min >= 60 ? Math.floor(min / 60) + 'h ' + (min % 60) + 'm' : min + 'm';
-    }
-    function _lcDur(a, b) {
-        var min = Math.round((b - a) / 60000);
-        return min >= 60 ? Math.floor(min / 60) + 'h ' + (min % 60) + 'm' : min + 'm';
-    }
-
     function pullYmsEvent(nodeId, vrid, eventType, startSec, endSec, token, retryCount) {
         retryCount = retryCount || 0;
         var payload = JSON.stringify({
@@ -12118,14 +12084,14 @@ if (k === 'eta') {
                     return '<td>' + (r.ilp != null ? r.ilp : '\u2014') + '</td>';
                 }
                 if (k === 'location') {
-                    // Completed trailers: click the cell to pull that trailer's
-                    // YMS events and show the door it was on at completion.
-                    if (r.status === 'COMPLETED' && lifecycleEnabled) {
+                    // Completed trailers: click ⟳ to pull that trailer's YMS
+                    // events and show the door it was on at completion.
+                    if (r.status === 'COMPLETED') {
                         var _lcr = lifecycleMap[r.vrid];
                         if (_lcr && _lcr.door) return '<td title="Location at completion (YMS event history)">' + _lcr.door + '</td>';
                         if (_lcr && _lcr.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found">none</td>';
                         if (_lcPending[r.vrid]) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
-                        return '<td><span class="hydra-lc-pull" data-lcpull="' + r.vrid + '" style="color:var(--h-blue, #5090d0);cursor:pointer;font-weight:700" title="Click to pull this trailer\u2019s location from YMS">\u27f3 pull</span></td>';
+                        return '<td><span class="hydra-lc-pull" data-lcpull="' + r.vrid + '" style="color:var(--h-blue, #5090d0);cursor:pointer;font-weight:700" title="Click to pull this trailer\u2019s location from YMS">\u27f3</span></td>';
                     }
                     // Door column with visual cues:
                     //   • Purple bg: PA-assigned trailer, door is open (no conflict)
@@ -16555,12 +16521,6 @@ if (k === 'eta') {
             if (_amL) _amL.value = arMezzManualLanes || '';
             var _amC = document.getElementById('hydra-armezz-chutes');
             if (_amC) _amC.value = arMezzManualChutes || '';
-            var _lcEnS = document.getElementById('hydra-lc-enabled');
-            if (_lcEnS) _lcEnS.checked = !!lifecycleEnabled;
-            var _lcT1 = document.getElementById('hydra-lc-sla-tdr');
-            if (_lcT1) _lcT1.value = lifecycleSlaTdr;
-            var _lcT2 = document.getElementById('hydra-lc-sla-move');
-            if (_lcT2) _lcT2.value = lifecycleSlaMove;
             var _wsR = document.getElementById('hydra-ws-red');
             if (_wsR) _wsR.value = wsRedPct;
             var _wsY = document.getElementById('hydra-ws-yellow');
@@ -18468,23 +18428,6 @@ if (k === 'eta') {
                 if (!isNaN(v) && v > 0) { setter(v); saveAllSettings(); }
             });
         }
-        var _lcEn = document.getElementById('hydra-lc-enabled');
-        if (_lcEn) _lcEn.addEventListener('change', function() {
-            lifecycleEnabled = this.checked;
-            saveAllSettings();
-            if (ibActiveTab === 'completed' || ibActiveTab === 'all') renderIBTable();
-        });
-        function _lcThrHandler(id, setter) {
-            var el = document.getElementById(id);
-            if (el) el.addEventListener('change', function() {
-                var v = parseInt(this.value, 10);
-                if (!isNaN(v) && v > 0) { setter(v); saveAllSettings(); if (ibActiveTab === 'completed') renderIBTable(); }
-            });
-        }
-        _lcThrHandler('hydra-lc-sla-tdr', function(v) { lifecycleSlaTdr = v; });
-        _lcThrHandler('hydra-lc-sla-move', function(v) { lifecycleSlaMove = v; });
-        _wsThrHandler('hydra-ws-red', function(v) { wsRedPct = v; });
-        _wsThrHandler('hydra-ws-yellow', function(v) { wsYellowPct = v; });
         function _sdtCapHandler(id, key) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', function() {
@@ -18624,36 +18567,6 @@ if (k === 'eta') {
             if (!el) return;
             e.stopPropagation();
             pullLifecycleFor(el.dataset.lcpull);
-        });
-
-        // Lifecycle chip click -> full YMS event history popup (audit trail)
-        document.addEventListener('click', function(e) {
-            var chip = e.target.closest ? e.target.closest('.hydra-lc-chip') : null;
-            var pop = document.getElementById('hydra-lc-popup');
-            if (!chip) { if (pop) pop.style.display = 'none'; return; }
-            e.stopPropagation();
-            var rec = lifecycleMap[chip.dataset.lcvrid];
-            if (!rec) return;
-            if (!pop) {
-                pop = document.createElement('div');
-                pop.id = 'hydra-lc-popup';
-                pop.style.cssText = 'position:fixed;z-index:2147483647;background:var(--h-bg3, #1b2330);border:1px solid var(--h-border2, #3a4a5c);border-radius:8px;padding:10px 14px;font-size:11px;max-width:420px;max-height:50vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,0.5)';
-                document.body.appendChild(pop);
-            }
-            var h = '<div style="font-weight:700;color:var(--h-ob-accent, #20d4f0);margin-bottom:6px">' + chip.dataset.lcvrid + ' \u2014 event history</div>';
-            h += '<table style="border-collapse:collapse;width:100%">';
-            rec.events.forEach(function(ev) {
-                h += '<tr style="border-top:1px solid var(--h-border, #2a3a4c)">'
-                   + '<td style="padding:2px 8px 2px 0;color:var(--h-muted2, #7a8a9a);white-space:nowrap">' + msToLocal(ev.ts) + '</td>'
-                   + '<td style="padding:2px 8px;font-weight:600">' + ev.type + '</td>'
-                   + '<td style="padding:2px 0;color:var(--h-muted, #aab4c0)">' + (ev.location || '') + '</td>'
-                   + '</tr>';
-            });
-            h += '</table>';
-            pop.innerHTML = h;
-            pop.style.display = 'block';
-            pop.style.left = Math.min(e.clientX + 10, window.innerWidth - 440) + 'px';
-            pop.style.top = Math.min(e.clientY + 10, window.innerHeight - 320) + 'px';
         });
 
         // Copy-to-clipboard handler for .hydra-copy-id elements
