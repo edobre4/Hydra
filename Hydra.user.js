@@ -13402,11 +13402,20 @@ if (k === 'eta') {
         }
         var _amLL = null;   // letter-lane mode: index -> label
         var _llIndex = {};
+        var _amLLMhe = {};  // label -> MHE (equipment) name for section headers
         (function() {
             var seen = {};
             (arMezzData || []).forEach(function(ws) {
-                var p = _llParse((ws.workstation && ws.workstation.workstationAlias) || '');
-                if (p && p.chute > 0) seen[p.label] = true;
+                var alias = (ws.workstation && ws.workstation.workstationAlias) || '';
+                var p = _llParse(alias);
+                if (p && p.chute > 0) {
+                    seen[p.label] = true;
+                    // MHE (equipment) name from the alias, e.g.
+                    // 'MDW5-ShippingSorter-CHUTE-K1' -> ShippingSorter,
+                    // 'MDW5-ShippingSorter4-S0404'   -> ShippingSorter4
+                    var mm = /-([A-Za-z]+?Sorter\d*)-/.exec(alias) || /-([A-Za-z]+?Sorter\d*)/.exec(alias);
+                    if (mm && !_amLLMhe[p.label]) _amLLMhe[p.label] = mm[1].replace(/([a-z])([A-Z0-9])/g, '$1 $2');
+                }
             });
             var ls = Object.keys(seen);
             if (!ls.length) return;
@@ -13810,8 +13819,14 @@ if (k === 'eta') {
         });
         html += '</tr></thead><tbody>';
         var _llRowIdx = 0;
+        var _llCurMhe = null;
         for (var Ll = 1; Ll <= maxLane; Ll++) {
             if (!grid[Ll]) continue;
+            var _rowMhe = _amLLMhe[_amLL[Ll]] || 'Other';
+            if (_rowMhe !== _llCurMhe) {
+                _llCurMhe = _rowMhe;
+                html += '<tr><td colspan="7" style="padding:8px 10px 4px;font-size:11px;font-weight:700;color:var(--h-muted,#aab4c0);text-transform:uppercase;letter-spacing:0.6px;border-bottom:1px solid var(--h-border2,#3a4a5c)">' + _llCurMhe + '</td></tr>';
+            }
             var LcKeys = Object.keys(grid[Ll]).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
             LcKeys.forEach(function(Lc) {
                 var cd = grid[Ll][Lc];
@@ -13819,8 +13834,7 @@ if (k === 'eta') {
                 var altBg = (_llRowIdx++ % 2 === 0) ? 'var(--h-bg2,#16202c)' : 'var(--h-bg4,#1a2535)';
                 // status color: scanning green, idle orange, unmanned-with-WIP amber text
                 var stBg = '', stTxt = '';
-                if (cd.scanning) { stBg = 'background:#14351c;'; }
-                else if (cd.idle) { stBg = 'background:#3a2a10;'; }
+                if (cd.idle) { stBg = 'background:#3a2a10;'; }
                 var rate = cd.assocCount > 0 ? Math.round(cd.scans * (60 / arMezzMinutes) / cd.assocCount) : 0;
                 var delta = cd.wip - (cd.wip0 || 0);
                 var dTxt = delta > 0 ? '+' + delta : String(delta);
