@@ -13854,7 +13854,6 @@ if (k === 'eta') {
                 var altBg = (_llRowIdx++ % 2 === 0) ? 'var(--h-bg2,#16202c)' : 'var(--h-bg4,#1a2535)';
                 // status color: scanning green, idle orange, unmanned-with-WIP amber text
                 var stBg = '', stTxt = '';
-                if (cd.idle) { stBg = 'background:#3a2a10;'; }
                 var rate = cd.assocCount > 0 ? Math.round(cd.scans * (60 / arMezzMinutes) / cd.assocCount) : 0;
                 var delta = cd.wip - (cd.wip0 || 0);
                 var dTxt = delta > 0 ? '+' + delta : String(delta);
