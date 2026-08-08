@@ -13559,7 +13559,8 @@ if (k === 'eta') {
             var _wip0 = (states[0] && states[0].workInProgressCount && states[0].workInProgressCount.value) || 0;
             var _roster = assocs.map(function(a) {
                 var sc = globalAssocScans[a.associateId] || 0;
-                return { login: a.associateId, rate: Math.round(sc * (60 / arMezzMinutes)), scanning: (a.scanCount || 0) > 0 };
+                return { login: a.associateId, rate: Math.round(sc * (60 / arMezzMinutes)), scanning: (a.scanCount || 0) > 0,
+                         lastScan: a.lastScanTime || 0 };
             });
             var _newCell = { wip: wip, scanning: scanning, idle: idle, assocCount: assocs.length, scans: chuteScans, chuteId: chuteId, assoc: assocDetail, wsId: ws.workstation.workstationId || null,
                              div: _cellDiv, wip0: _wip0, roster: _roster,
@@ -13874,7 +13875,7 @@ if (k === 'eta') {
                 var _cardsHtml = (cd.roster || []).map(function(a) {
                     var col = a.scanning ? '#4ade80' : '#fbbf24';
                     var bd = a.scanning ? '#2e7d32' : '#b45309';
-                    return '<span class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + _laneLbl + '" data-scanning="' + (a.scanning ? 1 : 0) + '" style="display:inline-block;cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;color:' + col + ';margin:1px 2px 1px 0;white-space:nowrap">' + a.login + '</span>';
+                    return '<span class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + _laneLbl + '" data-scanning="' + (a.scanning ? 1 : 0) + '" data-lastscan="' + (a.lastScan || 0) + '" style="display:inline-block;cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;color:' + col + ';margin:1px 2px 1px 0;white-space:nowrap">' + a.login + '</span>';
                 }).join('');
                 html += '<td style="padding:3px 8px;max-width:340px">' + (_cardsHtml || '<span style="color:var(--h-dim,#4a5a6a)">\u2014</span>') + '</td>';
                 html += '</tr>';
@@ -13923,7 +13924,15 @@ if (k === 'eta') {
                         + '<img src="https://badgephotos.corp.amazon.com/?uid=' + card.dataset.login + '" style="width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--h-bg2,#16202c)" onerror="this.style.display=\'none\'">'
                         + '<div><div style="font-weight:700;color:' + (card.dataset.scanning === '1' ? '#4ade80' : '#fbbf24') + ';font-size:13px">' + card.dataset.login + '</div>'
                         + '<div style="color:var(--h-muted,#aab4c0);margin-top:2px">' + card.dataset.rate + ' JPH</div>'
-                        + '<div style="color:var(--h-muted2,#7a8a9a)">' + card.dataset.lane + '</div></div></div>';
+                        + '<div style="color:var(--h-muted2,#7a8a9a)">' + card.dataset.lane + '</div>'
+                        + (function() {
+                            var ls = parseInt(card.dataset.lastscan, 10) || 0;
+                            if (!ls) return '<div style="color:var(--h-dim,#4a5a6a)">no scans this window</div>';
+                            var min = Math.max(0, Math.round((Date.now() - ls) / 60000));
+                            var col = min > 5 ? '#fbbf24' : 'var(--h-muted2,#7a8a9a)';
+                            return '<div style="color:' + col + '">last scan ' + (min === 0 ? 'just now' : min + ' min ago') + '</div>';
+                        })()
+                        + '</div></div>';
                     tip.style.display = 'block';
                     var r = card.getBoundingClientRect();
                     tip.style.left = Math.min(r.left, window.innerWidth - 240) + 'px';
