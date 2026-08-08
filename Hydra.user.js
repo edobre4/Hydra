@@ -10089,12 +10089,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var startSec = nowSec - 2 * 86400;
         return fetchYmsSecurityToken(false).then(function(token) {
             if (!token) return;
-            var BATCH = 3, idx = 0; // 3 trailers x 4 event types = 12 in flight
+            // Single batch: every trailer x every event type fired concurrently
+            // (user preference: fastest wall-clock; revisit if YMS rate-limits).
+            var BATCH = Math.max(1, rows.length), idx = 0;
             function batch() {
                 if (idx >= rows.length) return;
                 var slice = rows.slice(idx, idx + BATCH);
                 idx += BATCH;
-                setStatus('Lifecycle ' + Math.min(idx, rows.length) + '/' + rows.length + '...');
+                setStatus('Lifecycle: pulling ' + rows.length + ' trailers...');
                 return Promise.all(slice.map(function(r) {
                     return Promise.all(LIFECYCLE_EVENT_TYPES.map(function(et) {
                         return pullYmsEventsOfType(nodeId, r.vrid, et, startSec, nowSec, token);
