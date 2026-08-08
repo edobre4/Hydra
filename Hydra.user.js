@@ -3534,6 +3534,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseTarget: sdtChaseTarget,
             sdtChaseTypeCap: sdtChaseTypeCap,
             sdtChaseMaxCtns: sdtChaseMaxCtns,
+            sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             acWsMode: acWsMode,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
@@ -3678,6 +3679,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
         if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
         if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
+        if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
+        if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
+        if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
                 if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
@@ -4415,6 +4419,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseTarget: sdtChaseTarget,
                 sdtChaseTypeCap: sdtChaseTypeCap,
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
+                sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 acWsMode: acWsMode,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
@@ -4592,6 +4597,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
             if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
             if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
+            if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
+            if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
+            if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
                         if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
@@ -14815,6 +14823,7 @@ if (k === 'eta') {
             var el = document.getElementById(cfg[0]);
             if (el) el.addEventListener('input', function() {
                 cfg[1](this.value);
+                try { saveAllSettings(); } catch (ex) {}
                 var pos = this.selectionStart;
                 renderSdtChaseTable(targetEl);
                 var again = document.getElementById(cfg[0]);
