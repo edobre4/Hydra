@@ -14548,17 +14548,34 @@ if (k === 'eta') {
             var man = sdtChaseManual[c.key] || {};
             var exc = sdtChaseExcluded[c.key] || {};
             var tgt = (c.targetCube && c.targetCube > 0) ? c.targetCube : sdtChaseTarget;
-            var cube = (c.loadedCube != null) ? c.loadedCube : 0;
-            var ctnCount = c.loadedCtns || 0;
-            c.containers.forEach(function(ctn) { if (man[ctn.id]) { cube += ctn.cube; ctnCount++; } });
-            var flr = c.containers.filter(function(x) { return !x.staged; })
-                .sort(function(a, b) { return b.cube - a.cube; });
-            flr.forEach(function(ctn) {
-                if (cube >= tgt || ctnCount >= sdtChaseMaxCtns) return;
-                if (!(ctn.pkgs > 0)) return; // empty containers add nothing, waste slots
-                if (claimed[ctn.id] || man[ctn.id] || exc[ctn.id]) return;
-                auto[ctn.id] = true; claimed[ctn.id] = true; cube += ctn.cube; ctnCount++;
+            var baseCube = (c.loadedCube != null) ? c.loadedCube : 0;
+            var baseCount = c.loadedCtns || 0;
+            c.containers.forEach(function(ctn) { if (man[ctn.id]) { baseCube += ctn.cube; baseCount++; } });
+            // Candidates: any stage (stacked/staged/received), non-empty, free
+            var cands = c.containers.filter(function(x) {
+                return x.pkgs > 0 && !claimed[x.id] && !man[x.id] && !exc[x.id];
             });
+            function simulate(order) {
+                var picks = [], cube = baseCube, count = baseCount;
+                for (var i = 0; i < order.length; i++) {
+                    if (cube >= tgt || count >= sdtChaseMaxCtns) break;
+                    picks.push(order[i]); cube += order[i].cube; count++;
+                }
+                return { picks: picks, cube: cube };
+            }
+            // Prefer CLOSED containers: try closed-first; only fall back to a
+            // mixed cube-descending order if closed-first can't reach the
+            // target within the container cap.
+            var closedFirst = cands.slice().sort(function(a, b) {
+                var ac = a.state === 'CLOSED' ? 0 : 1, bc = b.state === 'CLOSED' ? 0 : 1;
+                return ac !== bc ? ac - bc : b.cube - a.cube;
+            });
+            var best = simulate(closedFirst);
+            if (best.cube < tgt) {
+                var mixed = simulate(cands.slice().sort(function(a, b) { return b.cube - a.cube; }));
+                if (mixed.cube > best.cube) best = mixed;
+            }
+            best.picks.forEach(function(ctn) { auto[ctn.id] = true; claimed[ctn.id] = true; });
         });
     }
     // Pure cube math: current = real loaded cu ft (0 if nothing loaded yet),
