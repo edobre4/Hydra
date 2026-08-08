@@ -13112,6 +13112,40 @@ if (k === 'eta') {
         });
     }
 
+    // RightStation write: cancel an associate's assignment entirely.
+    // Shape from the WATT bundle: deleteStaffingAssignment(nodeId, associateId)
+    function wattDeleteAssignment(associateId) {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var mutation = 'mutation DeleteStaffingAssignment($nodeId: String!, $associateId: String!) {\n  deleteStaffingAssignment(nodeId: $nodeId, associateId: $associateId)\n}';
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+                onload: function(r1) {
+                    var csrf = (r1.responseText || '').trim();
+                    if (!csrf || r1.status !== 200) { reject(new Error('CSRF failed')); return; }
+                    GM_xmlhttpRequest({
+                        method: 'POST', url: wattBase + '/graphql',
+                        headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                        data: JSON.stringify({ query: mutation, operationName: 'DeleteStaffingAssignment',
+                            variables: { nodeId: node, associateId: associateId } }),
+                        withCredentials: true,
+                        onload: function(r2) {
+                            try {
+                                var j = JSON.parse(r2.responseText);
+                                if (j.errors && j.errors.length) { reject(new Error(j.errors[0].message || 'GraphQL error')); return; }
+                                resolve(true);
+                            } catch (e) { reject(new Error('parse: ' + e.message)); }
+                        },
+                        onerror: function() { reject(new Error('mutation failed')); }
+                    });
+                },
+                onerror: function() { reject(new Error('CSRF failed')); }
+            });
+        });
+    }
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
@@ -13874,6 +13908,7 @@ if (k === 'eta') {
                     if (tip) tip.style.display = 'none';
                     var menu = _llPopup('hydra-ll-aamenu');
                     var mh = '<div style="font-weight:700;color:#22d3ee;margin-bottom:6px">' + card.dataset.login + ' \u2192 assign to:</div>';
+                    mh += '<div class="hydra-ll-unassign" style="cursor:pointer;text-align:center;padding:4px 8px;margin-bottom:5px;border:1px solid #b45309;border-radius:4px;color:#fbbf24;font-weight:700">\u2715 Cancel assignment</div>';
                     mh += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;max-height:40vh;overflow-y:auto">';
                     _laneTargets.forEach(function(t) {
                         mh += '<div class="hydra-ll-lanepick" data-ws="' + t.ws + '" data-label="' + t.label + '" style="cursor:pointer;text-align:center;padding:4px 8px;border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);font-weight:600">' + t.label + '</div>';
@@ -13889,6 +13924,20 @@ if (k === 'eta') {
                             ev.stopPropagation();
                             menu.style.display = 'none';
                             _llDoAssign(card.dataset.login, pick.dataset.ws, pick.dataset.label);
+                        });
+                    });
+                    var _un = menu.querySelector('.hydra-ll-unassign');
+                    if (_un) _un.addEventListener('click', function(ev) {
+                        ev.stopPropagation();
+                        menu.style.display = 'none';
+                        var login = card.dataset.login;
+                        setStatus('Cancelling assignment for ' + login + '...');
+                        wattDeleteAssignment(login).then(function() {
+                            setStatus('\u2714 Assignment cancelled for ' + login + ' (RightStation)');
+                            fetchStaffingAssignments().catch(function(){});
+                            fetchArMezzData().then(function() { renderOBArMezzTable(); }).catch(function(){});
+                        }).catch(function(err) {
+                            setStatus('\u26a0 Cancel failed for ' + login + ': ' + ((err && err.message) || err));
                         });
                     });
                 });
