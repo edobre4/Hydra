@@ -13702,7 +13702,7 @@ if (k === 'eta') {
                 // AMZL text styling
                 if (amzlChutes[qbccMapId]) overlayStyle += 'font-size:120%;font-weight:700;text-decoration:underline;color:#ffffff !important;';
             }
-            return '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + (extraStyle || '') + overlayStyle + bg + ';' + color + (isLastCol ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (cellDisplay || '') + '</td>';
+            return '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + (extraStyle || '') + overlayStyle + bg + ';' + color + (isLastCol ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (arguments.length > 4 && arguments[4] ? '<span style="opacity:0.55;font-size:9px;margin-right:3px">' + arguments[4] + '</span>' : '') + (cellDisplay || '') + '</td>';
         }
 
         var _effRotated = arMezzRotated || !!_amLL; // letter-lane sites always rotate
@@ -13714,6 +13714,28 @@ if (k === 'eta') {
             if (grid[rl]) for (var rc = 1; rc <= maxChute; rc++) { var rcell = grid[rl][rc]; if (rcell) { lw += rcell.wip; if (rcell.assocCount) la++; } }
             rLaneWip[rl] = lw; rLaneAA[rl] = la;
         }
+        if (_amLL) {
+        // === Letter-lane layout: one column per lane, stacking ONLY the
+        // chutes that exist for that lane (E1-E4, G1+G4, M1, ...) — the
+        // floor isn't a uniform grid, so neither is the view. Cells stay
+        // <td data-armezz-*> so hover tooltips/popups work unchanged. ===
+        html += '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:28px">';
+        for (var Ll = 1; Ll <= maxLane; Ll++) {
+            if (!grid[Ll]) continue;
+            var LcKeys = Object.keys(grid[Ll]).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
+            if (!LcKeys.length) continue;
+            html += '<div style="min-width:64px">';
+            html += '<div style="text-align:center;font-size:13px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;padding:2px 4px;margin-bottom:2px">' + _amLaneLabel(Ll) + '</div>';
+            html += '<div style="text-align:center;font-size:9px;color:var(--h-muted,#aab4c0);margin-bottom:4px">WIP ' + (rLaneWip[Ll] || 0) + ' \u00b7 AA ' + (rLaneAA[Ll] || 0) + '</div>';
+            html += '<table style="border-collapse:collapse;font-size:11px;width:100%"><tbody>';
+            LcKeys.forEach(function(Lc) {
+                html += '<tr>' + armezzCellTd(Ll, Lc, false, 'border:1px solid var(--h-border,#2a3a4c);min-width:56px;', String(Lc)) + '</tr>';
+            });
+            html += '</tbody></table>';
+            html += '</div>';
+        }
+        html += '</div>';
+        } else {
         // Lane pair groups (optional): A = lane 1, B = 2/3, C = 4/5 ... matching
         // the AR Field Overview lettering. Vertical separators at group starts.
         var laneGroupStart = {}, laneGroups = [];
@@ -13760,6 +13782,7 @@ if (k === 'eta') {
             html += '</tr>';
         }
         html += '</tbody></table>';
+        } // end letter-vs-numeric rotated branch
         } else {
         sections.forEach(function(sec) {
             var startL = sec[0], endL = sec[1];
