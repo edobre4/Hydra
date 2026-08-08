@@ -346,7 +346,7 @@
         { id: 'received',     label: 'Received',        group: 'CHASE',  desc: 'Receive dock \u2014 containers in gaylord / receive buffers.' },
         { id: 'linearchutes', label: 'Custom View',     group: 'CHASE',  desc: 'Catch-all sweep \u2014 point anywhere to find stragglers the other views miss.' },
         { id: 'sdtchase',     label: 'SDT Chase',       group: 'CHASE',  desc: 'SDT cube planner \u2014 pick floor containers per trailer to hit the fill target before SDT.' },
-        { id: 'armezz',       label: 'AR Mezz',         group: 'CHASE',  desc: 'AR Mezz View \u2014 live WIP + associate scanning status from STEM.' },
+        { id: 'armezz',       label: 'Mezz',            group: 'CHASE',  desc: 'AR Mezz View \u2014 live WIP + associate scanning status from STEM.' },
         { id: 'cptdetails',   label: 'CPT Details',     group: 'REVIEW', desc: 'Per-route stage breakdown \u2014 where volume sits across the pipeline.' },
         { id: 'cptperf',      label: 'CPT Performance', group: 'REVIEW', desc: 'On-time scorecard \u2014 % of CPT trailers that departed on time.' },
     ];
@@ -13692,8 +13692,9 @@ if (k === 'eta') {
         html += '<option value="30"' + (arMezzMinutes===30?' selected':'') + '>30 min</option>';
         html += '</select>';
         html += '<button id="hydra-armezz-toggle" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600">' + (arMezzShowRates ? 'Show WIP' : 'Show Scan Rates') + '</button>';
-        html += '<span style="width:1px;height:16px;background:var(--h-border2,#3a4a5c)"></span>';
-        var ovBtns = [{id:'priority',label:'Priority'},{id:'amzl',label:'AMZL'},{id:'perspective',label:'Perspective'},{id:'serpenteye',label:'Omnisight'}];
+        // QBCC overlays are AR-mezz hardware features — hidden on linear mezz
+        var ovBtns = _amLL ? [] : [{id:'priority',label:'Priority'},{id:'amzl',label:'AMZL'},{id:'perspective',label:'Perspective'},{id:'serpenteye',label:'Omnisight'}];
+        if (ovBtns.length) html += '<span style="width:1px;height:16px;background:var(--h-border2,#3a4a5c)"></span>';
         var qbccDisabled = !qbccChuteData;
         ovBtns.forEach(function(b) {
             var active = arMezzOverlay === b.id;
@@ -13875,7 +13876,7 @@ if (k === 'eta') {
                 var _cardsHtml = (cd.roster || []).map(function(a) {
                     var col = a.scanning ? '#4ade80' : '#fbbf24';
                     var bd = a.scanning ? '#2e7d32' : '#b45309';
-                    return '<span class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + _laneLbl + '" data-scanning="' + (a.scanning ? 1 : 0) + '" data-lastscan="' + (a.lastScan || 0) + '" style="display:inline-block;cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;color:' + col + ';margin:1px 2px 1px 0;white-space:nowrap">' + a.login + '</span>';
+                    return '<span class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + _laneLbl + '" data-scanning="' + (a.scanning ? 1 : 0) + '" data-lastscan="' + (a.lastScan || 0) + '" style="display:inline-block;cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;color:' + col + ';margin:1px 2px 1px 0;white-space:nowrap">' + (arMezzShowRates ? a.rate : a.login) + '</span>';
                 }).join('');
                 html += '<td style="padding:3px 8px;max-width:340px">' + (_cardsHtml || '<span style="color:var(--h-dim,#4a5a6a)">\u2014</span>') + '</td>';
                 html += '</tr>';
