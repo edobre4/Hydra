@@ -13276,6 +13276,46 @@ if (k === 'eta') {
         }
         var grid = {};
         var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0, wsScans = 0;
+        // ── Letter-lane mode (non-mezz sites, e.g. MDW5 shipping sorter) ──
+        // Two workstation kinds join per letter+digit cell:
+        //   'MDW5-ShippingSorter-CHUTE-K1'  -> associates + scan rates
+        //   'Lane - K1' / 'Lane K1'         -> WIP + diverted
+        // Sorter stations 'ShippingSorterN-S04xx' become pseudo-lanes 'SN'.
+        var _llWs = /-CHUTE-([A-Z])(\d+)\s*$/i;
+        var _llLane = /^Lane\s*-?\s*([A-Z])\s*(\d+)\s*$/i;
+        var _llSorter = /ShippingSorter(\d+)-S\d*?(\d{2})\s*$/i;
+        function _llParse(alias) {
+            var m = _llWs.exec(alias) || _llLane.exec(alias);
+            if (m) return { label: m[1].toUpperCase(), chute: parseInt(m[2], 10) };
+            var ms = _llSorter.exec(alias);
+            if (ms) return { label: 'S' + ms[1], chute: parseInt(ms[2], 10) };
+            return null;
+        }
+        var _amLL = null;   // letter-lane mode: index -> label
+        var _llIndex = {};
+        (function() {
+            var seen = {};
+            (arMezzData || []).forEach(function(ws) {
+                var p = _llParse((ws.workstation && ws.workstation.workstationAlias) || '');
+                if (p && p.chute > 0) seen[p.label] = true;
+            });
+            var ls = Object.keys(seen);
+            if (!ls.length) return;
+            // letters alphabetical, sorter pseudo-lanes (S3, S4, ...) after
+            ls.sort(function(a, b) {
+                var as = a.length > 1, bs = b.length > 1;
+                if (as !== bs) return as ? 1 : -1;
+                return a < b ? -1 : 1;
+            });
+            _amLL = {};
+            ls.forEach(function(l, i) { _llIndex[l] = i + 1; _amLL[i + 1] = l; });
+            console.log('[Hydra ARMezz] letter-lane mode: ' + ls.join(','));
+        })();
+        function _amWsInclude(ws) {
+            if (_amLL) return !!_llParse((ws.workstation && ws.workstation.workstationAlias) || '');
+            return ws.workstation.workstationType === 'CONTAINER_BUILD';
+        }
+        function _amLaneLabel(l) { return _amLL ? (_amLL[l] || l) : ('L' + l); }
         var laneRe = /Lane\s+(\d+)\s+Chute\s+(\d+)/i;
         // Parse lane/chute from a workstation. Primary: "Lane X Chute Y" alias
         // (ORD9-style). Fallback for sites without STEM aliases (e.g. PNE5,
@@ -13283,6 +13323,11 @@ if (k === 'eta') {
         // chute id encodes 2CCLL -> chute CC, lane LL (20301 = chute 3 lane 1;
         // verified against ORD9 aliases: "Lane 17 Chute 16 (21617)").
         function parseLaneChute(w) {
+            if (_amLL) {
+                var lp = _llParse(w.workstationAlias || '');
+                if (lp && _llIndex[lp.label]) return { lane: _llIndex[lp.label], chute: lp.chute };
+                return null;
+            }
             var m = laneRe.exec(w.workstationAlias || '');
             if (m) return { lane: parseInt(m[1], 10), chute: parseInt(m[2], 10) };
             var src = (w.workstationAlias || '') + ' ' + (w.workstationId || '');
@@ -13295,7 +13340,7 @@ if (k === 'eta') {
         // Pre-pass: sum each associate's scans across ALL workstations for accurate JPH
         var globalAssocScans = {};
         arMezzData.forEach(function(ws) {
-            if (ws.workstation.workstationType !== 'CONTAINER_BUILD') return;
+            if (!_amWsInclude(ws)) return;
             (ws.workstationStates || []).forEach(function(st) {
                 if (st.associateData && st.associateData.perAssociateData) {
                     st.associateData.perAssociateData.forEach(function(a) {
@@ -13308,7 +13353,7 @@ if (k === 'eta') {
         // Pre-pass: find each associate's latest chute (by lastScanTime)
         var assocLatestChute = {}; // associateId -> { lane, chute, lastScanTime }
         arMezzData.forEach(function(ws) {
-            if (ws.workstation.workstationType !== 'CONTAINER_BUILD') return;
+            if (!_amWsInclude(ws)) return;
             var lc2 = parseLaneChute(ws.workstation);
             if (!lc2) return;
             var wLane = lc2.lane, wChute = lc2.chute;
@@ -13326,7 +13371,7 @@ if (k === 'eta') {
         });
 
         arMezzData.forEach(function(ws) {
-            if (ws.workstation.workstationType !== 'CONTAINER_BUILD') return;
+            if (!_amWsInclude(ws)) return;
             var lc = parseLaneChute(ws.workstation);
             if (!lc) return;
             var lane = lc.lane, chute = lc.chute;
@@ -13389,7 +13434,21 @@ if (k === 'eta') {
                 var a0Scans = globalAssocScans[a0.associateId] || 0;
                 assocDetail = { login: a0.associateId, scanRate: Math.round(a0Scans * (60 / arMezzMinutes)), scanning: a0.scanCount > 0, inactiveMin: inactiveMin };
             }
-            grid[lane][chute] = { wip: wip, scanning: scanning, idle: idle, assocCount: assocs.length, scans: chuteScans, chuteId: chuteId, assoc: assocDetail, wsId: ws.workstation.workstationId || null };
+            if (_amLL) chuteId = _amLL[lane] + chute; // human key: 'K1'
+            var _newCell = { wip: wip, scanning: scanning, idle: idle, assocCount: assocs.length, scans: chuteScans, chuteId: chuteId, assoc: assocDetail, wsId: ws.workstation.workstationId || null };
+            var _oldCell = grid[lane][chute];
+            if (_oldCell) {
+                // Letter-lane mode: the 'Lane - K1' entry (WIP) and the
+                // 'CHUTE-K1' entry (associates) merge into one cell.
+                _newCell.wip += _oldCell.wip;
+                _newCell.scanning = _newCell.scanning || _oldCell.scanning;
+                _newCell.idle = (_newCell.idle || _oldCell.idle) && !_newCell.scanning;
+                _newCell.assocCount += _oldCell.assocCount;
+                _newCell.scans += _oldCell.scans;
+                if (!_newCell.assoc) _newCell.assoc = _oldCell.assoc;
+                if (!_newCell.wsId) _newCell.wsId = _oldCell.wsId;
+            }
+            grid[lane][chute] = _newCell;
             totalWip += wip;
         });
 
@@ -13608,7 +13667,8 @@ if (k === 'eta') {
             return '<td data-armezz-l="' + l + '" data-armezz-c="' + c + '" style="padding:3px 2px;text-align:center;border-radius:3px;cursor:default;' + (extraStyle || '') + overlayStyle + bg + ';' + color + (isLastCol ? ';border-right:2px solid var(--h-border2,#3a4a5c)' : '') + '">' + (cellDisplay || '') + '</td>';
         }
 
-        if (arMezzRotated) {
+        var _effRotated = arMezzRotated || !!_amLL; // letter-lane sites always rotate
+        if (_effRotated) {
         // === Rotated 90° layout: chutes as rows, lanes as columns ===
         var rLaneWip = {}, rLaneAA = {};
         for (var rl = 1; rl <= maxLane; rl++) {
@@ -13619,7 +13679,8 @@ if (k === 'eta') {
         // Lane pair groups (optional): A = lane 1, B = 2/3, C = 4/5 ... matching
         // the AR Field Overview lettering. Vertical separators at group starts.
         var laneGroupStart = {}, laneGroups = [];
-        if (arMezzPaired) {
+        var _amPairedEff = arMezzPaired && !_amLL; // letters ARE the grouping
+        if (_amPairedEff) {
             var _gl = 1;
             while (_gl <= maxLane) {
                 var _gsize = (_gl === 1) ? 1 : Math.min(2, maxLane - _gl + 1);
@@ -13629,7 +13690,7 @@ if (k === 'eta') {
             }
         }
         var R_SEP = 'border-left:2px solid var(--h-border2,#3a4a5c);';
-        function rSep(l) { return (arMezzPaired && laneGroupStart[l]) ? R_SEP : ''; }
+        function rSep(l) { return (_amPairedEff && laneGroupStart[l]) ? R_SEP : ''; }
         var R_LAST = 'border-right:2px solid var(--h-border2,#3a4a5c);';
         // table-layout:fixed + colgroup -> every lane column identical width
         html += '<table style="margin-bottom:28px;border-collapse:collapse;font-size:11px;table-layout:fixed">';
@@ -13638,13 +13699,13 @@ if (k === 'eta') {
         html += '</colgroup>';
         html += '<thead><tr>';
         html += '<th style="text-align:left;padding:4px 8px;font-size:12px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;border-left:2px solid var(--h-border2,#3a4a5c)">Chute</th>';
-        if (arMezzPaired) {
+        if (_amPairedEff) {
             // Group letter header spans its lanes; no per-lane numbers shown
             laneGroups.forEach(function(g) {
                 html += '<th colspan="' + g.size + '" style="padding:3px 2px;font-size:12px;min-width:30px;color:#22d3ee;font-weight:700;border-bottom:2px solid #22d3ee;text-align:center;' + R_SEP + (g.start + g.size - 1 === maxLane ? R_LAST : '') + '">' + g.letter + '</th>';
             });
         } else {
-            for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center;' + (rl === maxLane ? R_LAST : '') + '">L' + rl + '</th>';
+            for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center;' + (rl === maxLane ? R_LAST : '') + '">' + _amLaneLabel(rl) + '</th>';
         }
         html += '</tr>';
         // Per-lane WIP / AA summary rows (always per lane, even when grouped)
