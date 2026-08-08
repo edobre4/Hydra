@@ -13782,21 +13782,21 @@ if (k === 'eta') {
         }
         _llCards.sort(function(a, b) { return a.lane < b.lane ? -1 : (a.lane > b.lane ? 1 : 0); });
         html += '<div style="margin-bottom:12px">';
-        html += '<div style="font-size:11px;font-weight:700;color:#22d3ee;margin-bottom:5px">Associates \u00b7 ' + _llCards.length + ' <span style="font-weight:400;color:var(--h-muted2,#7a8a9a)">\u2014 drag a card onto a lane row to reassign (RightStation)</span></div>';
+        html += '<div style="font-size:11px;font-weight:700;color:#22d3ee;margin-bottom:5px">Associates \u00b7 ' + _llCards.length + ' <span style="font-weight:400;color:var(--h-muted2,#7a8a9a)">\u2014 hover for details \u00b7 click or drag to reassign (RightStation)</span></div>';
         html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
         _llCards.forEach(function(a) {
             var col = a.scanning ? '#4ade80' : '#fbbf24';
             var bd = a.scanning ? '#2e7d32' : '#b45309';
-            html += '<div class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" style="cursor:grab;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:5px;padding:3px 8px;font-size:10px;white-space:nowrap">'
+            html += '<div class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" data-rate="' + a.rate + '" data-lane="' + a.lane + '" data-scanning="' + (a.scanning ? 1 : 0) + '" style="cursor:pointer;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:5px;padding:3px 8px;font-size:10px;white-space:nowrap">'
                 + '<span style="color:' + col + ';font-weight:700">' + a.login + '</span>'
-                + ' <span style="color:var(--h-muted2,#7a8a9a)">' + a.lane + ' \u00b7 ' + a.rate + '</span>'
+                + ' <span style="color:var(--h-muted2,#7a8a9a)">' + a.rate + '</span>'
                 + '</div>';
         });
         html += '</div></div>';
         html += '<table style="border-collapse:collapse;font-size:12px;margin-bottom:28px;min-width:520px">';
         html += '<thead><tr>';
-        ['Lane', 'AAs', 'Associates', 'Rate', 'WIP', '\u0394 WIP', 'Diverted', 'Processed'].forEach(function(h, hi) {
-            html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 3 ? 'right' : 'left') + '">' + h + '</th>';
+        ['Lane', 'AAs', 'Rate', 'WIP', '\u0394 WIP', 'WIP / AA'].forEach(function(h, hi) {
+            html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 2 ? 'right' : 'left') + '">' + h + '</th>';
         });
         html += '</tr></thead><tbody>';
         var _llRowIdx = 0;
@@ -13821,14 +13821,13 @@ if (k === 'eta') {
                 }).join(' \u00b7 ');
                 var wipStyle = cd.wip >= 100 ? 'color:#f87171;font-weight:700' : 'color:var(--h-text,#e8eaf0);font-weight:700';
                 html += '<tr data-armezz-l="' + Ll + '" data-armezz-c="' + Lc + '" class="hydra-ll-row" data-assignws="' + (cd.assignWsId || '') + '" data-lanelabel="' + _amLaneLabel(Ll) + Lc + '" style="background:' + altBg + ';' + stBg + 'border-bottom:1px solid rgba(255,255,255,0.04)">';
+                var wipPerAa = cd.assocCount > 0 ? Math.round((cd.wip || 0) / cd.assocCount) : null;
                 html += '<td style="padding:4px 10px;font-weight:700;color:#22d3ee">' + _amLaneLabel(Ll) + Lc + '</td>';
-                html += '<td style="padding:4px 10px;font-weight:700;color:' + (cd.assocCount ? (cd.scanning ? '#4ade80' : '#fbbf24') : 'var(--h-dim,#4a5a6a)') + '">' + (cd.assocCount || '') + '</td>';
-                html += '<td style="padding:4px 10px;font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (roster || '\u2014') + '</td>';
+                html += '<td style="padding:4px 10px;font-weight:700;color:' + (cd.assocCount ? (cd.scanning ? '#4ade80' : '#fbbf24') : 'var(--h-dim,#4a5a6a)') + '" title="' + (cd.roster || []).map(function(a) { return a.login + ' (' + a.rate + ')'; }).join(', ') + '">' + (cd.assocCount || '') + '</td>';
                 html += '<td style="padding:4px 10px;text-align:right">' + (rate ? rate + ' <span style="font-size:9px;color:var(--h-muted2,#7a8a9a)">JPH</span>' : '\u2014') + '</td>';
                 html += '<td style="padding:4px 10px;text-align:right;' + wipStyle + '">' + (cd.wip || 0) + '</td>';
                 html += '<td style="padding:4px 10px;text-align:right;color:' + dColor + ';font-weight:600" title="WIP change over the last ' + arMezzMinutes + ' min">' + dTxt + '</td>';
-                html += '<td style="padding:4px 10px;text-align:right;color:#60a5fa">' + (cd.div || 0) + '</td>';
-                html += '<td style="padding:4px 10px;text-align:right;color:#a78bfa">' + (cd.scans || 0) + '</td>';
+                html += '<td style="padding:4px 10px;text-align:right;color:' + (wipPerAa != null && wipPerAa >= 60 ? '#f87171' : 'var(--h-text,#e8eaf0)') + '" title="WIP divided by associates in the lane">' + (wipPerAa != null ? wipPerAa : (cd.wip > 0 ? '\u221e' : '\u2014')) + '</td>';
                 html += '</tr>';
             });
         }
@@ -13838,12 +13837,83 @@ if (k === 'eta') {
             var wrapEl = targetEl || document.getElementById('hydra-table-wrap');
             if (!wrapEl) return;
             var dragging = null;
+            // lane menu targets: every row with an assignable workstation
+            var _laneTargets = [];
+            wrapEl.querySelectorAll('tr.hydra-ll-row').forEach(function(r) {
+                if (r.dataset.assignws) _laneTargets.push({ label: r.dataset.lanelabel, ws: r.dataset.assignws });
+            });
+            function _llDoAssign(login, ws, laneLabel) {
+                setStatus('Reassigning ' + login + ' \u2192 ' + laneLabel + '...');
+                wattSaveAssignment(login, ws).then(function() {
+                    setStatus('\u2714 ' + login + ' reassigned to ' + laneLabel + ' (RightStation)');
+                    fetchStaffingAssignments().catch(function(){});
+                    fetchArMezzData().then(function() { renderOBArMezzTable(); }).catch(function(){});
+                }).catch(function(err) {
+                    setStatus('\u26a0 Reassign failed for ' + login + ': ' + ((err && err.message) || err));
+                });
+            }
+            function _llPopup(id) {
+                var p = document.getElementById(id);
+                if (!p) {
+                    p = document.createElement('div');
+                    p.id = id;
+                    p.style.cssText = 'position:fixed;z-index:2147483647;background:var(--h-bg3,#1b2330);border:1px solid var(--h-border2,#3a4a5c);border-radius:8px;padding:8px 10px;font-size:11px;box-shadow:0 8px 30px rgba(0,0,0,0.55);display:none';
+                    document.body.appendChild(p);
+                }
+                return p;
+            }
             wrapEl.querySelectorAll('.hydra-ll-aacard').forEach(function(card) {
                 card.addEventListener('dragstart', function(e) {
                     dragging = card.dataset.login;
                     try { e.dataTransfer.setData('text/plain', dragging); } catch (ex) {}
                 });
+                // hover: badge photo + rate + location
+                card.addEventListener('mouseenter', function(e) {
+                    var tip = _llPopup('hydra-ll-aatip');
+                    tip.innerHTML = '<div style="display:flex;gap:10px;align-items:center">'
+                        + '<img src="https://badgephotos.corp.amazon.com/?uid=' + card.dataset.login + '" style="width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--h-bg2,#16202c)" onerror="this.style.display=\'none\'">'
+                        + '<div><div style="font-weight:700;color:' + (card.dataset.scanning === '1' ? '#4ade80' : '#fbbf24') + ';font-size:13px">' + card.dataset.login + '</div>'
+                        + '<div style="color:var(--h-muted,#aab4c0);margin-top:2px">' + card.dataset.rate + ' JPH</div>'
+                        + '<div style="color:var(--h-muted2,#7a8a9a)">' + card.dataset.lane + '</div></div></div>';
+                    tip.style.display = 'block';
+                    var r = card.getBoundingClientRect();
+                    tip.style.left = Math.min(r.left, window.innerWidth - 240) + 'px';
+                    tip.style.top = (r.bottom + 6) + 'px';
+                });
+                card.addEventListener('mouseleave', function() {
+                    var tip = document.getElementById('hydra-ll-aatip');
+                    if (tip) tip.style.display = 'none';
+                });
+                // click: pick a lane to assign to
+                card.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var tip = document.getElementById('hydra-ll-aatip');
+                    if (tip) tip.style.display = 'none';
+                    var menu = _llPopup('hydra-ll-aamenu');
+                    var mh = '<div style="font-weight:700;color:#22d3ee;margin-bottom:6px">' + card.dataset.login + ' \u2192 assign to:</div>';
+                    mh += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;max-height:40vh;overflow-y:auto">';
+                    _laneTargets.forEach(function(t) {
+                        mh += '<div class="hydra-ll-lanepick" data-ws="' + t.ws + '" data-label="' + t.label + '" style="cursor:pointer;text-align:center;padding:4px 8px;border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);font-weight:600">' + t.label + '</div>';
+                    });
+                    mh += '</div>';
+                    menu.innerHTML = mh;
+                    menu.style.display = 'block';
+                    var r = card.getBoundingClientRect();
+                    menu.style.left = Math.min(r.left, window.innerWidth - 300) + 'px';
+                    menu.style.top = (r.bottom + 6) + 'px';
+                    menu.querySelectorAll('.hydra-ll-lanepick').forEach(function(pick) {
+                        pick.addEventListener('click', function(ev) {
+                            ev.stopPropagation();
+                            menu.style.display = 'none';
+                            _llDoAssign(card.dataset.login, pick.dataset.ws, pick.dataset.label);
+                        });
+                    });
+                });
             });
+            document.addEventListener('click', function() {
+                var menu = document.getElementById('hydra-ll-aamenu');
+                if (menu) menu.style.display = 'none';
+            }, { once: true });
             wrapEl.querySelectorAll('tr.hydra-ll-row').forEach(function(row) {
                 if (!row.dataset.assignws) return; // no assignable workstation
                 row.addEventListener('dragover', function(e) { e.preventDefault(); row.style.outline = '2px solid #22d3ee'; });
@@ -13854,15 +13924,7 @@ if (k === 'eta') {
                     var login = dragging || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
                     dragging = null;
                     if (!login) return;
-                    var laneLabel = row.dataset.lanelabel;
-                    setStatus('Reassigning ' + login + ' \u2192 ' + laneLabel + '...');
-                    wattSaveAssignment(login, row.dataset.assignws).then(function() {
-                        setStatus('\u2714 ' + login + ' reassigned to ' + laneLabel + ' (RightStation)');
-                        fetchStaffingAssignments().catch(function(){});
-                        fetchArMezzData().then(function() { renderOBArMezzTable(); }).catch(function(){});
-                    }).catch(function(err) {
-                        setStatus('\u26a0 Reassign failed for ' + login + ': ' + ((err && err.message) || err));
-                    });
+                    _llDoAssign(login, row.dataset.assignws, row.dataset.lanelabel);
                 });
             });
         }, 0);
