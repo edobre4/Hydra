@@ -13075,6 +13075,43 @@ if (k === 'eta') {
         } catch (e) {}
     }
 
+    // RightStation write: reassign an associate to a workstation. Mutation
+    // shape extracted from the WATT UI bundle (same GraphQL endpoint the
+    // reads use): saveStaffingAssignment(nodeId, associateId, workstationId,
+    // processSegmentId, locked) { executionSuccess }
+    function wattSaveAssignment(associateId, workstationId) {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var mutation = 'mutation saveStaffingAssignment($nodeId: String!, $associateId: String!, $workstationId: String, $processSegmentId: String, $locked: Boolean!) {\n  saveStaffingAssignment(nodeId: $nodeId, associateId: $associateId, workstationId: $workstationId, processSegmentId: $processSegmentId, locked: $locked) {\n    executionSuccess\n  }\n}';
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+                onload: function(r1) {
+                    var csrf = (r1.responseText || '').trim();
+                    if (!csrf || r1.status !== 200) { reject(new Error('CSRF failed')); return; }
+                    GM_xmlhttpRequest({
+                        method: 'POST', url: wattBase + '/graphql',
+                        headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                        data: JSON.stringify({ query: mutation, operationName: 'saveStaffingAssignment',
+                            variables: { nodeId: node, associateId: associateId, workstationId: workstationId, processSegmentId: null, locked: false } }),
+                        withCredentials: true,
+                        onload: function(r2) {
+                            try {
+                                var j = JSON.parse(r2.responseText);
+                                if (j.errors && j.errors.length) { reject(new Error(j.errors[0].message || 'GraphQL error')); return; }
+                                var ok = j.data && j.data.saveStaffingAssignment && j.data.saveStaffingAssignment.executionSuccess;
+                                if (ok) resolve(true); else reject(new Error('executionSuccess=false'));
+                            } catch (e) { reject(new Error('parse: ' + e.message)); }
+                        },
+                        onerror: function() { reject(new Error('mutation failed')); }
+                    });
+                },
+                onerror: function() { reject(new Error('CSRF failed')); }
+            });
+        });
+    }
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
@@ -13482,7 +13519,8 @@ if (k === 'eta') {
                 return { login: a.associateId, rate: Math.round(sc * (60 / arMezzMinutes)), scanning: (a.scanCount || 0) > 0 };
             });
             var _newCell = { wip: wip, scanning: scanning, idle: idle, assocCount: assocs.length, scans: chuteScans, chuteId: chuteId, assoc: assocDetail, wsId: ws.workstation.workstationId || null,
-                             div: _cellDiv, wip0: _wip0, roster: _roster };
+                             div: _cellDiv, wip0: _wip0, roster: _roster,
+                             assignWsId: (_amLL && _llWs.test(ws.workstation.workstationAlias || '')) ? (ws.workstation.workstationId || null) : null };
             var _oldCell = grid[lane][chute];
             if (_oldCell) {
                 // Letter-lane mode: the 'Lane - K1' entry (WIP) and the
@@ -13495,6 +13533,7 @@ if (k === 'eta') {
                 _newCell.div += _oldCell.div || 0;
                 _newCell.wip0 += _oldCell.wip0 || 0;
                 _newCell.roster = (_newCell.roster || []).concat(_oldCell.roster || []);
+                _newCell.assignWsId = _newCell.assignWsId || _oldCell.assignWsId || null;
                 if (!_newCell.assoc) _newCell.assoc = _oldCell.assoc;
                 if (!_newCell.wsId) _newCell.wsId = _oldCell.wsId;
             }
@@ -13730,6 +13769,30 @@ if (k === 'eta') {
         // === Letter-lane layout: LINEAR table — one row per lane-chute with
         // the numbers that matter: AAs, WIP + trend, rates, flow. Rows keep
         // data-armezz-* attrs so hover tooltips/popups work unchanged. ===
+        // Associate cards: drag one onto a lane row to reassign via RightStation
+        var _llCards = [];
+        for (var _cl = 1; _cl <= maxLane; _cl++) {
+            if (!grid[_cl]) continue;
+            Object.keys(grid[_cl]).forEach(function(_cc) {
+                var _cell = grid[_cl][_cc];
+                (_cell.roster || []).forEach(function(a) {
+                    _llCards.push({ login: a.login, rate: a.rate, scanning: a.scanning, lane: _amLaneLabel(_cl) + _cc });
+                });
+            });
+        }
+        _llCards.sort(function(a, b) { return a.lane < b.lane ? -1 : (a.lane > b.lane ? 1 : 0); });
+        html += '<div style="margin-bottom:12px">';
+        html += '<div style="font-size:11px;font-weight:700;color:#22d3ee;margin-bottom:5px">Associates \u00b7 ' + _llCards.length + ' <span style="font-weight:400;color:var(--h-muted2,#7a8a9a)">\u2014 drag a card onto a lane row to reassign (RightStation)</span></div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+        _llCards.forEach(function(a) {
+            var col = a.scanning ? '#4ade80' : '#fbbf24';
+            var bd = a.scanning ? '#2e7d32' : '#b45309';
+            html += '<div class="hydra-ll-aacard" draggable="true" data-login="' + a.login + '" style="cursor:grab;background:var(--h-bg2,#16202c);border:1px solid ' + bd + ';border-radius:5px;padding:3px 8px;font-size:10px;white-space:nowrap">'
+                + '<span style="color:' + col + ';font-weight:700">' + a.login + '</span>'
+                + ' <span style="color:var(--h-muted2,#7a8a9a)">' + a.lane + ' \u00b7 ' + a.rate + '</span>'
+                + '</div>';
+        });
+        html += '</div></div>';
         html += '<table style="border-collapse:collapse;font-size:12px;margin-bottom:28px;min-width:520px">';
         html += '<thead><tr>';
         ['Lane', 'AAs', 'Associates', 'Rate', 'WIP', '\u0394 WIP', 'Diverted', 'Processed'].forEach(function(h, hi) {
