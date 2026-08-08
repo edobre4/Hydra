@@ -13473,7 +13473,16 @@ if (k === 'eta') {
                 assocDetail = { login: a0.associateId, scanRate: Math.round(a0Scans * (60 / arMezzMinutes)), scanning: a0.scanCount > 0, inactiveMin: inactiveMin };
             }
             if (_amLL) chuteId = _amLL[lane] + chute; // human key: 'K1'
-            var _newCell = { wip: wip, scanning: scanning, idle: idle, assocCount: assocs.length, scans: chuteScans, chuteId: chuteId, assoc: assocDetail, wsId: ws.workstation.workstationId || null };
+            // extras for the letter-lane linear table: diverted, WIP trend, AA roster
+            var _cellDiv = 0;
+            states.forEach(function(st) { if (st.incomingCount && st.incomingCount.value) _cellDiv += st.incomingCount.value; });
+            var _wip0 = (states[0] && states[0].workInProgressCount && states[0].workInProgressCount.value) || 0;
+            var _roster = assocs.map(function(a) {
+                var sc = globalAssocScans[a.associateId] || 0;
+                return { login: a.associateId, rate: Math.round(sc * (60 / arMezzMinutes)), scanning: (a.scanCount || 0) > 0 };
+            });
+            var _newCell = { wip: wip, scanning: scanning, idle: idle, assocCount: assocs.length, scans: chuteScans, chuteId: chuteId, assoc: assocDetail, wsId: ws.workstation.workstationId || null,
+                             div: _cellDiv, wip0: _wip0, roster: _roster };
             var _oldCell = grid[lane][chute];
             if (_oldCell) {
                 // Letter-lane mode: the 'Lane - K1' entry (WIP) and the
@@ -13483,6 +13492,9 @@ if (k === 'eta') {
                 _newCell.idle = (_newCell.idle || _oldCell.idle) && !_newCell.scanning;
                 _newCell.assocCount += _oldCell.assocCount;
                 _newCell.scans += _oldCell.scans;
+                _newCell.div += _oldCell.div || 0;
+                _newCell.wip0 += _oldCell.wip0 || 0;
+                _newCell.roster = (_newCell.roster || []).concat(_oldCell.roster || []);
                 if (!_newCell.assoc) _newCell.assoc = _oldCell.assoc;
                 if (!_newCell.wsId) _newCell.wsId = _oldCell.wsId;
             }
@@ -13715,27 +13727,50 @@ if (k === 'eta') {
             rLaneWip[rl] = lw; rLaneAA[rl] = la;
         }
         if (_amLL) {
-        // === Letter-lane layout: one column per lane, stacking ONLY the
-        // chutes that exist for that lane (E1-E4, G1+G4, M1, ...) — the
-        // floor isn't a uniform grid, so neither is the view. Cells stay
-        // <td data-armezz-*> so hover tooltips/popups work unchanged. ===
-        html += '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:28px">';
+        // === Letter-lane layout: LINEAR table — one row per lane-chute with
+        // the numbers that matter: AAs, WIP + trend, rates, flow. Rows keep
+        // data-armezz-* attrs so hover tooltips/popups work unchanged. ===
+        html += '<table style="border-collapse:collapse;font-size:12px;margin-bottom:28px;min-width:520px">';
+        html += '<thead><tr>';
+        ['Lane', 'AAs', 'Associates', 'Rate', 'WIP', '\u0394 WIP', 'Diverted', 'Processed'].forEach(function(h, hi) {
+            html += '<th style="padding:4px 10px;font-size:11px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;text-align:' + (hi >= 3 ? 'right' : 'left') + '">' + h + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        var _llRowIdx = 0;
         for (var Ll = 1; Ll <= maxLane; Ll++) {
             if (!grid[Ll]) continue;
             var LcKeys = Object.keys(grid[Ll]).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
-            if (!LcKeys.length) continue;
-            html += '<div style="min-width:64px">';
-            html += '<div style="text-align:center;font-size:13px;font-weight:700;color:#22d3ee;border-bottom:2px solid #22d3ee;padding:2px 4px;margin-bottom:2px">' + _amLaneLabel(Ll) + '</div>';
-            html += '<div style="text-align:center;font-size:9px;color:var(--h-muted,#aab4c0);margin-bottom:4px">WIP ' + (rLaneWip[Ll] || 0) + ' \u00b7 AA ' + (rLaneAA[Ll] || 0) + '</div>';
-            html += '<table style="border-collapse:collapse;font-size:11px;width:100%"><tbody>';
             LcKeys.forEach(function(Lc) {
-                html += '<tr>' + armezzCellTd(Ll, Lc, false, 'border:1px solid var(--h-border,#2a3a4c);min-width:56px;', String(Lc)) + '</tr>';
+                var cd = grid[Ll][Lc];
+                if (!cd) return;
+                var altBg = (_llRowIdx++ % 2 === 0) ? 'var(--h-bg2,#16202c)' : 'var(--h-bg4,#1a2535)';
+                // status color: scanning green, idle orange, unmanned-with-WIP amber text
+                var stBg = '', stTxt = '';
+                if (cd.scanning) { stBg = 'background:#14351c;'; }
+                else if (cd.idle) { stBg = 'background:#3a2a10;'; }
+                var rate = cd.assocCount > 0 ? Math.round(cd.scans * (60 / arMezzMinutes) / cd.assocCount) : 0;
+                var delta = cd.wip - (cd.wip0 || 0);
+                var dTxt = delta > 0 ? '+' + delta : String(delta);
+                var dColor = delta > 0 ? '#f87171' : (delta < 0 ? '#4ade80' : 'var(--h-muted2,#7a8a9a)');
+                var roster = (cd.roster || []).map(function(a) {
+                    var col = a.scanning ? '#4ade80' : '#fbbf24';
+                    return '<span style="color:' + col + '">' + a.login + '</span><span style="color:var(--h-muted2,#7a8a9a);font-size:10px"> ' + a.rate + '</span>';
+                }).join(' \u00b7 ');
+                var wipStyle = cd.wip >= 100 ? 'color:#f87171;font-weight:700' : 'color:var(--h-text,#e8eaf0);font-weight:700';
+                html += '<tr data-armezz-l="' + Ll + '" data-armezz-c="' + Lc + '" style="background:' + altBg + ';' + stBg + 'border-bottom:1px solid rgba(255,255,255,0.04)">';
+                html += '<td style="padding:4px 10px;font-weight:700;color:#22d3ee">' + _amLaneLabel(Ll) + Lc + '</td>';
+                html += '<td style="padding:4px 10px;font-weight:700;color:' + (cd.assocCount ? (cd.scanning ? '#4ade80' : '#fbbf24') : 'var(--h-dim,#4a5a6a)') + '">' + (cd.assocCount || '') + '</td>';
+                html += '<td style="padding:4px 10px;font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (roster || '\u2014') + '</td>';
+                html += '<td style="padding:4px 10px;text-align:right">' + (rate ? rate + ' <span style="font-size:9px;color:var(--h-muted2,#7a8a9a)">JPH</span>' : '\u2014') + '</td>';
+                html += '<td style="padding:4px 10px;text-align:right;' + wipStyle + '">' + (cd.wip || 0) + '</td>';
+                html += '<td style="padding:4px 10px;text-align:right;color:' + dColor + ';font-weight:600" title="WIP change over the last ' + arMezzMinutes + ' min">' + dTxt + '</td>';
+                html += '<td style="padding:4px 10px;text-align:right;color:#60a5fa">' + (cd.div || 0) + '</td>';
+                html += '<td style="padding:4px 10px;text-align:right;color:#a78bfa">' + (cd.scans || 0) + '</td>';
+                html += '</tr>';
             });
-            html += '</tbody></table>';
-            html += '</div>';
         }
-        html += '</div>';
-        } else {
+        html += '</tbody></table>';
+                } else {
         // Lane pair groups (optional): A = lane 1, B = 2/3, C = 4/5 ... matching
         // the AR Field Overview lettering. Vertical separators at group starts.
         var laneGroupStart = {}, laneGroups = [];
