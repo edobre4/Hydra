@@ -1164,6 +1164,7 @@
     var sdtChaseFloorFilter = ''; // text filter, stacked (floor) table
     var sdtChaseStagedFilter = ''; // text filter, staged table
     var sdtChaseRecvFilter = '';  // text filter, received table
+    var sdtChaseRailFilter = '';  // rail filter: vrid / route / door / status
     var _sdtLastFloorCids = [];   // visible floor container ids (Ctrl+A scope)
     var obVridsSelectedOnly = false;  // OB VRIDs: show only selected routes
     var dynSel = {};              // { route: { cptStr: true } } session-scoped working set
@@ -14618,6 +14619,17 @@ if (k === 'eta') {
         for (var i = 0; i < obTableData.sdtchase.length; i++) if (obTableData.sdtchase[i].key === sdtChaseSel) return obTableData.sdtchase[i];
         return null;
     }
+    function _sdtStatusBadge(status, size) {
+        if (!status) return '';
+        var s = status.toUpperCase();
+        var bg = 'var(--h-bg4, #1a2535)', fg = 'var(--h-muted, #aab4c0)', bd = 'var(--h-border2, #3a4a5c)';
+        if (s.indexOf('LOADING IN PROGRESS') !== -1) { bg = '#14351c'; fg = '#4ade80'; bd = '#2e7d32'; }
+        else if (s.indexOf('PAUSED') !== -1) { bg = '#3a2a10'; fg = '#fbbf24'; bd = '#b45309'; }
+        else if (s.indexOf('READY') !== -1) { bg = '#12283a'; fg = '#60a5fa'; bd = '#1d4ed8'; }
+        else if (s.indexOf('FINISHED') !== -1) { bg = '#0f2e2e'; fg = '#2dd4bf'; bd = '#0f766e'; }
+        else if (s.indexOf('DEPART') !== -1 || s.indexOf('COMPLET') !== -1) { bg = 'var(--h-bg3, #1c2836)'; fg = 'var(--h-dim, #4a5a6a)'; }
+        return '<span style="background:' + bg + ';color:' + fg + ';border:1px solid ' + bd + ';font-size:' + (size === 'lg' ? '10px' : '9px') + ';font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap;text-transform:uppercase">' + status + '</span>';
+    }
     function _sdtCountdown(ms) {
         if (!ms) return { txt: '\u2014', color: 'var(--h-muted2, #7a8a9a)' };
         var diff = Math.round((ms - Date.now()) / 60000);
@@ -14769,6 +14781,35 @@ if (k === 'eta') {
             var _selIn = _railList.some(function(c) { return c.key === sdtChaseSel; });
             if (!_selIn) sdtChaseSel = _railList[0].key;
         }
+        // Rail filter box: vrid / route / door / status (sdtChaseRailFilter filter)
+        if (sdtChaseRailFilter) {
+            var _rf = sdtChaseRailFilter.toLowerCase();
+            var _filtered = _railList.filter(function(c) {
+                return (c.vrid || '').toLowerCase().indexOf(_rf) !== -1 ||
+                       (c.route || '').toLowerCase().indexOf(_rf) !== -1 ||
+                       (c.door || '').toLowerCase().indexOf(_rf) !== -1 ||
+                       (c.status || '').toLowerCase().indexOf(_rf) !== -1;
+            });
+            if (_filtered.length) {
+                _railList = _filtered;
+                if (!_railList.some(function(c) { return c.key === sdtChaseSel; })) sdtChaseSel = _railList[0].key;
+            } else {
+                _railList = [];
+            }
+        }
+        if (!_railList.length) {
+            // keep the filter box visible so the user can clear it
+            tableWrap.innerHTML = '<div style="max-width:280px;padding:4px 2px"><input type="text" id="hydra-sdtchase-railfilter" value="' + sdtChaseRailFilter.replace(/"/g, '&quot;') + '" placeholder="filter: vrid / route / door / status" style="width:100%;box-sizing:border-box;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:5px;color:var(--h-text, #e8eaf0);font-size:11px;padding:5px 9px"></div><div id="hydra-empty">No trailers match the rail filter.</div>';
+            var _rfEl0 = document.getElementById('hydra-sdtchase-railfilter');
+            if (_rfEl0) _rfEl0.addEventListener('input', function() {
+                sdtChaseRailFilter = this.value;
+                var pos = this.selectionStart;
+                renderSdtChaseTable(targetEl);
+                var again = document.getElementById('hydra-sdtchase-railfilter');
+                if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (ex) {} }
+            });
+            return;
+        }
         if (!_sdtChaseCombo()) sdtChaseSel = _railList[0].key;
         var sel = _sdtChaseCombo();
         _sdtRecomputeAuto();
@@ -14786,7 +14827,7 @@ if (k === 'eta') {
                 + '</span>'
                 + '<span style="font-size:10px;color:' + cd.color + ';font-weight:700">' + cd.txt + '</span>'
                 + '</div>'
-                + '<div style="font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px">' + (c.vrid || '') + ' \u00b7 SDT ' + (c.sdt || '\u2014') + ' \u00b7 CPT ' + (c.cpt || '\u2014') + '</div>'
+                + '<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--h-muted2, #7a8a9a);margin:2px 0 4px"><span>' + (c.vrid || '') + '</span>' + _sdtStatusBadge(c.status) + '</div>'
                 + '<div style="display:flex;align-items:center;gap:6px;margin:2px 0 4px">'
                 + '<span style="background:var(--h-bg3, #1c2836);border:1px solid #20d4f0;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:800;color:#20d4f0" title="Containers in trailer">' + (c.loadedCtns != null ? c.loadedCtns : '0') + ' ctns</span>'
                 + '<span style="background:var(--h-bg3, #1c2836);border:1px solid #66bb6a;border-radius:4px;padding:1px 7px;font-size:12px;font-weight:800;color:#66bb6a" title="Cube loaded in trailer">' + (c.loadedCube != null ? Math.round(c.loadedCube).toLocaleString() : '0') + ' cu ft</span>'
@@ -14834,8 +14875,8 @@ if (k === 'eta') {
             + '<div><span style="font-size:15px;font-weight:700;color:var(--h-ob-accent, #20d4f0)">' + sel.route + '</span>'
             + (sel.door ? ' <span style="background:#20d4f0;color:#111;font-weight:800;font-size:11px;padding:1px 7px;border-radius:3px" title="Dock door">' + sel.door + '</span>' : '')
             + ' <span class="hydra-copy-id" data-copy="' + sel.vrid + '" title="Click to copy" style="font-size:12px;color:var(--h-muted, #aab4c0)">' + sel.vrid + '</span>'
-            + (sel.status ? ' <span class="badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;background:var(--h-bg4, #1a2535);border:1px solid var(--h-border2, #3a4a5c);color:var(--h-muted, #aab4c0)">' + sel.status.toUpperCase() + '</span>' : '')
-            + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + '</span></div>'
+            + ' ' + _sdtStatusBadge(sel.status, 'lg')
+            + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + ' \u00b7 CPT ' + (sel.cpt || '\u2014') + '</span></div>'
             + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
             + '<span title="Used only for trailers with no loaded-cube data yet. Trailers with data derive their target from the OB fill logic.">Empty trailer target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft</span>'
             + '</div></div>';
@@ -14956,7 +14997,10 @@ if (k === 'eta') {
         mHtml += '</div>'; // end global merge card
 
         tableWrap.innerHTML = '<div style="display:flex;gap:14px;align-items:flex-start">'
-            + '<div style="min-width:240px;max-width:270px;max-height:75vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
+            + '<div style="min-width:240px;max-width:270px">'
+            + '<input type="text" id="hydra-sdtchase-railfilter" value="' + sdtChaseRailFilter.replace(/"/g, '&quot;') + '" placeholder="filter: vrid / route / door / status" style="width:100%;box-sizing:border-box;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:5px;color:var(--h-text, #e8eaf0);font-size:11px;padding:5px 9px;margin-bottom:6px">'
+            + '<div style="max-height:72vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
+            + '</div>'
             + '<div style="flex:1;min-width:0">' + pHtml + '</div>'
             + '<div style="min-width:210px;max-width:250px;max-height:75vh;overflow-y:auto">' + mHtml + '</div>'
             + '</div>';
@@ -14968,7 +15012,8 @@ if (k === 'eta') {
         // Filter boxes: re-render on input, restore focus + caret
         [['hydra-sdtchase-ffilter', function(v) { sdtChaseFloorFilter = v; }],
          ['hydra-sdtchase-sfilter', function(v) { sdtChaseStagedFilter = v; }],
-         ['hydra-sdtchase-rfilter', function(v) { sdtChaseRecvFilter = v; }]].forEach(function(cfg) {
+         ['hydra-sdtchase-rfilter', function(v) { sdtChaseRecvFilter = v; }],
+         ['hydra-sdtchase-railfilter', function(v) { sdtChaseRailFilter = v; }]].forEach(function(cfg) {
             var el = document.getElementById(cfg[0]);
             if (el) el.addEventListener('input', function() {
                 cfg[1](this.value);
