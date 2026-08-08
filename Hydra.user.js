@@ -9678,6 +9678,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         cptMs: c.cpt || null,
                         stage: stage,
                         staged: stage === 'staged',
+                        sf: c.stackingFilter || '',
                         state: c.isClosed ? 'CLOSED' : 'OPEN',
                         _dest: (c.route && c.route.indexOf('->') !== -1) ? c.route.split('->')[1].trim() : (c.route || '')
                     };
@@ -14580,14 +14581,19 @@ if (k === 'eta') {
     // Merge suggestions: closed containers paired so combined utilization
     // stays <= 95%. Greedy fullest-first with the largest partner that fits;
     // "move the emptier into the fuller" is the suggested action.
-    function _sdtMergePairs(containers) {
-        var cands = containers.filter(function(c) { return c.state === 'CLOSED' && c.pctFull != null && c.id && c.pkgs > 0; });
+    function _sdtMergePairs(containers, requireSf) {
+        var cands = containers.filter(function(c) {
+            if (!(c.state === 'CLOSED' && c.pctFull != null && c.id && c.pkgs > 0)) return false;
+            if (requireSf && !c.sf) return false; // can't verify the delivery station
+            return true;
+        });
         cands.sort(function(a, b) { return b.pctFull - a.pctFull; });
         var used = {}, pairs = [];
         for (var i = 0; i < cands.length; i++) {
             if (used[cands[i].id]) continue;
             for (var j = i + 1; j < cands.length; j++) {
                 if (used[cands[j].id]) continue;
+                if (requireSf && cands[i].sf !== cands[j].sf) continue;
                 if (cands[i].pctFull + cands[j].pctFull <= 95) {
                     used[cands[i].id] = true; used[cands[j].id] = true;
                     pairs.push({ into: cands[i], from: cands[j], sum: cands[i].pctFull + cands[j].pctFull });
@@ -14684,10 +14690,11 @@ if (k === 'eta') {
         var received = _tblFilter(receivedAll, sdtChaseRecvFilter);
         _sdtLastFloorCids = floor.map(function(c) { return c.id; });
 
-        // Crossdock (CART routes): containers can only merge when they share a
-        // delivery station, which our data can't determine — block suggestions.
+        // Crossdock (CART routes): containers only merge when they share a
+        // delivery station — the stacking filter encodes it, so require an
+        // exact stacking-filter match for CART routes.
         var _isCartXd = /CART/i.test(sel.route || '');
-        var mergePairs = _isCartXd ? [] : _sdtMergePairs(sel.containers);
+        var mergePairs = _sdtMergePairs(sel.containers, _isCartXd);
         var mergeIds = {};
         mergePairs.forEach(function(p) { mergeIds[p.into.id] = true; mergeIds[p.from.id] = true; });
 
@@ -14773,13 +14780,15 @@ if (k === 'eta') {
         // ── Merge panel (right) ──
         var mHtml = _sdtCard.replace('margin-bottom:12px', 'margin-bottom:0'); // merge card
         mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Merge suggestions</div>';
-        if (_isCartXd) {
-            mHtml += '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">CART crossdock route \u2014 merges disabled (containers can only merge with the same delivery station).</div>';
-        } else if (!mergePairs.length) {
-            mHtml += '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No closed containers can be merged under 95%.</div>';
+        if (!mergePairs.length) {
+            mHtml += _isCartXd
+                ? '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">Crossdock route: no same-station pairs under 95% (CART merges require matching delivery stations).</div>'
+                : '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No closed containers can be merged under 95%.</div>';
         } else {
+            function _sfShort(sf) { return String(sf || '').replace(/-?PARENT$/i, '').replace(/^[A-Z0-9]+->/, ''); }
             mergePairs.forEach(function(p) {
                 mHtml += '<div style="border:1px solid var(--h-border2, #3a4a5c);border-radius:6px;padding:7px 9px;margin-bottom:6px;font-size:11px">'
+                    + (_isCartXd && p.into.sf ? '<div style="color:#20d4f0;font-weight:700;font-size:10px;margin-bottom:2px" title="Delivery station (stacking filter match)">' + _sfShort(p.into.sf) + '</div>' : '')
                     + '<div><span class="hydra-copy-id" data-copy="' + p.from.id + '" title="Click to copy" style="font-weight:700">' + p.from.id + '</span> <span style="color:var(--h-muted2, #7a8a9a)">(' + Math.round(p.from.pctFull) + '% @ ' + (p.from.location || '?') + ')</span></div>'
                     + '<div style="color:#f9a825;margin:2px 0">\u2193 merge into</div>'
                     + '<div><span class="hydra-copy-id" data-copy="' + p.into.id + '" title="Click to copy" style="font-weight:700">' + p.into.id + '</span> <span style="color:var(--h-muted2, #7a8a9a)">(' + Math.round(p.into.pctFull) + '% @ ' + (p.into.location || '?') + ')</span></div>'
