@@ -14294,6 +14294,20 @@ if (k === 'eta') {
             for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:3px 2px;font-size:10px;min-width:30px;color:#22d3ee;font-weight:600;border-bottom:2px solid #22d3ee;text-align:center;' + (rl === maxLane ? R_LAST : '') + '">' + _amLaneLabel(rl) + '</th>';
         }
         html += '</tr>';
+        // Per-GROUP stats row: WIP / AA / WIP-per-AA for each lane section
+        // (lane 1, lanes 2-3, lanes 4-5, ...) spanning its lanes.
+        html += '<tr><th style="text-align:left;padding:2px 8px;font-size:9px;color:var(--h-muted2,#7a8a9a);font-weight:600;border-left:2px solid var(--h-border2,#3a4a5c)">GROUP</th>';
+        laneGroups.forEach(function(g) {
+            var gWip = 0, gAA = 0;
+            for (var gi = g.start; gi < g.start + g.size; gi++) { gWip += rLaneWip[gi] || 0; gAA += rLaneAA[gi] || 0; }
+            var gPer = gAA > 0 ? Math.round(gWip / gAA) : null;
+            html += '<th colspan="' + g.size + '" style="padding:2px 3px;font-size:9px;font-weight:600;text-align:center;white-space:nowrap;' + rSep(g.start) + ((g.start + g.size - 1) === maxLane ? R_LAST : '') + '" title="Lanes ' + g.start + (g.size > 1 ? '-' + (g.start + g.size - 1) : '') + '">'
+                + '<span style="color:#fbbf24">' + gWip + '</span>'
+                + ' <span style="color:#4ade80">' + gAA + 'aa</span>'
+                + ' <span style="color:' + (gPer != null && gPer >= 60 ? '#f87171' : 'var(--h-muted,#aab4c0)') + '">' + (gPer != null ? gPer + '/aa' : (gWip > 0 ? '\u221e' : '\u2014')) + '</span>'
+                + '</th>';
+        });
+        html += '</tr>';
         // Per-lane WIP / AA summary rows (always per lane, even when grouped)
         html += '<tr><th style="text-align:left;padding:2px 8px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;border-left:2px solid var(--h-border2,#3a4a5c)">WIP</th>';
         for (var rl = 1; rl <= maxLane; rl++) html += '<th style="padding:2px;font-size:10px;color:var(--h-muted,#aab4c0);font-weight:600;text-align:center;' + rSep(rl) + (rl === maxLane ? R_LAST : '') + '">' + (rLaneWip[rl] || '') + '</th>';
