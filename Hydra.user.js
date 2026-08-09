@@ -14319,7 +14319,7 @@ if (k === 'eta') {
             function(w, a) { var p = a > 0 ? w / a : (w > 0 ? 9999 : 0); return p >= 60 ? '#f87171' : 'var(--h-muted,#aab4c0)'; }
         );
         html += '</tr>';
-        html += '</tr></thead><tbody>';
+        html += '</thead><tbody>';
         for (var rc = 1; rc <= maxChute; rc++) {
             html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">';
             html += '<td style="padding:3px 8px;font-weight:600;white-space:nowrap;color:var(--h-text,#e8eaf0);border-left:2px solid var(--h-border2,#3a4a5c)">CH' + rc + '</td>';
