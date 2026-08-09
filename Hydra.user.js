@@ -57,9 +57,34 @@
                 }
             } catch(e) {}
         }
+        // Discover the real Cognito hosted-UI domain by scanning the app's JS
+        // bundles (same-origin fetch works here; CFS cookie is present). The
+        // Amplify config embeds it as <prefix>.auth.<region>.amazoncognito.com
+        function scanQbccCognitoDomain() {
+            if (GM_getValue('qbcc_cognito_domain', '')) return; // already known
+            try {
+                var scripts = Array.prototype.slice.call(document.querySelectorAll('script[src]'))
+                    .map(function(s) { return s.src; })
+                    .filter(function(src) { return src.indexOf(window.location.hostname) !== -1 || src.indexOf('/') === 0; });
+                var re = /[a-z0-9][a-z0-9-]*\.auth\.[a-z0-9-]+\.amazoncognito\.com/;
+                var remaining = scripts.length;
+                if (!remaining) return;
+                scripts.forEach(function(src) {
+                    fetch(src).then(function(r) { return r.text(); }).then(function(body) {
+                        var m = body.match(re);
+                        if (m && !GM_getValue('qbcc_cognito_domain', '')) {
+                            GM_setValue('qbcc_cognito_domain', m[0]);
+                            console.log('[Hydra QBCC] Discovered Cognito domain: ' + m[0]);
+                        }
+                    }).catch(function() {});
+                });
+            } catch(e) {}
+        }
         // Sync on load and every 30 minutes
         syncQbccToken();
         setInterval(syncQbccToken, 30 * 60 * 1000);
+        // Bundles load async — scan for the Cognito domain after the app settles
+        setTimeout(scanQbccCognitoDomain, 5000);
         return; // Don't load rest of Hydra
     }
 
@@ -13302,7 +13327,11 @@ if (k === 'eta') {
         if (!clientId) {
             return Promise.reject(new Error('QBCC: client id unknown — open Command Center once so Hydra can learn it'));
         }
-        var cognitoDomain = 'https://qbcc-prod.auth.us-east-1.amazoncognito.com';
+        var discoveredDomain = GM_getValue('qbcc_cognito_domain', '');
+        if (!discoveredDomain) {
+            return Promise.reject(new Error('QBCC: Cognito domain unknown — open Command Center once so Hydra can learn it'));
+        }
+        var cognitoDomain = 'https://' + discoveredDomain;
         var redirectUri = 'https://na.prod.command-center.robotics.amazon.dev/';
         var verifierBytes = new Uint8Array(32);
         crypto.getRandomValues(verifierBytes);
@@ -13322,13 +13351,18 @@ if (k === 'eta') {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url: authUrl,
+                    timeout: 30000,
                     onload: function(r) {
                         var finalUrl = r.finalUrl || '';
                         var m = finalUrl.match(/[?&]code=([^&]+)/);
                         if (m) { resolve(m[1]); return; }
-                        reject(new Error('QBCC silent auth: no auth code (landed on ' + finalUrl.substring(0, 120) + ') — Midway session may be expired'));
+                        reject(new Error('QBCC silent auth: no auth code (status ' + r.status + ', landed on ' + finalUrl.substring(0, 150) + ') — Midway session may be expired'));
                     },
-                    onerror: function() { reject(new Error('QBCC silent auth: authorize request failed')); }
+                    ontimeout: function() { reject(new Error('QBCC silent auth: authorize timed out')); },
+                    onerror: function(r) {
+                        var detail = r ? (r.error || ('status ' + r.status + ' final ' + (r.finalUrl || 'n/a'))) : 'no detail';
+                        reject(new Error('QBCC silent auth: authorize failed (' + detail + ') url=' + authUrl.substring(0, 100)));
+                    }
                 });
             });
         }).then(function(code) {
@@ -13337,6 +13371,7 @@ if (k === 'eta') {
                     method: 'POST',
                     url: cognitoDomain + '/oauth2/token',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    timeout: 30000,
                     data: 'grant_type=authorization_code'
                         + '&client_id=' + encodeURIComponent(clientId)
                         + '&code=' + encodeURIComponent(code)
@@ -13358,7 +13393,11 @@ if (k === 'eta') {
                             resolve({ token: j.id_token, exp: exp });
                         } catch(e) { reject(new Error('QBCC token exchange parse: ' + e.message)); }
                     },
-                    onerror: function() { reject(new Error('QBCC token exchange: network error')); }
+                    ontimeout: function() { reject(new Error('QBCC token exchange: timed out')); },
+                    onerror: function(r) {
+                        var detail = r ? (r.error || ('status ' + r.status)) : 'no detail';
+                        reject(new Error('QBCC token exchange: network error (' + detail + ')'));
+                    }
                 });
             });
         });
