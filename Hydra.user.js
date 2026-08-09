@@ -13268,7 +13268,8 @@ if (k === 'eta') {
 
     var qbccToken = null;
     var qbccTokenExp = 0;
-    // Expose helper for user to set token from browser console
+    var qbccTokenFetchInProgress = null; // singleton promise to avoid multiple iframe spawns
+
     function getQbccToken() {
         if (qbccToken && Date.now() < qbccTokenExp) return Promise.resolve(qbccToken);
         var stored = GM_getValue('qbcc_token', '');
@@ -13277,7 +13278,42 @@ if (k === 'eta') {
             qbccToken = stored; qbccTokenExp = storedExp;
             return Promise.resolve(qbccToken);
         }
-        return Promise.reject(new Error('QBCC: open Command Center in another tab to authenticate'));
+        // Auto-fetch: open hidden iframe to QBCC Command Center.
+        // The userscript @match injects into the iframe, runs syncQbccToken(),
+        // and writes the token via GM_setValue. We poll GM_getValue until it appears.
+        if (!qbccTokenFetchInProgress) {
+            qbccTokenFetchInProgress = new Promise(function(resolve, reject) {
+                console.log('[Hydra QBCC] Token missing — spawning silent auth iframe...');
+                var iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-9999;';
+                iframe.src = 'https://na.prod.command-center.robotics.amazon.dev/';
+                document.body.appendChild(iframe);
+
+                var attempts = 0;
+                var maxAttempts = 40; // 40 * 500ms = 20 seconds max wait
+                var pollInterval = setInterval(function() {
+                    attempts++;
+                    var tk = GM_getValue('qbcc_token', '');
+                    var tkExp = GM_getValue('qbcc_token_exp', 0);
+                    if (tk && tk.length > 500 && Date.now() < tkExp) {
+                        clearInterval(pollInterval);
+                        qbccToken = tk;
+                        qbccTokenExp = tkExp;
+                        // Cleanup iframe
+                        try { document.body.removeChild(iframe); } catch(e) {}
+                        qbccTokenFetchInProgress = null;
+                        console.log('[Hydra QBCC] Token acquired silently via iframe');
+                        resolve(qbccToken);
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(pollInterval);
+                        try { document.body.removeChild(iframe); } catch(e) {}
+                        qbccTokenFetchInProgress = null;
+                        reject(new Error('QBCC: silent auth timed out after 20s — Midway session may be expired'));
+                    }
+                }, 500);
+            });
+        }
+        return qbccTokenFetchInProgress;
     }
 
     function fetchArMezzData() {
