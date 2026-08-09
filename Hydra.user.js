@@ -45,6 +45,12 @@
                         if (tk && tk.length > 500 && tk.indexOf('eyJ') === 0) {
                             GM_setValue('qbcc_token', tk);
                             GM_setValue('qbcc_token_exp', Date.now() + 3500000);
+                            // Capture Cognito app client id for silent OAuth refresh.
+                            // Key format: CognitoIdentityServiceProvider.<clientId>.<user>.idToken
+                            var parts = keys[i].split('.');
+                            if (parts[0] === 'CognitoIdentityServiceProvider' && parts.length >= 4) {
+                                GM_setValue('qbcc_client_id', parts[1]);
+                            }
                             return;
                         }
                     }
@@ -13268,7 +13274,85 @@ if (k === 'eta') {
 
     var qbccToken = null;
     var qbccTokenExp = 0;
-    var qbccTokenFetchInProgress = null; // singleton promise to avoid multiple iframe spawns
+    var qbccTokenFetchInProgress = null; // singleton promise to avoid parallel OAuth flows
+
+    function qbccB64Url(buf) {
+        var bin = '';
+        var bytes = new Uint8Array(buf);
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    // Silent OAuth (authorization code + PKCE) against QBCC's Cognito pool.
+    // GM_xmlhttpRequest follows the redirect chain Cognito -> Federate -> Midway
+    // -> back, carrying the browser's Midway session cookie. No iframe/tab needed
+    // (Midway blocks framing, so an iframe can never complete this chain).
+    function fetchQbccTokenSilently() {
+        var clientId = GM_getValue('qbcc_client_id', '');
+        if (!clientId) {
+            return Promise.reject(new Error('QBCC: client id unknown — open Command Center once so Hydra can learn it'));
+        }
+        var cognitoDomain = 'https://qbcc-prod.auth.us-east-1.amazoncognito.com';
+        var redirectUri = 'https://na.prod.command-center.robotics.amazon.dev/';
+        var verifierBytes = new Uint8Array(32);
+        crypto.getRandomValues(verifierBytes);
+        var verifier = qbccB64Url(verifierBytes.buffer);
+
+        return crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(function(hash) {
+            var challenge = qbccB64Url(hash);
+            var authUrl = cognitoDomain + '/oauth2/authorize'
+                + '?response_type=code'
+                + '&client_id=' + encodeURIComponent(clientId)
+                + '&redirect_uri=' + encodeURIComponent(redirectUri)
+                + '&scope=' + encodeURIComponent('openid email profile')
+                + '&code_challenge_method=S256'
+                + '&code_challenge=' + challenge
+                + '&state=hydra' + Date.now();
+            return new Promise(function(resolve, reject) {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: authUrl,
+                    onload: function(r) {
+                        var finalUrl = r.finalUrl || '';
+                        var m = finalUrl.match(/[?&]code=([^&]+)/);
+                        if (m) { resolve(m[1]); return; }
+                        reject(new Error('QBCC silent auth: no auth code (landed on ' + finalUrl.substring(0, 120) + ') — Midway session may be expired'));
+                    },
+                    onerror: function() { reject(new Error('QBCC silent auth: authorize request failed')); }
+                });
+            });
+        }).then(function(code) {
+            return new Promise(function(resolve, reject) {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: cognitoDomain + '/oauth2/token',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: 'grant_type=authorization_code'
+                        + '&client_id=' + encodeURIComponent(clientId)
+                        + '&code=' + encodeURIComponent(code)
+                        + '&redirect_uri=' + encodeURIComponent(redirectUri)
+                        + '&code_verifier=' + verifier,
+                    onload: function(r) {
+                        try {
+                            var j = JSON.parse(r.responseText);
+                            if (!j.id_token) { reject(new Error('QBCC token exchange: ' + (j.error || r.responseText.substring(0, 200)))); return; }
+                            // Derive expiry from the JWT itself, minus a 5 min buffer
+                            var exp = Date.now() + 3300000;
+                            try {
+                                var payload = JSON.parse(atob(j.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+                                if (payload.exp) exp = payload.exp * 1000 - 300000;
+                            } catch(e) {}
+                            GM_setValue('qbcc_token', j.id_token);
+                            GM_setValue('qbcc_token_exp', exp);
+                            console.log('[Hydra QBCC] Token acquired via silent OAuth, valid until ' + new Date(exp).toLocaleTimeString());
+                            resolve({ token: j.id_token, exp: exp });
+                        } catch(e) { reject(new Error('QBCC token exchange parse: ' + e.message)); }
+                    },
+                    onerror: function() { reject(new Error('QBCC token exchange: network error')); }
+                });
+            });
+        });
+    }
 
     function getQbccToken() {
         if (qbccToken && Date.now() < qbccTokenExp) return Promise.resolve(qbccToken);
@@ -13278,39 +13362,15 @@ if (k === 'eta') {
             qbccToken = stored; qbccTokenExp = storedExp;
             return Promise.resolve(qbccToken);
         }
-        // Auto-fetch: open hidden iframe to QBCC Command Center.
-        // The userscript @match injects into the iframe, runs syncQbccToken(),
-        // and writes the token via GM_setValue. We poll GM_getValue until it appears.
         if (!qbccTokenFetchInProgress) {
-            qbccTokenFetchInProgress = new Promise(function(resolve, reject) {
-                console.log('[Hydra QBCC] Token missing — spawning silent auth iframe...');
-                var iframe = document.createElement('iframe');
-                iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-9999;';
-                iframe.src = 'https://na.prod.command-center.robotics.amazon.dev/';
-                document.body.appendChild(iframe);
-
-                var attempts = 0;
-                var maxAttempts = 40; // 40 * 500ms = 20 seconds max wait
-                var pollInterval = setInterval(function() {
-                    attempts++;
-                    var tk = GM_getValue('qbcc_token', '');
-                    var tkExp = GM_getValue('qbcc_token_exp', 0);
-                    if (tk && tk.length > 500 && Date.now() < tkExp) {
-                        clearInterval(pollInterval);
-                        qbccToken = tk;
-                        qbccTokenExp = tkExp;
-                        // Cleanup iframe
-                        try { document.body.removeChild(iframe); } catch(e) {}
-                        qbccTokenFetchInProgress = null;
-                        console.log('[Hydra QBCC] Token acquired silently via iframe');
-                        resolve(qbccToken);
-                    } else if (attempts >= maxAttempts) {
-                        clearInterval(pollInterval);
-                        try { document.body.removeChild(iframe); } catch(e) {}
-                        qbccTokenFetchInProgress = null;
-                        reject(new Error('QBCC: silent auth timed out after 20s — Midway session may be expired'));
-                    }
-                }, 500);
+            qbccTokenFetchInProgress = fetchQbccTokenSilently().then(function(res) {
+                qbccToken = res.token;
+                qbccTokenExp = res.exp;
+                qbccTokenFetchInProgress = null;
+                return qbccToken;
+            }).catch(function(e) {
+                qbccTokenFetchInProgress = null;
+                throw e;
             });
         }
         return qbccTokenFetchInProgress;
