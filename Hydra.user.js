@@ -13188,7 +13188,7 @@ if (k === 'eta') {
         });
     }
 
-    function fetchQbccChuteInfo() {
+    function fetchQbccChuteInfo(isRetry) {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         var ksk = { customer: 'AMZN', warehouse: node.toUpperCase(), zone: 'scKivaA02' };
         var endpoint = 'https://vh4qdrfwc5awhjsbjqlfeuqwv4.appsync-api.us-east-1.amazonaws.com/graphql';
@@ -13208,6 +13208,16 @@ if (k === 'eta') {
                 xhr.onload = function() {
                     try {
                         var j = JSON.parse(xhr.responseText);
+                        // Expired/invalid token: invalidate and retry once with a fresh one
+                        if (j.errors && j.errors.some(function(er) { return er.errorType === 'UnauthorizedException'; })) {
+                            if (!isRetry) {
+                                console.log('[Hydra QBCC] Token rejected by API — refreshing and retrying');
+                                invalidateQbccToken();
+                                resolve(fetchQbccChuteInfo(true));
+                                return;
+                            }
+                            throw new Error('QBCC: unauthorized even after token refresh');
+                        }
                         if (!j.data || !j.data.queryChuteInfo) throw new Error('QBCC: no data - ' + xhr.responseText.substring(0, 300));
                         var inner = JSON.parse(j.data.queryChuteInfo.jsonString);
                         qbccChuteData = inner.chuteInfos;
@@ -13354,12 +13364,20 @@ if (k === 'eta') {
         });
     }
 
+    // Read the real expiry (ms epoch) from the JWT's exp claim; 0 if unparseable.
+    function qbccJwtExp(token) {
+        try {
+            var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            return payload.exp ? payload.exp * 1000 : 0;
+        } catch(e) { return 0; }
+    }
+
     function getQbccToken() {
-        if (qbccToken && Date.now() < qbccTokenExp) return Promise.resolve(qbccToken);
+        var buffer = 60000; // treat tokens expiring within 60s as expired
+        if (qbccToken && qbccJwtExp(qbccToken) - buffer > Date.now()) return Promise.resolve(qbccToken);
         var stored = GM_getValue('qbcc_token', '');
-        var storedExp = GM_getValue('qbcc_token_exp', 0);
-        if (stored && stored.length > 500 && Date.now() < storedExp) {
-            qbccToken = stored; qbccTokenExp = storedExp;
+        if (stored && stored.length > 500 && qbccJwtExp(stored) - buffer > Date.now()) {
+            qbccToken = stored; qbccTokenExp = qbccJwtExp(stored);
             return Promise.resolve(qbccToken);
         }
         if (!qbccTokenFetchInProgress) {
@@ -13374,6 +13392,15 @@ if (k === 'eta') {
             });
         }
         return qbccTokenFetchInProgress;
+    }
+
+    // Drop all cached QBCC tokens (memory + GM storage) so the next
+    // getQbccToken() call is forced through the silent OAuth flow.
+    function invalidateQbccToken() {
+        qbccToken = null;
+        qbccTokenExp = 0;
+        GM_setValue('qbcc_token', '');
+        GM_setValue('qbcc_token_exp', 0);
     }
 
     function fetchArMezzData() {
