@@ -12161,6 +12161,25 @@ if (k === 'eta') {
                 if (k === 'ilp') {
                     return '<td>' + (r.ilp != null ? r.ilp : '\u2014') + '</td>';
                 }
+                if (k === 'dwell') {
+                    // Door dwell = time since the trailer was put on its current
+                    // dock door (from YMS yard state). Blank if not on a door or
+                    // YMS hasn't been pulled yet.
+                    if (!r.doorSinceMs || r.doorSinceMs > Date.now()) return '<td>—</td>';
+                    var dwMin = Math.round((Date.now() - r.doorSinceMs) / 60000);
+                    var dwTxt = dwMin >= 60 ? Math.floor(dwMin / 60) + 'h ' + (dwMin % 60) + 'm' : dwMin + 'm';
+                    var dwColor = dwMin > 240 ? '#ff4444' : dwMin > 120 ? '#ff9800' : '#4caf50';
+                    return '<td style="color:' + dwColor + ';font-weight:600" title="On door since ' + msToLocal(r.doorSinceMs) + '">' + dwTxt + '</td>';
+                }
+                if (k === 'yardDwell') {
+                    // Yard dwell = time since yard check-in (from YMS). Blank if
+                    // the trailer isn't in the yard state yet.
+                    if (!r.yardSinceMs || r.yardSinceMs > Date.now()) return '<td>—</td>';
+                    var ydMin = Math.round((Date.now() - r.yardSinceMs) / 60000);
+                    var ydTxt = ydMin >= 60 ? Math.floor(ydMin / 60) + 'h ' + (ydMin % 60) + 'm' : ydMin + 'm';
+                    var ydColor = ydMin > 480 ? '#ff4444' : ydMin > 240 ? '#ff9800' : '#4caf50';
+                    return '<td style="color:' + ydColor + ';font-weight:600" title="In yard since ' + msToLocal(r.yardSinceMs) + '">' + ydTxt + '</td>';
+                }
                 if (k === 'location') {
                     // Completed trailers: click ⟳ to pull that trailer's YMS
                     // events and show the door it was on at completion.
