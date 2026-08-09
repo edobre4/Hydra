@@ -24,7 +24,8 @@
 // @connect      pflixviz.huron.ats.amazon.dev
 // @connect      na.prod.wattwebsite.sorttech.amazon.dev
 // @connect      vh4qdrfwc5awhjsbjqlfeuqwv4.appsync-api.us-east-1.amazonaws.com
-// @connect      qbcc-prod.auth.us-east-1.amazoncognito.com
+// @connect      gss-command-center-prod-na-federate.auth.us-east-1.amazoncognito.com
+// @connect      idp.federate.amazon.com
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
 // @connect      axzile.corp.amazon.com
@@ -57,34 +58,9 @@
                 }
             } catch(e) {}
         }
-        // Discover the real Cognito hosted-UI domain by scanning the app's JS
-        // bundles (same-origin fetch works here; CFS cookie is present). The
-        // Amplify config embeds it as <prefix>.auth.<region>.amazoncognito.com
-        function scanQbccCognitoDomain() {
-            if (GM_getValue('qbcc_cognito_domain', '')) return; // already known
-            try {
-                var scripts = Array.prototype.slice.call(document.querySelectorAll('script[src]'))
-                    .map(function(s) { return s.src; })
-                    .filter(function(src) { return src.indexOf(window.location.hostname) !== -1 || src.indexOf('/') === 0; });
-                var re = /[a-z0-9][a-z0-9-]*\.auth\.[a-z0-9-]+\.amazoncognito\.com/;
-                var remaining = scripts.length;
-                if (!remaining) return;
-                scripts.forEach(function(src) {
-                    fetch(src).then(function(r) { return r.text(); }).then(function(body) {
-                        var m = body.match(re);
-                        if (m && !GM_getValue('qbcc_cognito_domain', '')) {
-                            GM_setValue('qbcc_cognito_domain', m[0]);
-                            console.log('[Hydra QBCC] Discovered Cognito domain: ' + m[0]);
-                        }
-                    }).catch(function() {});
-                });
-            } catch(e) {}
-        }
         // Sync on load and every 30 minutes
         syncQbccToken();
         setInterval(syncQbccToken, 30 * 60 * 1000);
-        // Bundles load async — scan for the Cognito domain after the app settles
-        setTimeout(scanQbccCognitoDomain, 5000);
         return; // Don't load rest of Hydra
     }
 
@@ -13322,15 +13298,16 @@ if (k === 'eta') {
     // GM_xmlhttpRequest follows the redirect chain Cognito -> Federate -> Midway
     // -> back, carrying the browser's Midway session cookie. No iframe/tab needed
     // (Midway blocks framing, so an iframe can never complete this chain).
+    // App-level constants for QBCC's Cognito user pool (Prod-NA). These are
+    // public identifiers (not secrets) sourced from GSSCommandCenterCDK:
+    // domain  = gss-command-center-<stage>-federate.auth.<region>.amazoncognito.com
+    // clientId = the public app client (generateSecret: false)
+    var QBCC_DEFAULT_CLIENT_ID = '3i2fvoo3s4lv4tn9bkleim9ug3';
+    var QBCC_DEFAULT_COGNITO_DOMAIN = 'gss-command-center-prod-na-federate.auth.us-east-1.amazoncognito.com';
+
     function fetchQbccTokenSilently() {
-        var clientId = GM_getValue('qbcc_client_id', '');
-        if (!clientId) {
-            return Promise.reject(new Error('QBCC: client id unknown — open Command Center once so Hydra can learn it'));
-        }
-        var discoveredDomain = GM_getValue('qbcc_cognito_domain', '');
-        if (!discoveredDomain) {
-            return Promise.reject(new Error('QBCC: Cognito domain unknown — open Command Center once so Hydra can learn it'));
-        }
+        var clientId = GM_getValue('qbcc_client_id', '') || QBCC_DEFAULT_CLIENT_ID;
+        var discoveredDomain = GM_getValue('qbcc_cognito_domain', '') || QBCC_DEFAULT_COGNITO_DOMAIN;
         var cognitoDomain = 'https://' + discoveredDomain;
         var redirectUri = 'https://na.prod.command-center.robotics.amazon.dev/';
         var verifierBytes = new Uint8Array(32);

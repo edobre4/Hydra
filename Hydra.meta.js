@@ -24,7 +24,8 @@
 // @connect      pflixviz.huron.ats.amazon.dev
 // @connect      na.prod.wattwebsite.sorttech.amazon.dev
 // @connect      vh4qdrfwc5awhjsbjqlfeuqwv4.appsync-api.us-east-1.amazonaws.com
-// @connect      qbcc-prod.auth.us-east-1.amazoncognito.com
+// @connect      gss-command-center-prod-na-federate.auth.us-east-1.amazoncognito.com
+// @connect      idp.federate.amazon.com
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
 // @connect      *
