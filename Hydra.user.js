@@ -14266,17 +14266,17 @@ if (k === 'eta') {
         // the AR Field Overview lettering. Vertical separators at group starts.
         var laneGroupStart = {}, laneGroups = [];
         var _amPairedEff = arMezzPaired && !_amLL; // letters ARE the grouping
-        if (_amPairedEff) {
-            var _gl = 1;
-            while (_gl <= maxLane) {
-                var _gsize = (_gl === 1) ? 1 : Math.min(2, maxLane - _gl + 1);
-                laneGroups.push({ letter: String.fromCharCode(65 + laneGroups.length), start: _gl, size: _gsize });
-                laneGroupStart[_gl] = true;
-                _gl += _gsize;
-            }
+        // Group boundaries are always computed so the vertical separators show
+        // at the same lanes whether or not the A/B/C headers are enabled.
+        var _gl = 1;
+        while (_gl <= maxLane) {
+            var _gsize = (_gl === 1) ? 1 : Math.min(2, maxLane - _gl + 1);
+            laneGroups.push({ letter: String.fromCharCode(65 + laneGroups.length), start: _gl, size: _gsize });
+            laneGroupStart[_gl] = true;
+            _gl += _gsize;
         }
         var R_SEP = 'border-left:2px solid var(--h-border2,#3a4a5c);';
-        function rSep(l) { return (_amPairedEff && laneGroupStart[l]) ? R_SEP : ''; }
+        function rSep(l) { return laneGroupStart[l] ? R_SEP : ''; }
         var R_LAST = 'border-right:2px solid var(--h-border2,#3a4a5c);';
         // table-layout:fixed + colgroup -> every lane column identical width
         html += '<table style="margin-bottom:28px;border-collapse:collapse;font-size:11px;table-layout:fixed">';
