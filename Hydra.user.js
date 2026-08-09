@@ -6407,12 +6407,16 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     //   yard: {vrid -> epoch ms of yard check-in (any location)} }
     function buildDwellMapsFromYms() {
         var maps = { door: {}, yard: {} };
+        var _dg = { locs: 0, ddLocs: 0, assets: 0, vrid: 0, doorRej: 0, noYardTs: 0 };
         if (!yardStateData || !Array.isArray(yardStateData)) return maps;
         for (var i = 0; i < yardStateData.length; i++) {
             var loc = yardStateData[i];
             if (!loc || !loc.code) continue;
+            _dg.locs++;
             var isDoor = loc.code.indexOf('DD') === 0;
+            if (isDoor) _dg.ddLocs++;
             var assets = Array.isArray(loc.yardAssets) ? loc.yardAssets : [];
+            _dg.assets += assets.length;
             for (var j = 0; j < assets.length; j++) {
                 var a = assets[j];
                 if (!a || !a.load || !Array.isArray(a.load.identifiers)) continue;
@@ -6422,13 +6426,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     if (idf && idf.type === 'VR_ID' && idf.identifier) { vrid = idf.identifier; break; }
                 }
                 if (!vrid) continue;
+                _dg.vrid++;
                 var yardMs = _toEpochMs(a.datetimeOfArrivalInYard);
-                if (yardMs && yardMs <= Date.now()) maps.yard[vrid] = yardMs;
+                if (yardMs && yardMs <= Date.now()) maps.yard[vrid] = yardMs; else _dg.noYardTs++;
                 if (!isDoor) continue;
                 var since = _assetDoorSinceMs(a);
                 if (since) {
                     maps.door[vrid] = since;
-                } else if (!_dwellDiagLogged) {
+                } else if (_dg.doorRej++ >= 0 && !_dwellDiagLogged) {
                     // Field discovery aid: dump one DD asset so the timestamp
                     // field can be identified from the console.
                     _dwellDiagLogged = true;
@@ -6436,6 +6441,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }
             }
         }
+        console.log('[Hydra Dwell DIAG] maps built: door=' + Object.keys(maps.door).length
+            + ' yard=' + Object.keys(maps.yard).length
+            + ' | walked: locs=' + _dg.locs + ' ddLocs=' + _dg.ddLocs + ' assets=' + _dg.assets
+            + ' vridAssets=' + _dg.vrid + ' | rejects: doorWindow=' + _dg.doorRej + ' noYardTs=' + _dg.noYardTs);
         return maps;
     }
 
