@@ -15676,13 +15676,13 @@ if (k === 'eta') {
         mHtml += gHtml || '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No merge opportunities anywhere.</div>';
         mHtml += '</div>'; // end global merge card
 
-        tableWrap.innerHTML = '<div style="display:flex;gap:14px;align-items:flex-start">'
+        tableWrap.innerHTML = '<div id="hydra-sdtchase-root" style="display:flex;gap:14px;align-items:flex-start">'
             + '<div style="min-width:240px;max-width:270px">'
             + '<input type="text" id="hydra-sdtchase-railfilter" value="' + sdtChaseRailFilter.replace(/"/g, '&quot;') + '" placeholder="filter: vrid / route / door / status" style="width:100%;box-sizing:border-box;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:5px;color:var(--h-text, #e8eaf0);font-size:11px;padding:5px 9px;margin-bottom:6px">'
-            + '<div style="max-height:72vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
+            + '<div class="hydra-sdt-vscroll" data-vh="72" style="max-height:72vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
             + '</div>'
             + '<div style="flex:1;min-width:0">' + pHtml + '</div>'
-            + '<div style="min-width:210px;max-width:250px;max-height:75vh;overflow-y:auto">' + mHtml + '</div>'
+            + '<div class="hydra-sdt-vscroll" data-vh="75" style="min-width:210px;max-width:250px;max-height:75vh;overflow-y:auto">' + mHtml + '</div>'
             + '</div>';
 
         // ── Events ──
@@ -17423,7 +17423,7 @@ if (k === 'eta') {
         var scale = autoFitZoom ? 1 : tableZoom / 100;
         if (autoFitZoom) {
             var _wrap = document.getElementById('hydra-table-wrap');
-            var _mt = _wrap ? _wrap.querySelector('#hydra-table, .hydra-table') : null;
+            var _mt = _wrap ? (_wrap.querySelector('#hydra-sdtchase-root') || _wrap.querySelector('#hydra-table, .hydra-table')) : null;
             if (_wrap && _mt && !_mt.closest('.hydra-pane')) {
                 _mt.style.zoom = 1;
                 var _availW = _wrap.clientWidth;
@@ -17450,6 +17450,20 @@ if (k === 'eta') {
             }
         }
         // Use CSS zoom instead of transform:scale — transform breaks position:sticky
+        // SDT Chase: zoom the whole 3-panel root (rail + tables + merge panel)
+        // so all columns scale together; inner tables must stay at 1 or the
+        // zoom compounds.
+        var _sdtRoot = document.getElementById('hydra-sdtchase-root');
+        if (_sdtRoot) {
+            _sdtRoot.style.zoom = scale;
+            _sdtRoot.querySelectorAll('.hydra-table').forEach(function(t) { t.style.zoom = 1; });
+            // vh units aren't compensated by CSS zoom -- shrink the scroll
+            // columns' caps so they still fit the viewport at high zoom.
+            _sdtRoot.querySelectorAll('.hydra-sdt-vscroll').forEach(function(el) {
+                var vh = parseFloat(el.dataset.vh) || 72;
+                el.style.maxHeight = (vh / scale) + 'vh';
+            });
+        }
         var tbl = document.getElementById('hydra-table');
         // In Hydra Vision there are multiple #hydra-table (one per pane) and
         // getElementById returns the first -- which is inside a pane. Skip it;
@@ -17462,7 +17476,7 @@ if (k === 'eta') {
         if (!tbl) {
             var _wrap3 = document.getElementById('hydra-table-wrap');
             tbl = _wrap3 ? _wrap3.querySelector('.hydra-table') : null;
-            if (tbl && tbl.closest('.hydra-pane')) tbl = null;
+            if (tbl && (tbl.closest('.hydra-pane') || tbl.closest('#hydra-sdtchase-root'))) tbl = null;
         }
         if (tbl) {
             tbl.style.transform = '';
@@ -17490,6 +17504,8 @@ if (k === 'eta') {
             // Skip pane tables -- their zoom is owned by applyPaneZoom. Applying
             // the global tableZoom here too would double-zoom them.
             if (t.closest('.hydra-pane')) return;
+            // Skip SDT Chase tables -- the whole #hydra-sdtchase-root is zoomed.
+            if (t.closest('#hydra-sdtchase-root')) return;
             t.style.transform = '';
             t.style.transformOrigin = '';
             t.style.marginBottom = '';
