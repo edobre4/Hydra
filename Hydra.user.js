@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.58
+// @version      3.59
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -13672,11 +13672,29 @@ if (k === 'eta') {
         var _llWs = /-CHUTE-([A-Z])(\d+)\s*$/i;
         var _llLane = /^Lane\s*-?\s*([A-Z])\s*(\d+)\s*$/i;
         var _llSorter = /ShippingSorter(\d+)-S\d*?(\d{2})\s*$/i;
+        // Letter-only lanes with NO chute digits, e.g. IGQ9 mech-lite sorter:
+        // 'Mechlite-LaneA' / 'Lane A' / 'Lane-B'  -> single-cell lane per letter.
+        var _llLetterOnly = /Lane[-_\s]*([A-Z])(?![A-Za-z0-9])/i;
+        // Generic fallback mode: unknown layout -> every workstation alias
+        // becomes its own single-cell lane (works for ANY site).
+        var _llGenericMode = false;
+        function _llGenericLabel(alias) {
+            if (!alias) return null;
+            // strip node prefix like 'IGQ9-' and trim
+            var s = String(alias).replace(/^[A-Z]{2,4}\d?\s*[-_]\s*/, '').trim();
+            return s || null;
+        }
         function _llParse(alias) {
             var m = _llWs.exec(alias) || _llLane.exec(alias);
             if (m) return { label: m[1].toUpperCase(), chute: parseInt(m[2], 10) };
             var ms = _llSorter.exec(alias);
             if (ms) return { label: 'S' + ms[1], chute: parseInt(ms[2], 10) };
+            var ml = _llLetterOnly.exec(alias);
+            if (ml) return { label: ml[1].toUpperCase(), chute: 1 };
+            if (_llGenericMode) {
+                var gl = _llGenericLabel(alias);
+                if (gl) return { label: gl, chute: 1 };
+            }
             return null;
         }
         var _amLL = null;   // letter-lane mode: index -> label
@@ -13693,18 +13711,30 @@ if (k === 'eta') {
                 return /Lane\s+\d+\s+Chute\s+\d+/i.test(al) || /\b2\d{4}\b/.test(al + ' ' + ((ws.workstation && ws.workstation.workstationId) || ''));
             });
             if (_classic) return;
-            (arMezzData || []).forEach(function(ws) {
-                var alias = (ws.workstation && ws.workstation.workstationAlias) || '';
-                var p = _llParse(alias);
-                if (p && p.chute > 0) {
-                    seen[p.label] = true;
-                    // MHE (equipment) name from the alias, e.g.
-                    // 'MDW5-ShippingSorter-CHUTE-K1' -> ShippingSorter,
-                    // 'MDW5-ShippingSorter4-S0404'   -> ShippingSorter4
-                    var mm = /-([A-Za-z]+?Sorter\d*)-/.exec(alias) || /-([A-Za-z]+?Sorter\d*)/.exec(alias);
-                    if (mm && !_amLLMhe[p.label]) _amLLMhe[p.label] = mm[1].replace(/([a-z])([A-Z0-9])/g, '$1 $2');
-                }
-            });
+            function _scan() {
+                (arMezzData || []).forEach(function(ws) {
+                    var alias = (ws.workstation && ws.workstation.workstationAlias) || '';
+                    var p = _llParse(alias);
+                    if (p && p.chute > 0) {
+                        seen[p.label] = true;
+                        // MHE (equipment) name from the alias, e.g.
+                        // 'MDW5-ShippingSorter-CHUTE-K1' -> ShippingSorter,
+                        // 'MDW5-ShippingSorter4-S0404'   -> ShippingSorter4,
+                        // 'Mechlite-LaneA'               -> Mechlite
+                        var mm = /-([A-Za-z]+?Sorter\d*)-/.exec(alias) || /-([A-Za-z]+?Sorter\d*)/.exec(alias)
+                              || /^([A-Za-z]+?)[-_\s]*Lane/i.exec(alias);
+                        if (mm && !_amLLMhe[p.label]) _amLLMhe[p.label] = mm[1].replace(/([a-z])([A-Z0-9])/g, '$1 $2');
+                    }
+                });
+            }
+            _scan();
+            // Nothing matched any known pattern -> generic mode: every
+            // workstation is its own lane. Works for any site layout.
+            if (!Object.keys(seen).length) {
+                _llGenericMode = true;
+                _scan();
+                if (Object.keys(seen).length) console.log('[Hydra ARMezz] generic lane mode (unknown layout)');
+            }
             var ls = Object.keys(seen);
             if (!ls.length) return;
             // letters alphabetical, sorter pseudo-lanes (S3, S4, ...) after
