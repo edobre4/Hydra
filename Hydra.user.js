@@ -1167,7 +1167,22 @@
         if (t === 'GAYLORD') t = 'SHUTTLE';
         return sdtChaseTypeCap[t] > 0 ? sdtChaseTypeCap[t] : null;
     }
-    var sdtChaseTarget = 3200;    // fill target in CUBE (cu ft, persisted)
+    var sdtChaseTarget = 2200;    // fill target in CUBE (cu ft) for routes matching no rule ("else", persisted)
+    // Route-name -> target cube rules. First rule whose 'match' string appears
+    // in the route name (case-insensitive) wins; no match -> sdtChaseTarget.
+    var sdtChaseRouteRules = [
+        { match: 'DDU',  cube: 600 },
+        { match: 'CYC',  cube: 1400 },
+        { match: 'CART', cube: 1400 }
+    ];
+    function sdtRouteTarget(route) {
+        var r = String(route || '').toUpperCase();
+        for (var i = 0; i < sdtChaseRouteRules.length; i++) {
+            var m = sdtChaseRouteRules[i];
+            if (m && m.match && m.cube > 0 && r.indexOf(String(m.match).toUpperCase()) !== -1) return m.cube;
+        }
+        return null;
+    }
     var sdtChaseFloorFilter = ''; // text filter, stacked (floor) table
     var sdtChaseStagedFilter = ''; // text filter, staged table
     var sdtChaseRecvFilter = '';  // text filter, received table
@@ -3542,6 +3557,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             autoChuteFilter: AUTO_CHUTE_FILTER, autoChuteMode: AUTO_CHUTE_MODE, autoChuteMin: AUTO_CHUTE_MIN, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
             wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
             sdtChaseTarget: sdtChaseTarget,
+            sdtChaseRouteRules: sdtChaseRouteRules,
             sdtChaseTypeCap: sdtChaseTypeCap,
             sdtChaseMaxCtns: sdtChaseMaxCtns,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
@@ -3687,6 +3703,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
         if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
         if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
+        if (Array.isArray(s.sdtChaseRouteRules)) sdtChaseRouteRules = s.sdtChaseRouteRules.filter(function(r){ return r && typeof r.match === 'string' && r.match.trim() && +r.cube > 0; }).map(function(r){ return { match: r.match.trim(), cube: +r.cube }; });
         if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
         if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
@@ -4427,6 +4444,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 autoChuteMode:   AUTO_CHUTE_MODE, acUtilMode: acUtilMode, acUtilHighOnly: acUtilHighOnly, obWindowHours: obWindowHours,
                 wsRedPct: wsRedPct, wsYellowPct: wsYellowPct,
                 sdtChaseTarget: sdtChaseTarget,
+                sdtChaseRouteRules: sdtChaseRouteRules,
                 sdtChaseTypeCap: sdtChaseTypeCap,
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
@@ -4605,6 +4623,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.acUtilHighOnly !== undefined) acUtilHighOnly = !!s.acUtilHighOnly;
             if (s.acWsMode !== undefined) acWsMode = !!s.acWsMode;
             if (s.sdtChaseTarget >= 150) sdtChaseTarget = +s.sdtChaseTarget; // <150 = stale percent-era value, ignore
+            if (Array.isArray(s.sdtChaseRouteRules)) sdtChaseRouteRules = s.sdtChaseRouteRules.filter(function(r){ return r && typeof r.match === 'string' && r.match.trim() && +r.cube > 0; }).map(function(r){ return { match: r.match.trim(), cube: +r.cube }; });
             if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
             if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
@@ -5456,6 +5475,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Pallet<input type="number" id="hydra-sdt-cap-pallet" min="1" max="500" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
                                 '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Bag<input type="number" id="hydra-sdt-cap-bag" min="1" max="500" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
                                 '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Max ctns/trailer<input type="number" id="hydra-sdt-maxctns" min="1" max="99" style="width:52px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"></label>' +
+                            '</div>' +
+                            '<div class="hydra-ws-hint" style="margin-top:10px">Trailer fill targets by route name. First rule whose text appears in the route wins; no match uses the default.</div>' +
+                            '<div id="hydra-sdt-rule-list"></div>' +
+                            '<div class="hydra-settings-row" style="margin-top:6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+                                '<button class="hydra-ws-add-btn" id="hydra-sdt-rule-add-btn">+ Add Rule</button>' +
+                                '<label style="color:var(--h-muted, #aab4c0);font-size:12px;display:flex;align-items:center;gap:5px">Default (no match)<input type="number" id="hydra-sdt-rule-else" min="150" max="10000" step="50" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px"> cu ft</label>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
@@ -9792,16 +9817,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 c.loadedCube = lc ? lc.cube : null;   // real cu ft in THIS trailer
                 c.loadedPkgs = lc ? lc.pkgs : null;
                 c.loadedCtns = lc ? lc.ctns : null;
-                // Per-trailer target from the OB fill logic: real cube / fill%
-                // = the cube the OB system calls 100%. Clamped to sane bounds.
-                // Empty trailers (no cube or no fill%) use the manual override.
+                // Per-trailer target from route-name rules (Settings > SDT
+                // Chase). The old OB fill-logic derivation is kept only as
+                // diagnostic info (obFillPct) - the real OB target logic is
+                // unknown, so rules are authoritative.
                 var fillPct = (fillMap[c.vrid] != null) ? +fillMap[c.vrid] : null;
                 c.obFillPct = fillPct;
-                if (c.loadedCube > 0 && fillPct > 0) {
-                    c.targetCube = Math.min(6000, Math.max(c.loadedCube, c.loadedCube / (fillPct / 100)));
-                    c.targetSrc = 'ob';
+                var ruleCube = sdtRouteTarget(c.route);
+                if (ruleCube > 0) {
+                    c.targetCube = ruleCube;
+                    c.targetSrc = 'rule';
                 } else {
-                    c.targetCube = null; // renderer falls back to the override
+                    c.targetCube = null; // renderer falls back to the "else" target
                     c.targetSrc = 'override';
                 }
             });
@@ -15331,7 +15358,7 @@ if (k === 'eta') {
         c.containers.forEach(function(ctn) { if (picks[ctn.id]) { addCube += ctn.cube; nPicks++; } });
         var newCube = curCube + addCube;
         return { curCube: curCube, addCube: addCube, newCube: newCube, target: target,
-                 fromOb: c.targetSrc === 'ob',
+                 fromOb: c.targetSrc === 'rule',
                  pct: target > 0 ? newCube / target * 100 : 0,
                  hit: newCube >= target, nPicks: nPicks, picks: picks,
                  noData: c.loadedCube == null };
@@ -15506,13 +15533,13 @@ if (k === 'eta') {
             + ' ' + _sdtStatusBadge(sel.status, 'lg')
             + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + ' \u00b7 CPT ' + (sel.cpt || '\u2014') + '</span></div>'
             + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
-            + '<span title="Used only for trailers with no loaded-cube data yet. Trailers with data derive their target from the OB fill logic.">Empty trailer target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft</span>'
+            + '<span title="Used for trailers whose route matches no route-target rule (Settings > SDT Chase).">Default target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft</span>'
             + '</div></div>';
         pHtml += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap">'
             + _sdtGauge(m.curCube, m.newCube, m.target, 340)
             + '<span style="font-size:13px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-text, #e8eaf0)') + '">' + Math.round(m.curCube)
             + (m.nPicks ? ' + ' + Math.round(m.addCube) + ' = ' + Math.round(m.newCube) : '') + ' / ' + Math.round(m.target) + ' cu ft</span>'
-            + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)" title="' + (m.fromOb ? 'Target derived from OB fill: real loaded cube / percent loaded' : 'No loaded data yet — using the empty-trailer override') + '">' + (m.fromOb ? 'OB fill' : 'override') + '</span>'
+            + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)" title="' + (m.fromOb ? 'Target from route-name rule (Settings > SDT Chase)' : 'No route rule matched — using the default target') + '">' + (m.fromOb ? 'route rule' : 'default') + '</span>'
             + '</div>';
         pHtml += '<div style="font-size:11px;color:' + (m.hit ? '#66bb6a' : '#ffa726') + ';margin-bottom:8px">'
             + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, m.target - m.newCube)) + ' cu ft to target')
@@ -16984,6 +17011,42 @@ if (k === 'eta') {
         });
     }
 
+    function renderSdtRuleList() {
+        var list = document.getElementById('hydra-sdt-rule-list');
+        if (!list) return;
+        var elseIn = document.getElementById('hydra-sdt-rule-else');
+        if (elseIn) elseIn.value = sdtChaseTarget;
+        list.innerHTML = sdtChaseRouteRules.map(function(r, idx) {
+            return '<div class="hydra-ws-col-row" data-idx="' + idx + '">' +
+                '<span class="hydra-ws-col-label">Rule ' + (idx + 1) + '</span>' +
+                '<input class="hydra-ws-col-name" data-field="match" data-idx="' + idx + '" value="' + String(r.match).replace(/"/g, '&quot;') + '" placeholder="Route contains..." style="width:140px;flex:unset">' +
+                '<input class="hydra-ws-col-filters" data-field="cube" data-idx="' + idx + '" type="number" min="150" max="10000" step="50" value="' + r.cube + '" style="width:80px;flex:unset">' +
+                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">cu ft</span>' +
+                '<button class="hydra-ws-col-del hydra-sdt-rule-del" data-idx="' + idx + '">&times;</button>' +
+                '</div>';
+        }).join('');
+        list.querySelectorAll('.hydra-ws-col-name, .hydra-ws-col-filters').forEach(function(inp) {
+            inp.addEventListener('change', function() {
+                var i = Number(inp.dataset.idx);
+                if (!sdtChaseRouteRules[i]) return;
+                if (inp.dataset.field === 'match') {
+                    sdtChaseRouteRules[i].match = inp.value.trim();
+                } else {
+                    var v = parseFloat(inp.value);
+                    if (!isNaN(v) && v > 0) sdtChaseRouteRules[i].cube = v;
+                }
+                saveAllSettings();
+            });
+        });
+        list.querySelectorAll('.hydra-sdt-rule-del').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                sdtChaseRouteRules.splice(Number(btn.dataset.idx), 1);
+                saveAllSettings();
+                renderSdtRuleList();
+            });
+        });
+    }
+
     function renderWSColList() {
         var list = document.getElementById('hydra-ws-col-list');
         if (!list) return;
@@ -17249,6 +17312,7 @@ if (k === 'eta') {
         }
         renderCptList();
         renderDivertedLaneList();
+        renderSdtRuleList();
         renderWSColList();
         renderACLaneList();
         renderPSBufferList();
@@ -19132,6 +19196,19 @@ if (k === 'eta') {
             DIVERTED_LANES.push({ key: 'lane_' + n, label: 'Lane ' + n, chutes: [] });
             saveAllSettings();
             renderDivertedLaneList();
+        });
+
+        // SDT Chase route-target rules
+        var sdtRuleAddBtn = document.getElementById('hydra-sdt-rule-add-btn');
+        if (sdtRuleAddBtn) sdtRuleAddBtn.addEventListener('click', function() {
+            sdtChaseRouteRules.push({ match: '', cube: 2200 });
+            saveAllSettings();
+            renderSdtRuleList();
+        });
+        var sdtRuleElse = document.getElementById('hydra-sdt-rule-else');
+        if (sdtRuleElse) sdtRuleElse.addEventListener('change', function() {
+            var v = parseFloat(this.value);
+            if (!isNaN(v) && v >= 150) { sdtChaseTarget = v; saveAllSettings(); }
         });
 
         // WS Buffer column add button
