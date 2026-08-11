@@ -15532,9 +15532,7 @@ if (k === 'eta') {
             + ' <span class="hydra-copy-id" data-copy="' + sel.vrid + '" title="Click to copy" style="font-size:12px;color:var(--h-muted, #aab4c0)">' + sel.vrid + '</span>'
             + ' ' + _sdtStatusBadge(sel.status, 'lg')
             + ' <span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">SDT ' + (sel.sdt || '\u2014') + ' \u00b7 CPT ' + (sel.cpt || '\u2014') + '</span></div>'
-            + '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--h-muted, #aab4c0)">'
-            + '<span title="Used for trailers whose route matches no route-target rule (Settings > SDT Chase).">Default target <input type="number" id="hydra-sdtchase-target" min="150" max="10000" step="50" value="' + sdtChaseTarget + '" style="width:64px;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:2px 5px"> cu ft</span>'
-            + '</div></div>';
+            + '</div>';
         pHtml += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap">'
             + _sdtGauge(m.curCube, m.newCube, m.target, 340)
             + '<span style="font-size:13px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-text, #e8eaf0)') + '">' + Math.round(m.curCube)
@@ -15763,11 +15761,6 @@ if (k === 'eta') {
                 document.removeEventListener('mouseup', onUp);
             };
         })();
-        var _tgtIn = document.getElementById('hydra-sdtchase-target');
-        if (_tgtIn) _tgtIn.addEventListener('change', function() {
-            var v = parseFloat(this.value);
-            if (!isNaN(v) && v >= 150) { sdtChaseTarget = v; try { saveAllSettings(); } catch (ex) {} renderSdtChaseTable(targetEl); }
-        });
         var _autoB = document.getElementById('hydra-sdtchase-auto');
         if (_autoB) _autoB.addEventListener('click', function() {
             sdtChaseAutoOn = !sdtChaseAutoOn;
