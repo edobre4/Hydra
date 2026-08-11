@@ -15627,27 +15627,52 @@ if (k === 'eta') {
         // Global merges: every trailer's pairs (CART routes use the
         // same-station rule), grouped by route.
         var _gShort = function(sf) { return String(sf || '').replace(/-?PARENT$/i, '').replace(/^[A-Z0-9]+->/, ''); };
+        // one merge pair -> compact card: who merges into whom, how full, WHERE
+        function _gPairCard(p, isCart) {
+            function pctChip(v) {
+                var col = v >= 70 ? '#66bb6a' : (v >= 35 ? '#f9a825' : 'var(--h-muted, #aab4c0)');
+                return '<span style="font-weight:700;color:' + col + ';font-size:10px;white-space:nowrap">' + Math.round(v) + '%</span>';
+            }
+            function ctnRow(c, arrow) {
+                return '<div style="display:flex;align-items:baseline;gap:6px;min-width:0">'
+                    + (arrow ? '<span style="color:#f9a825;font-size:10px;flex:none" title="merge into">\u21b3</span>' : '')
+                    + '<span class="hydra-copy-id" data-copy="' + c.id + '" title="Click to copy" style="font-weight:700;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1">' + c.id + '</span>'
+                    + pctChip(c.pctFull)
+                    + '</div>'
+                    + '<div style="font-size:9.5px;color:var(--h-ob-accent, #20d4f0);padding-left:' + (arrow ? '16px' : '0') + ';margin:1px 0 ' + (arrow ? '0' : '3px') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Container location">\ud83d\udccd ' + (c.location || 'location unknown') + '</div>';
+            }
+            var sumCol = p.sum >= 85 ? '#66bb6a' : '#f9a825';
+            return '<div style="border:1px solid var(--h-border2, #3a4a5c);border-left:3px solid ' + sumCol + ';border-radius:6px;padding:6px 8px;margin-bottom:6px;background:var(--h-bg3, #1c2836)">'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+                +   '<span style="font-size:9px;color:var(--h-muted2, #7a8a9a);text-transform:uppercase;letter-spacing:0.5px">move \u2192 into</span>'
+                +   '<span style="font-weight:700;font-size:10.5px;color:' + sumCol + '" title="Combined fill after merge">= ' + Math.round(p.sum) + '%</span>'
+                + '</div>'
+                + (isCart && p.into.sf ? '<div style="font-size:9px;color:#20d4f0;font-weight:700;margin-bottom:2px" title="Delivery station (both containers)">' + _gShort(p.into.sf) + '</div>' : '')
+                + ctnRow(p.from, false)
+                + ctnRow(p.into, true)
+                + '</div>';
+        }
         var gHtml = '';
         var _gSeen = {};
+        var _gTotal = 0;
         (obTableData.sdtchase || []).forEach(function(c) {
             var _gk = c.route + '|' + c.cpt; // siblings share the pool — once
             if (_gSeen[_gk]) return;
             _gSeen[_gk] = true;
-            var gp = _sdtMergePairs(c.containers, /CART/i.test(c.route || ''));
+            var _gIsCart = /CART/i.test(c.route || '');
+            var gp = _sdtMergePairs(c.containers, _gIsCart);
             if (!gp.length) return;
-            gHtml += '<div style="margin-bottom:6px"><div style="font-weight:700;color:var(--h-blue, #5090d0);font-size:11px;margin-bottom:2px">' + c.route + (c.key === sdtChaseSel ? ' \u25c0' : '') + '</div>';
-            gp.forEach(function(p) {
-                gHtml += '<div style="font-size:10px;color:var(--h-muted, #aab4c0);padding-left:6px;margin-bottom:2px">'
-                    + '<span class="hydra-copy-id" data-copy="' + p.from.id + '">' + p.from.id + '</span> (' + Math.round(p.from.pctFull) + '%) \u2192 '
-                    + '<span class="hydra-copy-id" data-copy="' + p.into.id + '">' + p.into.id + '</span> (' + Math.round(p.into.pctFull) + '%)'
-                    + ' <span style="color:#66bb6a;font-weight:700">= ' + Math.round(p.sum) + '%</span>'
-                    + (/CART/i.test(c.route || '') && p.into.sf ? ' <span style="color:#20d4f0">' + _gShort(p.into.sf) + '</span>' : '')
-                    + '</div>';
-            });
+            _gTotal += gp.length;
+            gHtml += '<div style="margin-bottom:10px">'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+                +   '<span style="font-weight:700;color:var(--h-blue, #5090d0);font-size:11px">' + c.route + (c.key === sdtChaseSel ? ' \u25c0' : '') + '</span>'
+                +   '<span style="font-size:9px;color:var(--h-muted2, #7a8a9a)">' + gp.length + ' merge' + (gp.length === 1 ? '' : 's') + '</span>'
+                + '</div>';
+            gp.forEach(function(p) { gHtml += _gPairCard(p, _gIsCart); });
             gHtml += '</div>';
         });
         mHtml += _sdtCard.replace('margin-bottom:12px', 'margin:12px 0 0');
-        mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Global merge suggestions</div>';
+        mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Global merge suggestions' + (_gTotal ? ' <span style="font-weight:400;font-size:10px;color:var(--h-muted2, #7a8a9a)">\u00b7 ' + _gTotal + '</span>' : '') + '</div>';
         mHtml += gHtml || '<div style="font-size:11px;color:var(--h-muted2, #7a8a9a)">No merge opportunities anywhere.</div>';
         mHtml += '</div>'; // end global merge card
 
