@@ -28,6 +28,7 @@
 // @connect      idp.federate.amazon.com
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
+// @connect      track.relay.amazon.dev
 // @connect      axzile.corp.amazon.com
 // @connect      *
 // ==/UserScript==
@@ -9941,6 +9942,93 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return new Date(year, mon, day, hour, min).getTime();
     }
 
+    // ── Relay Track (FMC) cube volume ──
+    // track.relay.amazon.dev wants a Midway SSO id_token as a Bearer. Tokens
+    // live ~15 min; cache for 8.
+    var relayTrackJwt = null, relayTrackJwtAt = 0;
+    function fetchRelayTrackJwt(force) {
+        if (!force && relayTrackJwt && (Date.now() - relayTrackJwtAt) < 8 * 60000) return Promise.resolve(relayTrackJwt);
+        var nonce = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+        var url = 'https://midway-auth.amazon.com/SSO?response_type=id_token&client_id=track.relay.amazon.dev&redirect_uri=' + encodeURIComponent('https://track.relay.amazon.dev') + '&scope=openid&nonce=' + nonce;
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: url, withCredentials: true,
+                onload: function(r) {
+                    var tok = (r.responseText || '').trim();
+                    if (r.status === 200 && tok.indexOf('eyJ') === 0) {
+                        relayTrackJwt = tok; relayTrackJwtAt = Date.now();
+                        resolve(tok);
+                    } else {
+                        console.warn('[Hydra RelayCube] SSO token fetch failed HTTP ' + r.status + ' body=' + tok.slice(0, 120));
+                        reject(new Error('relay jwt ' + r.status));
+                    }
+                },
+                onerror: function() { reject(new Error('relay jwt network error')); }
+            });
+        });
+    }
+    // Pull loaded cube (cu ft) for a list of rows ({vrid}) from the Relay
+    // transport-views API. Sets r.cubeCuFt + r.cube on each row. Batched
+    // searchId[] params, chunks in parallel. Failures leave cells blank.
+    function fetchRelayCubes(rows) {
+        var vrids = rows.map(function(r) { return r.vrid; }).filter(Boolean);
+        if (!vrids.length) return Promise.resolve();
+        var byVrid = {};
+        rows.forEach(function(r) { if (r.vrid) byVrid[r.vrid] = r; });
+        var CHUNK = 10;
+        return fetchRelayTrackJwt(false).then(function(jwt) {
+            var chunks = [];
+            for (var i = 0; i < vrids.length; i += CHUNK) chunks.push(vrids.slice(i, i + CHUNK));
+            var done = 0;
+            return Promise.all(chunks.map(function(chunk) {
+                var qs = chunk.map(function(v) { return 'searchId[]=' + encodeURIComponent(v); }).join('&');
+                var url = 'https://track.relay.amazon.dev/api/v2/transport-views?' + qs + '&module=trip&type[]=vehicleRun&region=na&view=detail&sortCol=sent&ascending=true';
+                return new Promise(function(resolve) {
+                    GM_xmlhttpRequest({
+                        method: 'GET', url: url,
+                        headers: { 'Authorization': 'Bearer ' + jwt, 'Accept': '*/*' },
+                        withCredentials: true,
+                        onload: function(r) {
+                            try {
+                                if (r.status !== 200) { console.warn('[Hydra RelayCube] HTTP ' + r.status + ' for chunk', chunk.join(','), (r.responseText||'').slice(0,150)); resolve(); return; }
+                                var items = JSON.parse(r.responseText);
+                                if (!Array.isArray(items)) items = (items && items.results) || [];
+                                items.forEach(function(item) {
+                                    var vr = item.vrIdentifier || (item.id ? String(item.id).replace(/^NA:VR:/, '') : null);
+                                    var row = vr && byVrid[vr];
+                                    if (!row) return;
+                                    var stops = item.stops || [];
+                                    for (var s = 0; s < stops.length; s++) {
+                                        var st = stops[s];
+                                        if (!st.stopActionTypes || st.stopActionTypes.indexOf('PICKUP') === -1) continue;
+                                        var tv = st.stopManifest && st.stopManifest.totalVolume;
+                                        if (!tv || !(tv.value > 0)) continue;
+                                        var unit = String(tv.unit || '').toUpperCase();
+                                        var cuft = null;
+                                        if (unit === 'CM3') cuft = tv.value / 28316.846592;
+                                        else if (unit === 'CUFT' || unit === 'CF' || unit === 'FT3') cuft = tv.value;
+                                        else if (unit === 'M3' || unit === 'CBM') cuft = tv.value * 35.3146667;
+                                        if (cuft != null && cuft > 1) {  // ignore 1.0 placeholders
+                                            row.cubeCuFt = Math.round(cuft);
+                                            row.cube = row.cubeCuFt.toLocaleString();
+                                        }
+                                        break;
+                                    }
+                                });
+                            } catch (e) { console.warn('[Hydra RelayCube] parse error:', e.message); }
+                            done += chunk.length;
+                            setStatus('Cube volume ' + Math.min(done, vrids.length) + '/' + vrids.length + '...');
+                            resolve();
+                        },
+                        onerror: function() { console.warn('[Hydra RelayCube] network error for chunk', chunk.join(',')); resolve(); }
+                    });
+                });
+            }));
+        }).catch(function(e) {
+            console.warn('[Hydra RelayCube] skipped:', e && e.message ? e.message : e);
+        });
+    }
+
     function pullCptPerformance(nodeId) {
         // CPT Perf uses its OWN window inputs (independent of global CPT selection).
         var _cpwStart = document.getElementById('hydra-cptperf-start');
@@ -10023,6 +10111,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     tdrMs: null,
                     finishTime: null,
                     finishMs: null,
+                    cube: null,
+                    cubeCuFt: null,
                     cptPerf: null
                 });
             });
@@ -10032,6 +10122,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             rows.sort(function(a, b) { return (a.sdtMs || 0) - (b.sdtMs || 0); });
             obTableData.cptperf = rows;
             setStatus('Pulling TDR/Finish times (' + rows.length + ' loads)...');
+
+            // Loaded cube from Relay Track (FMC) — runs in parallel with the
+            // YMS event pull; failures just leave the Cubic Volume column blank.
+            var _cubeP = fetchRelayCubes(rows);
 
             // Now fetch TDR Release + Finish Time for each VRID from YMS Event History
             return fetchYmsSecurityToken(false).then(function(token) {
@@ -10087,6 +10181,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         r.cptPerf = Math.round(((g.total - g.missed) / g.total) * 100);
                     }
                 });
+                return _cubeP;
             });
         });
     }
@@ -15842,6 +15937,7 @@ if (k === 'eta') {
             if (k === 'adt') return 'adtMs';
             if (k === 'tdrRelease') return 'tdrMs';
             if (k === 'finishTime') return 'finishMs';
+            if (k === 'cube') return 'cubeCuFt';
             return k;
         };
         rows = rows.slice().sort(function(a, b) {
@@ -15885,6 +15981,7 @@ if (k === 'eta') {
             { key: 'adt',         label: 'ADT' },
             { key: 'tdrRelease',  label: 'TDR Release' },
             { key: 'finishTime',  label: 'Finish Time' },
+            { key: 'cube',        label: 'Cubic Volume' },
             { key: 'cptPerf',     label: 'CPT Performance %' },
             { key: 'bridge',      label: 'Bridge' }
         ];
