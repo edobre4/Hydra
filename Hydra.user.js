@@ -12339,6 +12339,9 @@ if (k === 'eta') {
             _wrap.querySelector('.hydra-table').classList.remove('ib-sectioned');
         }
         applyZoom();
+        // Selection persists across refreshes by VRID; the totals bar must be
+        // recomputed from the FRESH row data (auto-refresh previously left it stale).
+        if (typeof updateSelectionBar === 'function') { try { updateSelectionBar(); } catch (e) {} }
 
         // Wire up route badge clicks → route popup
         _wrap.querySelectorAll('.hydra-table [data-route-click]').forEach(function(el) {
@@ -14995,6 +14998,8 @@ if (k === 'eta') {
         });
         applyZoom();
         if (typeof updateSelectAllLabel === 'function') updateSelectAllLabel();
+        // Recompute the selection totals bar from fresh data after every render.
+        if (typeof updateSelectionBar === 'function') { try { updateSelectionBar(); } catch (e) {} }
     }
 
     function renderOBCptDetailsTable(targetEl) {
