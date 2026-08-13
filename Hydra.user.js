@@ -5313,14 +5313,14 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         '<div class="hydra-settings-section-title">Search Window</div>' +
                         '<div class="hydra-settings-section-content">' +
                             '<div class="hydra-settings-row">' +
-                                '<label>Start (days):</label>' +
+                                '<label>IB VRIDs start (days):</label>' +
                                 '<input type="number" id="hydra-start-input" style="width:70px" value="0" min="-30" max="0" step="1" placeholder="0">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">days back (0 = today)</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Inbound pull: days back (0 = today)</span>' +
                             '</div>' +
                             '<div class="hydra-settings-row">' +
-                                '<label>End (days):</label>' +
+                                '<label>IB VRIDs end (days):</label>' +
                                 '<input type="number" id="hydra-end-input" style="width:70px" value="0" min="0" max="30" step="1" placeholder="0">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">days forward (0 = today)</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Inbound pull: days forward (0 = today)</span>' +
                             '</div>' +
                             '<div class="hydra-settings-row">' +
                                 '<label>OB VRIDs window:</label>' +
@@ -5328,12 +5328,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                     '<option value="12">12 hours (SSP default)</option>' +
                                     '<option value="24">24 hours</option>' +
                                 '</select>' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">how far ahead the OB pull searches</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Outbound pull: how far ahead the OB VRIDs search goes</span>' +
                             '</div>' +
                             '<div class="hydra-settings-row">' +
-                                '<label>Scheduled horizon (hrs):</label>' +
+                                '<label>IB scheduled horizon (hrs):</label>' +
                                 '<input type="number" id="hydra-ib-sched-hrs" style="width:70px" min="0" max="72" step="1" placeholder="0">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">IB: only show SCHEDULED trailers arriving within this many hours (0 = all)</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Inbound filter: only show SCHEDULED trailers arriving within this many hours (0 = all)</span>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
