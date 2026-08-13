@@ -1142,6 +1142,7 @@
     // Persisted in localStorage. When not 'all', the filter is applied at
     // fetch time to skip downstream counts/eta/sesame for excluded trailers.
     var ibTrailerFilter = 'all';
+    var ibSchedHorizonHrs = 0;  // only show SCHEDULED trailers with SAT within N hours (0 = all)
     var dragAnchor = null, dragCurrent = null, isDragging = false, autoScrollTimer = null;
     var ibVisibleCols = new Set(IB_DEFAULT_VISIBLE), ibColOrder = IB_COLS.map(function(c) { return c.key; });
     var useLocalTime = true;  // Local vs UTC time display
@@ -3538,7 +3539,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             end:   document.getElementById('hydra-end-input')   ? document.getElementById('hydra-end-input').value   : '0',
             tableZoom: tableZoom, ibTableZoom: ibTableZoom, obTableZoom: obTableZoom, tzOverride: tzOverride, panelWidth: panelWidth, panelHeight: panelHeight,
             activeView: activeView, autoRefreshInterval: autoRefreshInterval, cptRiskBreakpoint: CPT_RISK_BREAKPOINT,
-            __schema: HYDRA_SETTINGS_SCHEMA_VERSION, ibSortKey: ibSortKey, ibSortDir: ibSortDir, ibTabSort: ibTabSort, ibFilterXD: ibFilterXD, ibFilterSortable: ibFilterSortable, ibTrailerFilter: ibTrailerFilter, ibActiveTab: ibActiveTab, psActiveTab: psActiveTab,
+            __schema: HYDRA_SETTINGS_SCHEMA_VERSION, ibSortKey: ibSortKey, ibSortDir: ibSortDir, ibTabSort: ibTabSort, ibFilterXD: ibFilterXD, ibFilterSortable: ibFilterSortable, ibTrailerFilter: ibTrailerFilter, ibSchedHorizonHrs: ibSchedHorizonHrs, ibActiveTab: ibActiveTab, psActiveTab: psActiveTab,
             obSortKey: obSortKey, obSortDir: obSortDir, obSortKey2: obSortKey2, obSortDir2: obSortDir2, obActiveTab: obActiveTab,
                 oneDFilterSource: oneDFilterSource,
                 obVridsSelectedOnly: obVridsSelectedOnly,
@@ -3630,6 +3631,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.ibFilterXD  !== undefined) ibFilterXD  = s.ibFilterXD;
         if (s.ibFilterSortable !== undefined) ibFilterSortable = s.ibFilterSortable;
         // ibTrailerFilter: prefer explicit new value, else migrate from legacy bools
+        if (s.ibSchedHorizonHrs !== undefined) ibSchedHorizonHrs = Math.max(0, Math.min(72, parseFloat(s.ibSchedHorizonHrs) || 0));
         if (s.ibTrailerFilter === 'all' || s.ibTrailerFilter === 'sortable' || s.ibTrailerFilter === 'xd') {
             ibTrailerFilter = s.ibTrailerFilter;
         } else if (ibFilterXD) {
@@ -4423,7 +4425,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 start: document.getElementById('hydra-start-input') ? document.getElementById('hydra-start-input').value : '0',
                 end: document.getElementById('hydra-end-input') ? document.getElementById('hydra-end-input').value : '0',
                 tableZoom: tableZoom, ibTableZoom: ibTableZoom, obTableZoom: obTableZoom, tzOverride: tzOverride, panelWidth: panelWidth, panelHeight: panelHeight, activeView: (activeView === 'PS' ? 'IB' : activeView), autoRefreshInterval: autoRefreshInterval,
-                __schema: HYDRA_SETTINGS_SCHEMA_VERSION, ibSortKey: ibSortKey, ibSortDir: ibSortDir, ibTabSort: ibTabSort, ibFilterXD: ibFilterXD, ibFilterSortable: ibFilterSortable, ibTrailerFilter: ibTrailerFilter, ibActiveTab: ibActiveTab, psActiveTab: psActiveTab,
+                __schema: HYDRA_SETTINGS_SCHEMA_VERSION, ibSortKey: ibSortKey, ibSortDir: ibSortDir, ibTabSort: ibTabSort, ibFilterXD: ibFilterXD, ibFilterSortable: ibFilterSortable, ibTrailerFilter: ibTrailerFilter, ibSchedHorizonHrs: ibSchedHorizonHrs, ibActiveTab: ibActiveTab, psActiveTab: psActiveTab,
                 obSortKey: obSortKey, obSortDir: obSortDir, obSortKey2: obSortKey2, obSortDir2: obSortDir2, obActiveTab: obActiveTab,
                 useLocalTime: useLocalTime,
                 oneDFilterSource: oneDFilterSource,
@@ -4555,6 +4557,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.ibSortKey) { ibSortKey = s.ibSortKey; ibSortDir = s.ibSortDir || 1; }
             if (s.ibFilterXD) ibFilterXD = true;
             if (s.ibFilterSortable) ibFilterSortable = true;
+            if (s.ibSchedHorizonHrs !== undefined) ibSchedHorizonHrs = Math.max(0, Math.min(72, parseFloat(s.ibSchedHorizonHrs) || 0));
             if (s.ibTrailerFilter === 'all' || s.ibTrailerFilter === 'sortable' || s.ibTrailerFilter === 'xd') {
                 ibTrailerFilter = s.ibTrailerFilter;
             } else if (ibFilterXD) {
@@ -5643,7 +5646,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
-            '<div id="hydra-search-bar"><input id="hydra-search-input" type="text" placeholder="Search VRID, route, door, status..."><button id="hydra-search-clear">&#x2715;</button><span id="hydra-search-count"></span><span id="hydra-sla-indicator" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#ff4070;white-space:nowrap;padding:2px 8px;border:1px solid #cc1040;border-radius:4px" title="Trailers arriving after this time are not heat-colored (CPT SLA suppression)"></span><span id="hydra-cptperf-window-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap">SDT Window:<input id="hydra-cptperf-start" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"><span style="opacity:0.6">to</span><input id="hydra-cptperf-end" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"></span><button id="hydra-obv-selectall" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap" title="Select all routes/CPTs visible in the current filter">Select all</button><button id="hydra-div-copy-chutes-hdr" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 10px;cursor:pointer;white-space:nowrap" title="Copy non-zero diverter chute IDs (space-separated)">\u2398 Copy chutes</button><label id="hydra-obv-selonly-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);cursor:pointer;white-space:nowrap" title="Show only selected routes"><input type="checkbox" id="hydra-obv-selonly" style="cursor:pointer">Selected only</label><select id="hydra-1d-source" style="display:none;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 8px;font-size:12px;font-weight:600" title="Custom View source"><option value="stacked">Stacked</option><option value="staged">Staged</option><option value="inFacilityReceived">Received</option><option value="diverted">Diverted</option></select><span id="hydra-ac-mode-group" style="display:none;align-items:center"><button id="hydra-ac-mode-cpt" style="align-items:center;font-size:11px;font-weight:700;border-radius:4px 0 0 4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)">CPT Packages</button><button id="hydra-ac-mode-util" style="align-items:center;font-size:11px;font-weight:700;border-radius:0;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);border-left:none;background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)">Utilization %</button><button id="hydra-ac-mode-ws" style="align-items:center;font-size:11px;font-weight:700;border-radius:0 4px 4px 0;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);border-left:none;background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)">Waterspider View</button></span><button id="hydra-ac-util90" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Waterspider View: only containers at the red threshold+ full, plus wrap-ready pallets">Waterspider View</button><div id="hydra-bar-zoom"><input type="range" id="hydra-bar-zoom-slider" min="50" max="250" step="1" value="100"><span id="hydra-bar-zoom-value">100%</span><button id="hydra-bar-autofit-btn" type="button" title="Auto-fit zoom" style="margin-left:4px;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0);border-radius:4px">Auto Zoom</button></div></div>' +
+            '<div id="hydra-search-bar"><input id="hydra-search-input" type="text" placeholder="Search VRID, route, door, status..."><button id="hydra-search-clear">&#x2715;</button><span id="hydra-search-count"></span><span id="hydra-ib-sched-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap" title="Only show SCHEDULED trailers with a scheduled arrival within this many hours. Blank or 0 = show all.">Sched &le;<input id="hydra-ib-sched-hrs" type="number" min="0" max="72" step="1" style="width:44px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px">h</span><span id="hydra-sla-indicator" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#ff4070;white-space:nowrap;padding:2px 8px;border:1px solid #cc1040;border-radius:4px" title="Trailers arriving after this time are not heat-colored (CPT SLA suppression)"></span><span id="hydra-cptperf-window-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);white-space:nowrap">SDT Window:<input id="hydra-cptperf-start" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"><span style="opacity:0.6">to</span><input id="hydra-cptperf-end" type="text" placeholder="MM/DD/YYYY HH:MM" style="width:135px;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 6px;font-size:11px"></span><button id="hydra-obv-selectall" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap" title="Select all routes/CPTs visible in the current filter">Select all</button><button id="hydra-div-copy-chutes-hdr" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0);background:transparent;border:1px solid var(--h-ob-accent, #20d4f0);border-radius:4px;padding:2px 10px;cursor:pointer;white-space:nowrap" title="Copy non-zero diverter chute IDs (space-separated)">\u2398 Copy chutes</button><label id="hydra-obv-selonly-wrap" style="display:none;align-items:center;gap:4px;font-size:11px;color:var(--h-muted, #aab4c0);cursor:pointer;white-space:nowrap" title="Show only selected routes"><input type="checkbox" id="hydra-obv-selonly" style="cursor:pointer">Selected only</label><select id="hydra-1d-source" style="display:none;background:var(--h-bg2, #16202c);border:1px solid var(--h-border2, #3a4a5c);border-radius:4px;color:var(--h-text, #e8eaf0);padding:3px 8px;font-size:12px;font-weight:600" title="Custom View source"><option value="stacked">Stacked</option><option value="staged">Staged</option><option value="inFacilityReceived">Received</option><option value="diverted">Diverted</option></select><span id="hydra-ac-mode-group" style="display:none;align-items:center"><button id="hydra-ac-mode-cpt" style="align-items:center;font-size:11px;font-weight:700;border-radius:4px 0 0 4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)">CPT Packages</button><button id="hydra-ac-mode-util" style="align-items:center;font-size:11px;font-weight:700;border-radius:0;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);border-left:none;background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)">Utilization %</button><button id="hydra-ac-mode-ws" style="align-items:center;font-size:11px;font-weight:700;border-radius:0 4px 4px 0;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);border-left:none;background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)">Waterspider View</button></span><button id="hydra-ac-util90" style="display:none;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;white-space:nowrap;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Waterspider View: only containers at the red threshold+ full, plus wrap-ready pallets">Waterspider View</button><div id="hydra-bar-zoom"><input type="range" id="hydra-bar-zoom-slider" min="50" max="250" step="1" value="100"><span id="hydra-bar-zoom-value">100%</span><button id="hydra-bar-autofit-btn" type="button" title="Auto-fit zoom" style="margin-left:4px;font-size:12px;line-height:1;padding:2px 6px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0);border-radius:4px">Auto Zoom</button></div></div>' +
             '<div id="hydra-selection-bar"><span id="hydra-sel-info"><span style="color:var(--h-dim, #4a5a6a)">No trailers selected</span></span><div id="hydra-sel-right"><button id="hydra-vc-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer" title="Volume Calculator">VC</button><button id="hydra-cm-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px" title="Chute Map - map selected IB incoming packages onto OB chutes by route">Chute Map</button><button id="hydra-rtc-btn" style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px" title="Ready to Close - shows which chutes are ready to close based on IB volume threshold">Ready To Close</button><button id="hydra-copy-btn">&#128203; Copy</button><button id="hydra-sel-clear">&#x2715; Clear</button></div></div>' +
             '<div id="hydra-door-panel" style="display:none"></div>' +
             '<div id="hydra-tabs"></div>' +
@@ -11620,6 +11623,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (tab && tab.filter && !tab.filter(r)) return false;
             return true;
         });
+        // Scheduled-horizon: hide SCHEDULED trailers whose SAT is more than
+        // N hours out (0 = show all). Rows without a SAT are kept.
+        if (ibSchedHorizonHrs > 0) {
+            var _schedCut = Date.now() + ibSchedHorizonHrs * 3600000;
+            rows = rows.filter(function(r) {
+                if ((r.displayStatus || r.status) !== 'SCHEDULED') return true;
+                return !r.satMs || r.satMs <= _schedCut;
+            });
+        }
         // XD = route contains 'CART' (same logic as ILT)
         if (ibFilterXD)       rows = rows.filter(function(r) { return r.route.toUpperCase().indexOf('CART') !== -1; });
         // Sortable = route does NOT contain 'CART' (inverse of XD)
@@ -12555,6 +12567,13 @@ if (k === 'eta') {
         var el = document.getElementById('hydra-sla-indicator');
         if (!el) return;
         var _view = (typeof forceView === 'string' && forceView) ? forceView : activeView;
+        // Scheduled-horizon input: IB-only header control
+        var _shw = document.getElementById('hydra-ib-sched-wrap');
+        if (_shw) {
+            _shw.style.display = (_view === 'IB') ? 'inline-flex' : 'none';
+            var _shi = document.getElementById('hydra-ib-sched-hrs');
+            if (_shi && document.activeElement !== _shi) _shi.value = ibSchedHorizonHrs > 0 ? ibSchedHorizonHrs : '';
+        }
         var _show = (_view === 'IB') && cptSlaEnabled;
         if (!_show) { el.style.display = 'none'; return; }
         var ms = computeSlaThresholdMs();
@@ -18495,6 +18514,13 @@ if (k === 'eta') {
         if (cptEndPlus) cptEndPlus.addEventListener('click', function() { addDayToCptInput('hydra-cpt-end-input'); });
 
         // Search
+        var _ibSchedIn = document.getElementById('hydra-ib-sched-hrs');
+        if (_ibSchedIn) _ibSchedIn.addEventListener('change', function() {
+            var v = parseFloat(this.value);
+            ibSchedHorizonHrs = (!isNaN(v) && v > 0) ? Math.min(72, v) : 0;
+            try { saveAllSettings(); } catch (e) {}
+            if (activeView === 'IB') renderIBTable();
+        });
         document.getElementById('hydra-search-input').addEventListener('input', function() {
             if (puActive && puActivePane !== null) { var _ap = puPanes[puActivePane]; if (_ap) { _ap.search = this.value; renderPane(puActivePane); } return; }
             if (activeView === 'PS') {
