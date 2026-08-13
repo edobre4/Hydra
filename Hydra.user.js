@@ -2160,6 +2160,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         '.hydra-door-cell.dd-incoming-move{border:1px dashed var(--h-blue, #5090d0);background:rgba(80,144,208,0.1)}',
         'td.hydra-door-clickable{cursor:pointer}',
         'td.hydra-door-clickable:hover{outline:1px solid var(--h-blue, #5090d0);outline-offset:-1px}',
+        'td.hydra-door-hover-hl:hover{outline:1px solid var(--h-blue, #5090d0);outline-offset:-1px}',
             'td.hydra-door-tdr-in{border:1px solid var(--h-gray3, #3a3a3a) !important;cursor:not-allowed}',
             'td.hydra-door-tdr-in:hover{outline:none}',
         '#hydra-pa-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;display:none;align-items:center;justify-content:center}',
@@ -12245,6 +12246,9 @@ if (k === 'eta') {
                     var warnHtml = '';
                     var tdCls = '';
                     var tdTitle = '';
+                    // Completed trailers: same hover highlight as the sesame
+                    // PA (clickable) door cells, so the location pops on hover.
+                    if (r.status === 'COMPLETED' && r.location != null) tdCls = ' class="hydra-door-hover-hl"';
                     var hasPA = r.isPA === true;
                     // Yellow: ETA imminent AND not pre-assigned
                     if (!hasPA && r.status === 'SCHEDULED' && r.etaMs) {
