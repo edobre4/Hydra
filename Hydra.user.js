@@ -12235,7 +12235,7 @@ if (k === 'eta') {
                         if (_lcr && _lcr.door) return '<td class="hydra-door-hover-hl" title="Location at completion (YMS event history)">' + _lcr.door + '</td>';
                         if (_lcr && _lcr.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found">none</td>';
                         if (_lcPending[r.vrid]) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
-                        return '<td class="hydra-door-hover-hl"><span class="hydra-lc-pull" data-lcpull="' + r.vrid + '" style="color:var(--h-blue, #5090d0);cursor:pointer;font-weight:700" title="Click to pull this trailer\u2019s location from YMS">\u27f3</span></td>';
+                        return '<td class="hydra-door-hover-hl hydra-lc-pull" data-lcpull="' + r.vrid + '" style="cursor:pointer" title="Click to pull this trailer\u2019s location from YMS"><span style="color:var(--h-blue, #5090d0);font-weight:700">\u27f3</span></td>';
                     }
                     // Door column with visual cues:
                     //   • Purple bg: PA-assigned trailer, door is open (no conflict)
