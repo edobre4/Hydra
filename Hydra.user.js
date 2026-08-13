@@ -1153,6 +1153,7 @@
     var obTableData = {}, obActiveTab = 'obvrids', obSortKey = 'cpt', obSortDir = -1;
     // CPT Performance late-filters (multi-select, session-only, all-off = show all)
     var cptPerfFilters = { tdr: false, finish: false, adt: false, cpt: false };
+    var cptPerfSelected = new Set();   // VRIDs selected in the CPT Perf table (session)
     // SDT Chase planner state
     // SDT Chase combos live in obTableData.sdtchase (tab badge + refresh invalidation)
     var sdtChaseSel = null;       // selected combo key
@@ -10012,6 +10013,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                             row.cubeCuFt = Math.round(cuft);
                                             row.cube = row.cubeCuFt.toLocaleString();
                                         }
+                                        // Container count from the same manifest (no extra call)
+                                        var pct = st.stopManifest.parentContainerTypes;
+                                        if (Array.isArray(pct)) {
+                                            var _ctns = pct.reduce(function(s, t) { return s + (Number(t.count) || 0); }, 0);
+                                            if (_ctns > 0) row.ctns = _ctns;
+                                        }
                                         break;
                                     }
                                 });
@@ -10113,6 +10120,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     finishMs: null,
                     cube: null,
                     cubeCuFt: null,
+                    ctns: null,
                     cptPerf: null
                 });
             });
@@ -15982,6 +15990,7 @@ if (k === 'eta') {
             { key: 'tdrRelease',  label: 'TDR Release' },
             { key: 'finishTime',  label: 'Finish Time' },
             { key: 'cube',        label: 'Cubic Volume' },
+            { key: 'ctns',        label: 'Containers' },
             { key: 'cptPerf',     label: 'CPT Performance %' },
             { key: 'bridge',      label: 'Bridge' }
         ];
@@ -15991,12 +16000,19 @@ if (k === 'eta') {
             return '<th class="' + sc + '" data-key="' + c.key + '">' + c.label + '</th>';
         }).join('') + '</tr>';
 
+        // Drop selections that no longer exist in the data (post-refresh)
+        (function() {
+            var present = new Set(obTableData.cptperf.map(function(r) { return r.vrid; }));
+            Array.from(cptPerfSelected).forEach(function(v) { if (!present.has(v)) cptPerfSelected.delete(v); });
+        })();
+
         var rowsHtml = rows.map(function(r, _ri) {
             // Determine if this is a "CPT truck" (SDT >= CPT)
             var isCptTruck = r.sdtMs && r.cptMs && r.sdtMs >= r.cptMs;
             var rowClass = isCptTruck ? 'data-row cpt-truck' : 'data-row';
+            if (cptPerfSelected.has(r.vrid)) rowClass += ' selected';
 
-            return '<tr class="' + rowClass + '">' + cols.map(function(col) {
+            return '<tr class="' + rowClass + '" data-vrid="' + (r.vrid || '') + '">' + cols.map(function(col) {
                 var v = r[col.key];
                 var style = '';
 
@@ -16068,6 +16084,8 @@ if (k === 'eta') {
             + '</span>'
             + '<button id="hydra-cptperf-copy" style="font-size:11px;font-weight:700;border-radius:4px;padding:3px 10px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:var(--h-bg2, #16202c);color:var(--h-muted, #aab4c0)" title="Copy the visible table (incl. bridges) as Slack-ready text">\ud83d\udccb Copy for Slack</button>'
             + '<span style="font-size:11px;color:var(--h-muted2, #7a8a9a)">' + rows.length + ' loads</span>'
+            + '<span id="hydra-cptperf-selstats" style="font-size:11px;font-weight:700;color:var(--h-ob-accent, #20d4f0)"></span>'
+            + '<button id="hydra-cptperf-selclear" style="display:none;font-size:10px;border-radius:4px;padding:2px 8px;cursor:pointer;border:1px solid var(--h-border2, #3a4a5c);background:transparent;color:var(--h-muted, #aab4c0)">Clear</button>'
             + '</div>';
 
         tableWrap.innerHTML = barHtml + '<table id="hydra-table"><thead>' + headHtml + '</thead><tbody>' + rowsHtml + '</tbody></table>';
@@ -16084,6 +16102,87 @@ if (k === 'eta') {
                 renderOBTable();
             });
         });
+
+        // ── Range selection (same pattern as IB): click toggles, shift-click
+        // ranges, drag selects. Stats show avg cube/VRID and cube/container.
+        function _cpSelStats() {
+            var st = document.getElementById('hydra-cptperf-selstats');
+            var cl = document.getElementById('hydra-cptperf-selclear');
+            if (!st) return;
+            if (!cptPerfSelected.size) { st.textContent = ''; if (cl) cl.style.display = 'none'; return; }
+            var selRows = (obTableData.cptperf || []).filter(function(r) { return cptPerfSelected.has(r.vrid); });
+            var cubeSum = 0, cubeN = 0, ctnSum = 0;
+            selRows.forEach(function(r) {
+                if (r.cubeCuFt > 0) { cubeSum += r.cubeCuFt; cubeN++; }
+                if (r.ctns > 0) ctnSum += r.ctns;
+            });
+            var parts = [selRows.length + ' selected'];
+            if (cubeN) parts.push('avg ' + Math.round(cubeSum / cubeN).toLocaleString() + ' cuft/VRID');
+            if (cubeN && ctnSum) parts.push(Math.round(cubeSum / ctnSum).toLocaleString() + ' cuft/ctn');
+            if (cubeN < selRows.length) parts.push('(' + (selRows.length - cubeN) + ' w/o cube)');
+            st.textContent = parts.join(' \u00b7 ');
+            if (cl) cl.style.display = '';
+        }
+        var _cpRows = Array.from(tableWrap.querySelectorAll('.hydra-table tbody tr.data-row'));
+        var _cpAnchor = null, _cpCurrent = null, _cpDragging = false, _cpLastClick = null;
+        function _cpPaintSel() {
+            _cpRows.forEach(function(r) { r.classList.toggle('selected', cptPerfSelected.has(r.dataset.vrid)); });
+            _cpSelStats();
+        }
+        _cpRows.forEach(function(row, idx) {
+            row.addEventListener('mousedown', function(e) {
+                if (e.button !== 0 || e.target.tagName === 'A' || e.target.tagName === 'TEXTAREA' || (e.target.closest && e.target.closest('.hydra-copy-id'))) return;
+                e.preventDefault();
+                _cpAnchor = idx; _cpCurrent = idx; _cpDragging = false;
+            });
+        });
+        var _cpOnMove = function(e) {
+            if (_cpAnchor === null) return;
+            var t = document.elementFromPoint(e.clientX, e.clientY);
+            var tr = t && t.closest ? t.closest('.hydra-table tbody tr.data-row') : null;
+            if (!tr) return;
+            var tidx = _cpRows.indexOf(tr);
+            if (tidx === -1 || tidx === _cpCurrent) return;
+            _cpDragging = true; _cpCurrent = tidx;
+            var lo = Math.min(_cpAnchor, _cpCurrent), hi = Math.max(_cpAnchor, _cpCurrent);
+            _cpRows.forEach(function(r, i) { r.classList.toggle('drag-preview', i >= lo && i <= hi); });
+        };
+        var _cpOnUp = function(e) {
+            if (_cpAnchor === null) return;
+            var lo = Math.min(_cpAnchor, _cpCurrent), hi = Math.max(_cpAnchor, _cpCurrent);
+            if (!_cpDragging) {
+                var row = _cpRows[_cpAnchor], vrid = row ? row.dataset.vrid : null;
+                if (vrid && e.target.tagName !== 'A' && e.target.tagName !== 'TEXTAREA' && !(e.target.closest && e.target.closest('.hydra-copy-id'))) {
+                    if (e.shiftKey && _cpLastClick !== null) {
+                        var slo = Math.min(_cpLastClick, _cpAnchor), shi = Math.max(_cpLastClick, _cpAnchor);
+                        for (var i = slo; i <= shi; i++) cptPerfSelected.add(_cpRows[i].dataset.vrid);
+                    } else {
+                        if (cptPerfSelected.has(vrid)) cptPerfSelected.delete(vrid);
+                        else cptPerfSelected.add(vrid);
+                        _cpLastClick = _cpAnchor;
+                    }
+                }
+            } else {
+                for (var j = lo; j <= hi; j++) cptPerfSelected.add(_cpRows[j].dataset.vrid);
+            }
+            _cpRows.forEach(function(r) { r.classList.remove('drag-preview'); });
+            _cpAnchor = null; _cpCurrent = null; _cpDragging = false;
+            _cpPaintSel();
+        };
+        document.addEventListener('mousemove', _cpOnMove);
+        document.addEventListener('mouseup', _cpOnUp);
+        if (tableWrap._cpCleanupDrag) tableWrap._cpCleanupDrag();
+        tableWrap._cpCleanupDrag = function() {
+            document.removeEventListener('mousemove', _cpOnMove);
+            document.removeEventListener('mouseup', _cpOnUp);
+        };
+        var _cpSelClear = document.getElementById('hydra-cptperf-selclear');
+        if (_cpSelClear) _cpSelClear.addEventListener('click', function(e) {
+            e.stopPropagation();
+            cptPerfSelected.clear();
+            _cpPaintSel();
+        });
+        _cpSelStats();
 
         // Late-filter toggles (multi-select; all-off = show everything)
         tableWrap.querySelectorAll('.cptperf-filter').forEach(function(b) {
