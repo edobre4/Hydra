@@ -10040,8 +10040,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 // Batch: pull TDR and Finish for all VRIDs (sequential to avoid rate limit)
                 var eventStartSec = Math.floor(startMs / 1000) - 86400; // extend 1 day back for events
                 var eventEndSec = Math.floor(endMs / 1000) + 86400;
-                // Pull TDR + Finish in parallel batches of 5 VRIDs at a time
-                var BATCH_SIZE = 5;
+                // Pull TDR + Finish in parallel batches. 50 concurrent VRIDs
+                // (each VRID = 2 sequential event calls). If YMS starts rate
+                // limiting (blank TDR/Finish columns), dial this back down.
+                var BATCH_SIZE = 50;
                 var batchIdx = 0;
                 function pullBatch() {
                     if (batchIdx >= rows.length) { console.log('[Hydra CPT Perf] pullBatch complete. batchIdx=' + batchIdx); return Promise.resolve(); }
