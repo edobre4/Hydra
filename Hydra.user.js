@@ -12232,7 +12232,7 @@ if (k === 'eta') {
                     // events and show the door it was on at completion.
                     if (r.status === 'COMPLETED') {
                         var _lcr = lifecycleMap[r.vrid];
-                        if (_lcr && _lcr.door) return '<td title="Location at completion (YMS event history)">' + _lcr.door + '</td>';
+                        if (_lcr && _lcr.door) return '<td class="hydra-door-hover-hl" title="Location at completion (YMS event history)">' + _lcr.door + '</td>';
                         if (_lcr && _lcr.state === 'noEvents') return '<td style="color:var(--h-dim, #4a5a6a)" title="No YMS events found">none</td>';
                         if (_lcPending[r.vrid]) return '<td style="color:var(--h-muted2, #7a8a9a)">\u2026</td>';
                         return '<td><span class="hydra-lc-pull" data-lcpull="' + r.vrid + '" style="color:var(--h-blue, #5090d0);cursor:pointer;font-weight:700" title="Click to pull this trailer\u2019s location from YMS">\u27f3</span></td>';
@@ -12246,9 +12246,6 @@ if (k === 'eta') {
                     var warnHtml = '';
                     var tdCls = '';
                     var tdTitle = '';
-                    // Completed trailers: same hover highlight as the sesame
-                    // PA (clickable) door cells, so the location pops on hover.
-                    if (r.status === 'COMPLETED' && r.location != null) tdCls = ' class="hydra-door-hover-hl"';
                     var hasPA = r.isPA === true;
                     // Yellow: ETA imminent AND not pre-assigned
                     if (!hasPA && r.status === 'SCHEDULED' && r.etaMs) {
