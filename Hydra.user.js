@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.62
+// @version      3.63
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -1190,6 +1190,9 @@
     var sdtChaseStagedFilter = ''; // text filter, staged table
     var sdtChaseRecvFilter = '';  // text filter, received table
     var sdtChaseRailFilter = '';  // rail filter: vrid / route / door / status
+    var sdtChaseStatusFilter = ''; // rail status filter (dropdown; '' = all)
+    var sdtChaseRailSort = 'sdt';  // rail sort mode: 'sdt' | 'cube'
+    var sdtChaseWarnHighlight = null; // combo key whose underutilization warning is being visualized
     var _sdtLastFloorCids = [];   // visible floor container ids (Ctrl+A scope)
     var obVridsSelectedOnly = false;  // OB VRIDs: show only selected routes
     var dynSel = {};              // { route: { cptStr: true } } session-scoped working set
@@ -1387,6 +1390,17 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof applyZoom === 'function') applyZoom();
         if (typeof puActive !== 'undefined' && puActive && typeof renderAllPanes === 'function') renderAllPanes();
     }
+
+    // Re-run auto-fit zoom on window resize (debounced to avoid thrashing)
+    var _resizeTimer = null;
+    window.addEventListener('resize', function() {
+        if (!autoFitZoom) return;
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(function() {
+            if (typeof applyZoom === 'function') applyZoom();
+            if (typeof puActive !== 'undefined' && puActive && typeof renderAllPanes === 'function') renderAllPanes();
+        }, 150);
+    });
 
     // Sesame Gate pre-assignment (PA) state
     var sesameEnabled        = false;  // user toggle
@@ -2115,17 +2129,17 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '#hydra-door-panel{--dd-scale:1;background:var(--h-bg2, #16202c);border:1px solid var(--h-border, #2a3a4c);border-radius:4px;padding:3px 4px;margin:0 0 4px 0;display:flex;gap:2px;flex-wrap:wrap;align-items:stretch;max-width:100%;box-sizing:border-box}',
         '.hydra-door-cell{position:relative;width:calc(44px * var(--dd-scale));min-height:calc(30px * var(--dd-scale));border:1px solid var(--h-border, #2a3a4c);border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1px 2px;box-sizing:border-box;background:var(--h-bg1, #0e1620);line-height:1.05}',
         '.hydra-door-num{font-size:calc(9px * var(--dd-scale));color:var(--h-doornum, #8a9ba8);font-weight:600;line-height:1}',
-        '.hydra-door-body{font-size:calc(9px * var(--dd-scale));font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1;width:100%;margin-top:1px;max-height:calc(12px * var(--dd-scale));overflow:hidden}',
+        '.hydra-door-body{font-size:calc(9px * var(--dd-scale));font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1;width:100%;margin-top:1px;max-height:calc(18px * var(--dd-scale));overflow:hidden}',
         '.hydra-door-cell:hover .hydra-door-body{max-height:none;overflow:visible}',
         '.hydra-door-body.dd-route{color:var(--h-text, #e8eaf0);font-size:calc(9px * var(--dd-scale));word-break:break-all;letter-spacing:-0.2px}',
         '.hydra-door-body.dd-route .dd-route-ib{color:#ff2855}',
         '.hydra-door-body.dd-route .dd-route-ib-xd{color:#66bb6a}',
         '.hydra-door-body.dd-route .dd-route-ob{color:var(--h-ob-accent, #20d4f0)}',
-        '.hydra-door-body.dd-empty{color:#f9a825;font-size:calc(10px * var(--dd-scale))}',
+        '.hydra-door-body.dd-empty{color:#f9a825;font-size:calc(10px * var(--dd-scale));flex-direction:column}',
         '.hydra-door-body.dd-incoming{color:var(--h-blue, #5090d0);font-size:calc(13px * var(--dd-scale))}',
         '.hydra-door-body.dd-outgoing{color:#ff7043;font-size:calc(13px * var(--dd-scale))}',
         '.hydra-door-cell.dd-empty-trailer{background:rgba(249,168,37,0.1)}',
-        '.dd-empty-owner{display:block;font-size:calc(7px * var(--dd-scale));font-weight:800;line-height:1.2;letter-spacing:0.3px;margin-top:1px;border-top:1px solid rgba(255,112,67,0.4);padding-top:1px}',
+        '.dd-empty-owner{display:block;font-size:calc(7px * var(--dd-scale));font-weight:800;line-height:1.1;letter-spacing:0.3px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}',
         '.dd-empty-owner.dd-owner-other{color:#ff7043}',
         '.hydra-door-cell.dd-moveable:hover{box-shadow:0 0 6px rgba(32,212,240,0.4);border-color:rgba(32,212,240,0.5)}',
         '.hydra-door-move-badge{position:absolute;top:1px;right:1px;font-size:7px;color:var(--h-ob-accent, #20d4f0);opacity:0.5;pointer-events:none;line-height:1}',
@@ -3565,6 +3579,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseTypeCap: sdtChaseTypeCap,
             sdtChaseMaxCtns: sdtChaseMaxCtns,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
+            sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
             autoChuteSep1: AUTO_CHUTE_SEP1, autoChuteSep2: AUTO_CHUTE_SEP2, autoChuteLanes: AUTO_CHUTE_LANES,
             recvBuffers: RECEIVED_BUFFERS,
@@ -3714,6 +3729,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
         if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
+        if (typeof s.sdtChaseStatusFilter === 'string') sdtChaseStatusFilter = s.sdtChaseStatusFilter;
+        if (s.sdtChaseRailSort === 'sdt' || s.sdtChaseRailSort === 'cube') sdtChaseRailSort = s.sdtChaseRailSort;
                 if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
@@ -4454,6 +4471,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseTypeCap: sdtChaseTypeCap,
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
+                sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
                 autoChuteMin:    AUTO_CHUTE_MIN,
                 autoChuteSep1:   AUTO_CHUTE_SEP1,
@@ -4636,6 +4654,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
             if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
+            if (typeof s.sdtChaseStatusFilter === 'string') sdtChaseStatusFilter = s.sdtChaseStatusFilter;
+            if (s.sdtChaseRailSort === 'sdt' || s.sdtChaseRailSort === 'cube') sdtChaseRailSort = s.sdtChaseRailSort;
                         if (s.wsRedPct > 0) wsRedPct = +s.wsRedPct;
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
@@ -5856,111 +5876,113 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     // Main IB fetch + build — called by doRefresh()
-    // ETA fetch for SCHEDULED loads (ported from ILT 5.6 fetchSingleETA).
-    // Concurrency-limited to ETA_CONCURRENCY by fetchETAs; this function is single-shot.
-    function fetchSingleETA(vrid, nodeId) {
-        return new Promise(function(resolve) {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: 'https://trans-logistics.amazon.com/fmc/api/v2/execution/load/' + vrid,
-                withCredentials: true,
-                onload: function(r) {
-                    if (r.status !== 200) { resolve({ vrid: vrid, eta: null }); return; }
-                    try {
-                        var data = JSON.parse(r.responseText);
-                        if (!data || !data.timeline) { resolve({ vrid: vrid, eta: null }); return; }
-                        var destStop = null;
-                        for (var j = 0; j < data.timeline.length; j++) {
-                            var ev = data.timeline[j];
-                            if (ev.eventType === 'STOP' && ev.stepType === 'FUTURE') {
-                                if (ev.title && ev.title.toUpperCase() === nodeId.toUpperCase()) { destStop = ev; break; }
-                                if (!destStop) destStop = ev;
-                            }
-                        }
-                        if (!destStop || !destStop.statusRollUps) { resolve({ vrid: vrid, eta: null }); return; }
-                        for (var k = 0; k < destStop.statusRollUps.length; k++) {
-                            var ru = destStop.statusRollUps[k];
-                            if (ru.localizableDescription && ru.localizableDescription.translationKey === 'fmc_estimated_arrival') {
-                                var ms = ru.timeAndFacilityTimeZone && ru.timeAndFacilityTimeZone.utcMillis;
-                                resolve({ vrid: vrid, eta: ms || null });
-                                return;
-                            }
-                        }
-                        resolve({ vrid: vrid, eta: null });
-                    } catch(e) { resolve({ vrid: vrid, eta: null }); }
-                },
-                onerror: function() { resolve({ vrid: vrid, eta: null }); }
-            });
-        });
-    }
-    window.hydraDebugEta = function(vrid) {
-        var nodeEl = document.getElementById('hydra-node-input');
-        var node = (nodeEl && nodeEl.value ? nodeEl.value : 'ORD9').toUpperCase();
-        return fetchSingleETA(vrid, node);
-    };
-
-    // >>> THROTTLE-DIAG MODE: concurrency=1, 150ms gap between calls.
-    // Purpose: prove whether missed ETAs are due to FMC throttling.
-    // Revert to concurrency=5 after testing.
-    var ETA_CONCURRENCY = 1;
-    var ETA_INTERCALL_GAP_MS = 0;
-
+    // ETA fetch for SCHEDULED loads via Relay Transport-Views (replaced FMC).
     // ETA fetch only considers SCHEDULED loads with SAT within this window from now.
-    // Loads further out in the future have a static SAT that's good enough; we only
-    // need live FMC ETA for near-term arrivals.
     var ETA_SAT_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-    function fetchETAs(nodeId, loads) {
-        // Only fetch if eta column is visible
+    // ── Relay Transport-Views ETA ────────────────────────────────────────────
+    // Batch-fetches ETAs from track.relay.amazon.dev for scheduled VRIDs.
+    // 50 VRIDs per chunk, all chunks in parallel. Fast replacement for FMC.
+    function fetchRelayETAs(nodeId, loads) {
         if (!ibVisibleCols.has('eta')) return Promise.resolve({});
         var nowMs = Date.now();
         var windowEndMs = nowMs + ETA_SAT_WINDOW_MS;
         var scheduled = loads.filter(function(l) {
             if (l.status !== 'SCHEDULED' || !l.displayId) return false;
-            // Only pull ETA for loads with a SAT inside the window (0..+6h).
-            // Skip loads with no SAT (l.sat falsy) or SAT outside window.
             if (!l.sat) return false;
             return l.sat <= windowEndMs;
         });
         if (!scheduled.length) return Promise.resolve({});
         var tStart = Date.now();
-        console.log('[Hydra ETA TEST] Starting sequential test: ' + scheduled.length + ' VRIDs, ' + ETA_INTERCALL_GAP_MS + 'ms between calls');
-        setStatus('Fetching ETAs (' + scheduled.length + ' scheduled, sequential)...');
+        console.log('[Hydra RTT ETA] Starting batch fetch: ' + scheduled.length + ' VRIDs');
+        setStatus('Fetching RTT ETAs (' + scheduled.length + ' scheduled)...');
 
-        var results = new Array(scheduled.length);
-        var nextIdx = 0;
-        var completed = 0;
-        return new Promise(function(done) {
-            function worker() {
-                if (nextIdx >= scheduled.length) {
-                    if (completed === scheduled.length) finish();
-                    return;
-                }
-                var myIdx = nextIdx++;
-                var load = scheduled[myIdx];
-                fetchSingleETA(load.displayId, nodeId).then(function(r) {
-                    results[myIdx] = r;
-                    completed++;
-                    if (completed % 25 === 0 || completed === scheduled.length) {
-                        setStatus('Fetching ETAs (' + completed + '/' + scheduled.length + ')...');
-                    }
-                    // 150ms gap before next call
-                    setTimeout(worker, ETA_INTERCALL_GAP_MS);
+        var vrids = scheduled.map(function(l) { return l.displayId; });
+        var RTT_CHUNK = 50;
+
+        return fetchRelayTrackJwt(false).then(function(jwt) {
+            if (!jwt) { console.warn('[Hydra RTT ETA] No JWT'); return {}; }
+            var chunks = [];
+            for (var i = 0; i < vrids.length; i += RTT_CHUNK) chunks.push(vrids.slice(i, i + RTT_CHUNK));
+            var etaMap = {};
+            var done = 0;
+            return Promise.all(chunks.map(function(chunk) {
+                var qs = chunk.map(function(v) { return 'searchId[]=' + encodeURIComponent(v); }).join('&');
+                var url = 'https://track.relay.amazon.dev/api/v2/transport-views?' + qs + '&module=trip&type[]=vehicleRun&region=na&view=detail&sortCol=sent&ascending=true';
+                return new Promise(function(resolve) {
+                    GM_xmlhttpRequest({
+                        method: 'GET', url: url,
+                        headers: { 'Authorization': 'Bearer ' + jwt, 'Accept': '*/*' },
+                        withCredentials: true,
+                        onload: function(r) {
+                            try {
+                                if (r.status !== 200) { console.warn('[Hydra RTT ETA] HTTP ' + r.status, (r.responseText || '').slice(0, 150)); resolve(); return; }
+                                var items = JSON.parse(r.responseText);
+                                if (!Array.isArray(items)) items = (items && items.results) || [];
+                                items.forEach(function(item) {
+                                    var vr = item.vrIdentifier || (item.id ? String(item.id).replace(/^NA:VR:/, '') : null);
+                                    if (!vr) return;
+                                    // Try top-level expectedArrivalForNextStop first
+                                    var etaIso = item.expectedArrivalForNextStop || null;
+                                    // Fallback: find destination stop matching our node
+                                    if (!etaIso && Array.isArray(item.stops)) {
+                                        for (var s = 0; s < item.stops.length; s++) {
+                                            var st = item.stops[s];
+                                            if (!st.stopActionTypes || st.stopActionTypes.indexOf('DROPOFF') === -1) continue;
+                                            // Match by node code
+                                            var loc = st.location;
+                                            if (loc && loc.nodeCode && loc.nodeCode.toUpperCase() === nodeId.toUpperCase()) {
+                                                etaIso = (st.arrival && st.arrival.estimatedArrivalTime) || (st.arrival && st.arrival.predictedEta && st.arrival.predictedEta.eta) || null;
+                                                break;
+                                            }
+                                            // If no match yet, use the last DROPOFF stop
+                                            if (!etaIso) {
+                                                etaIso = (st.arrival && st.arrival.estimatedArrivalTime) || (st.arrival && st.arrival.predictedEta && st.arrival.predictedEta.eta) || null;
+                                            }
+                                        }
+                                    }
+                                    if (etaIso) {
+                                        var ms = new Date(etaIso).getTime();
+                                        if (ms > 0) etaMap[vr] = ms;
+                                    }
+                                });
+                            } catch (e) { console.warn('[Hydra RTT ETA] parse error:', e.message); }
+                            done += chunk.length;
+                            setStatus('RTT ETAs ' + Math.min(done, vrids.length) + '/' + vrids.length + '...');
+                            resolve();
+                        },
+                        onerror: function() { console.warn('[Hydra RTT ETA] network error for chunk'); resolve(); }
+                    });
                 });
-            }
-            function finish() {
-                var etaMap = {};
-                var hits = 0, misses = 0;
-                results.forEach(function(r) {
-                    if (r && r.eta) { etaMap[r.vrid] = r.eta; hits++; }
-                    else { misses++; }
-                });
+            })).then(function() {
+                var hits = Object.keys(etaMap).length;
                 var elapsed = Math.round((Date.now() - tStart) / 100) / 10;
-                console.log('[Hydra ETA TEST] DONE: ' + hits + ' hits / ' + misses + ' misses / ' + scheduled.length + ' total in ' + elapsed + 's (' + (hits * 100 / scheduled.length).toFixed(1) + '% hit rate)');
-                done(etaMap);
+                console.log('[Hydra RTT ETA] DONE: ' + hits + ' hits / ' + (scheduled.length - hits) + ' misses / ' + scheduled.length + ' total in ' + elapsed + 's');
+                return etaMap;
+            });
+        }).catch(function(e) {
+            console.warn('[Hydra RTT ETA] skipped:', e && e.message ? e.message : e);
+            return {};
+        });
+    }
+
+    // Apply RTT ETAs to IB rows. Sets etaMs/eta, flips SCHEDULED -> MANIFESTED.
+    // The location column renderer handles the ⚠ flag for <60m no-PA trailers.
+    function applyIbRttEtas(etaMap, targetRows) {
+        var _arr = Array.isArray(targetRows) ? targetRows : ibTableData;
+        if (!Array.isArray(_arr)) return;
+        etaMap = etaMap || {};
+        _arr.forEach(function(r) {
+            if (r.status !== 'SCHEDULED' || !r.vrid) return;
+            var etaMsVal = 0;
+            if (r.total > 0 && etaMap[r.vrid]) {
+                etaMsVal = Number(etaMap[r.vrid]) || 0;
+                // Discard if more than 30 min overdue
+                if (etaMsVal && (etaMsVal - Date.now()) < -30 * 60 * 1000) etaMsVal = 0;
             }
-            var startN = Math.min(ETA_CONCURRENCY, scheduled.length);
-            for (var i = 0; i < startN; i++) worker();
+            r.etaMs = etaMsVal;
+            r.eta = etaMsVal ? '' : '\u2014';
+            r.displayStatus = etaMsVal ? 'MANIFESTED' : (r.status || '\u2014');
         });
     }
 
@@ -6089,25 +6111,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
-    // Patch ETAs into already-rendered IB rows (in place). Sets etaMs/eta and
-    // flips SCHEDULED -> MANIFESTED for rows that qualify (packages > 0, ETA not
-    // more than 30 min overdue). Called when the slow ETA fetch resolves.
-    function applyIbEtas(etaMap, targetRows) {
-        var _arr = Array.isArray(targetRows) ? targetRows : ibTableData;
-        if (!Array.isArray(_arr)) return;
-        etaMap = etaMap || {};
-        _arr.forEach(function(r) {
-            if (r.status !== 'SCHEDULED' || !r.vrid) return;
-            var etaMsVal = 0;
-            if (r.total > 0 && etaMap[r.vrid]) {
-                etaMsVal = Number(etaMap[r.vrid]) || 0;
-                if (etaMsVal && (etaMsVal - Date.now()) < -30 * 60 * 1000) etaMsVal = 0;
-            }
-            r.etaMs = etaMsVal;
-            r.eta = etaMsVal ? '' : '\u2014';
-            r.displayStatus = etaMsVal ? 'MANIFESTED' : (r.status || '\u2014');
-        });
-    }
+    // Patch ETAs into already-rendered IB rows (in place). Now handled by applyIbRttEtas
+    // which uses the Relay Transport-Views batch API instead of FMC sequential calls.
 
     function fetchAndBuildIB(onPatch, deferEta) {
         var node       = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
@@ -6175,9 +6180,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var _ctnTrace = hydraTraceStart('ibGetContainerCounts');
             var pkgP = ibGetPackageCounts(node, loadIdObjs).then(function(x){ hydraTraceEnd(_pkgTrace, { rows: x.length }); return x; }, function(e){ hydraTraceFail(_pkgTrace, e); throw e; });
             var ctnP = ibGetContainerCounts(node, loadIdObjs).then(function(x){ hydraTraceEnd(_ctnTrace, { rows: x.length }); return x; }, function(e){ hydraTraceFail(_ctnTrace, e); throw e; });
-            // NOTE: ETAs are NOT started here. fetchETAs() is sequential and would
-            // saturate the request pool, delaying the fast pkg/ctn calls. We start
-            // it in the progressive tail AFTER phase-1 resolves (see below).
+            // ETAs are fetched in the progressive tail after phase-1 resolves
+            // (batched via Relay Transport-Views, no longer sequential FMC calls).
             // Sesame Gate PA: gated on toggle + Door column visible + at least 1 SCHEDULED row
             // IB's Door column has key 'location' (label 'Door') -- don't confuse with OB's 'door' key.
             var hasScheduled = loads.some(function(l) { return l.status === 'SCHEDULED'; });
@@ -6246,9 +6250,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
                     var sortable = Math.max(0, pkg.remaining - pkg.crossdock);
 
-                    // ETA: only for SCHEDULED loads that have a live FMC ETA.
-                    // Store raw ms in etaMs and let renderIBTable compute the countdown
-                    // fresh each render so the time-until-ETA stays accurate.
+                    // ETA: populated later by applyIbRttEtas after Relay batch resolves.
+                    // Initial build has etaMs=0; progressive patch fills it in.
                     var etaMsVal = 0;
                     // ETA only for SCHEDULED loads that actually have packages (>0).
                     if (l.status === 'SCHEDULED' && l.displayId && pkg.total > 0 && etaMap[l.displayId]) {
@@ -6325,28 +6328,20 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 // a few extra seconds but never sees a partially-rendered table.
                 if (deferEta) {
                     setStatus('Loading ETAs\u2026 (full refresh, holding render)');
-                    var _etaTraceD = hydraTraceStart('fetchETAs(deferred)');
-                    var _etaPD = fetchETAs(node, loads).then(function(etaMap) {
-                        hydraTraceEnd(_etaTraceD, { etaCount: Object.keys(etaMap || {}).length });
-                        // Apply to THESE rows, not global ibTableData (which still holds
-                        // the previous dataset until the caller swaps it in below).
-                        applyIbEtas(etaMap || {}, rows);
-                    }, function(e){ hydraTraceFail(_etaTraceD, e); });
+                    var _rttPD = fetchRelayETAs(node, loads).then(function(etaMap) {
+                        applyIbRttEtas(etaMap || {}, rows);
+                    }, function(e){ console.warn('[Hydra RTT ETA deferred]', e); });
                     var _obrPD = enrichRowsWithObRoutes(rows).then(function(){ return enrichRowsWithCptPlus(rows); }).then(function(){ return enrichRowsWithXdContainers(rows); }).then(null, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
                     var _ilpPD = enrichRowsWithIlp(rows);
                     var _yrdPD = fetchYardStateIfNeeded().then(function(){ return enrichRowsWithTdrStatus(rows); }).then(null, function(e){ console.warn('[Hydra] yard/TDR:', e); });
-                    return Promise.all([_etaPD, _obrPD, _yrdPD, _ilpPD]).then(function(){ return rows; });
+                    return Promise.all([_rttPD, _obrPD, _yrdPD, _ilpPD]).then(function(){ return rows; });
                 }
-                // ETAs (slow, sequential) -> start NOW that fast calls are done -> apply + patch
-                var _etaTrace = hydraTraceStart('fetchETAs');
-                fetchETAs(node, loads).then(function(etaMap) {
-                    hydraTraceEnd(_etaTrace, { etaCount: Object.keys(etaMap || {}).length });
-                    applyIbEtas(etaMap || {}); _patch();
-                    // ETAs were the last/slowest step and overwrote the status with
-                    // progress messages -- restore a clean 'done' status now.
+                // ETAs (batch via Relay Transport-Views) -> apply + patch
+                fetchRelayETAs(node, loads).then(function(etaMap) {
+                    applyIbRttEtas(etaMap || {}); _patch();
                     var _n = Array.isArray(ibTableData) ? ibTableData.length : 0;
                     setStatus('\u2714 ' + _n + ' inbound loads (ETAs loaded) \u2014 ' + new Date().toLocaleTimeString());
-                }, function(e){ hydraTraceFail(_etaTrace, e); });
+                }, function(e){ console.warn('[Hydra RTT ETA]', e); });
                 // OB routes -> CPT+ -> patch after each
                 enrichRowsWithObRoutes(rows).then(function(){ _patch(); return enrichRowsWithCptPlus(rows); }).then(function(){ _patch(); return enrichRowsWithXdContainers(rows); }).then(function(){ _patch(); }, function(e){ console.warn('[Hydra] enrich obRoutes/cptPlus/xdCtns:', e); });
                 // ILP ranks (only fetches if column enabled) -> patch
@@ -9757,13 +9752,17 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     if (!det || det.packageVolume == null) return;
                     var ccm = det.contentCountMap || {};
                     var ctns = 0;
-                    Object.keys(ccm).forEach(function(k) { if (k !== 'PACKAGE') ctns += ccm[k] || 0; });
+                    var byType = {};
+                    Object.keys(ccm).forEach(function(k) {
+                        if (k !== 'PACKAGE') { ctns += ccm[k] || 0; byType[k] = ccm[k] || 0; }
+                    });
                     var vol = det.packageVolume - (_kidVol[tid] || 0);
                     if (vol < 0) vol = det.packageVolume; // defensive: never negative
                     byTrailer[tid] = {
                         cube: vol * CUFT_CONVERSION,
                         pkgs: ccm.PACKAGE || 0,
-                        ctns: ctns
+                        ctns: ctns,
+                        byType: byType   // per-type loaded counts (CART/PALLET/SHUTTLE/GAYLORD/...)
                     };
                 });
                 // Floor + staged container objects
@@ -9830,6 +9829,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 c.loadedCube = lc ? lc.cube : null;   // real cu ft in THIS trailer
                 c.loadedPkgs = lc ? lc.pkgs : null;
                 c.loadedCtns = lc ? lc.ctns : null;
+                c.loadedByType = lc ? lc.byType : null;   // per-type loaded counts
                 // Per-trailer target from route-name rules (Settings > SDT
                 // Chase). The old OB fill-logic derivation is kept only as
                 // diagnostic info (obFillPct) - the real OB target logic is
@@ -10016,8 +10016,23 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                         // Container count from the same manifest (no extra call)
                                         var pct = st.stopManifest.parentContainerTypes;
                                         if (Array.isArray(pct)) {
-                                            var _ctns = pct.reduce(function(s, t) { return s + (Number(t.count) || 0); }, 0);
+                                            // Containers = anything BUT package
+                                            var _ctns = pct.reduce(function(s, t) {
+                                                var tp = String(t.type || '').toUpperCase();
+                                                return s + (tp.indexOf('PACKAGE') === -1 ? (Number(t.count) || 0) : 0);
+                                            }, 0);
                                             if (_ctns > 0) row.ctns = _ctns;
+                                            // Fluid = package type (loose packages)
+                                            var _fluid = pct.reduce(function(s, t) {
+                                                var tp = String(t.type || '').toUpperCase();
+                                                return s + (tp.indexOf('PACKAGE') !== -1 ? (Number(t.count) || 0) : 0);
+                                            }, 0);
+                                            if (_fluid > 0) row.fluid = _fluid;
+                                            // Cart count: sum entries where type contains "CART"
+                                            var _carts = pct.reduce(function(s, t) {
+                                                return s + ((String(t.type || '').toUpperCase().indexOf('CART') !== -1) ? (Number(t.count) || 0) : 0);
+                                            }, 0);
+                                            if (_carts > 0) row.carts = _carts;
                                         }
                                         break;
                                     }
@@ -10121,6 +10136,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     cube: null,
                     cubeCuFt: null,
                     ctns: null,
+                    fluid: null,
+                    carts: null,
                     cptPerf: null
                 });
             });
@@ -10576,17 +10593,30 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     + '&planId=' + (c.planId || '')
                     + '&vrId=' + c.vrid
                     + '&status=stacked&trailerId=&trailerNumber=';
-                return gmFetchRaw(url).then(function(text) {
+                function _wsBufFetch(retries) {
+                    return gmFetchRaw(url).then(function(text) { return text; }, function(err) {
+                        if (retries > 0) {
+                            console.warn('[Hydra WSBuf] 429/error for ' + c.vrid + ', retrying in 1.5s (' + retries + ' left)');
+                            return new Promise(function(r) { setTimeout(r, 1500); }).then(function() { return _wsBufFetch(retries - 1); });
+                        }
+                        throw err;
+                    });
+                }
+                return _wsBufFetch(2).then(function(text) {
                     var data = JSON.parse(text);
                     var rootNode = data && data.ret && data.ret.aaData && data.ret.aaData.ROOT_NODE;
-                    if (!rootNode) return;
+                    if (!rootNode) { if (/DDU/i.test(c.route)) console.log('[Hydra WSBuf] DDU route ' + c.route + ' (' + c.vrid + ') no ROOT_NODE. aaData keys:', data && data.ret && data.ret.aaData ? Object.keys(data.ret.aaData) : 'none'); return; }
+                    if (/DDU/i.test(c.route)) console.log('[Hydra WSBuf] DDU route ' + c.route + ' (' + c.vrid + '): ' + rootNode.length + ' buffer nodes. Labels:', rootNode.slice(0, 8).map(function(n) { return n.container && n.container.label; }));
+                    if (/DDU/i.test(c.route)) rootNode.forEach(function(bn) { var bl = bn.container && bn.container.label || ''; if (/WS_BUFFER/i.test(bl) || /DDU/i.test(bl)) console.log('[Hydra WSBuf]   Buffer "' + bl + '" children:', Array.isArray(bn.childNodes) ? bn.childNodes.length : typeof bn.childNodes, Array.isArray(bn.childNodes) ? bn.childNodes.slice(0, 3).map(function(ch) { return { label: ch.container && ch.container.label, childNodes: Array.isArray(ch.childNodes) ? ch.childNodes.length : ch.childNodes }; }) : ''); });
                     var route = c.route;
                     if (route.indexOf('->') !== -1) route = route.split('->')[1].trim();
-                    if (selRoutes.length > 0 && !routeMatchesList(route, selRoutes)) return;
                     rootNode.forEach(function(bufferNode) {
                         var bufLabel = bufferNode.container && bufferNode.container.label ? bufferNode.container.label : '';
-                        // Only include containers in WS_BUFFER locations
-                        if (bufLabel.indexOf('WS_BUFFER') === -1) return;
+                        // Only include containers whose buffer location matches at least one WS Buffer column filter
+                        var _matchesAnyCol = WS_BUFFER_COLUMNS.some(function(col) {
+                            return col.filters.some(function(f) { return bufLabel.indexOf(f) !== -1; });
+                        });
+                        if (!_matchesAnyCol) return;
                         var children = bufferNode.childNodes;
                         if (!children || !Array.isArray(children) || !children.length) return;
                         children.forEach(function(ctn) {
@@ -10594,7 +10624,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             var cid = ctn.container && ctn.container.containerId ? ctn.container.containerId : cLabel;
                             var pkgs = Array.isArray(ctn.childNodes) ? ctn.childNodes.length
                                      : (typeof ctn.childNodes === 'number' ? ctn.childNodes : 0);
-                            if (!pkgs) return;
                             // Try all time fields for dwell
                             var timeStr = (ctn.container && ctn.container.parentChildAssTime) || null;
                             var timeMs = timeStr ? new Date(timeStr).getTime() : null;
@@ -10628,11 +10657,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var _CONC = 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
-            (function(_batch) {
+            (function(_batch, _bIdx) {
                 _bchain = _bchain.then(function() {
                     return Promise.all(_batch.map(function(_t) { return _t(); }));
                 });
-            })(_thunks.slice(_bi, _bi + _CONC));
+            })(_thunks.slice(_bi, _bi + _CONC), _bi);
         }
         return _bchain.then(function() {
             obTableData.wsbuffer = Object.values(routeMap);
@@ -15449,30 +15478,43 @@ if (k === 'eta') {
             var exc = sdtChaseExcluded[c.key] || {};
             var tgt = (c.targetCube && c.targetCube > 0) ? c.targetCube : sdtChaseTarget;
             var baseCube = (c.loadedCube != null) ? c.loadedCube : 0;
-            var baseCount = c.loadedCtns || 0;
-            c.containers.forEach(function(ctn) { if (man[ctn.id]) { baseCube += ctn.cube; baseCount++; } });
-            // Candidates: any stage (stacked/staged/received), non-empty, free
-            var cands = c.containers.filter(function(x) {
-                return x.pkgs > 0 && !claimed[x.id] && !man[x.id] && !exc[x.id];
+            // Row capacity: loaded row cost (+ any manual picks), optimally packed.
+            var rowsTotal = _sdtTrailerRows();
+            var baseRows = _sdtLoadedRowCost(c.loadedByType);
+            if (baseRows == null) baseRows = (c.loadedCtns || 0) / 3;
+            c.containers.forEach(function(ctn) {
+                if (man[ctn.id]) { baseCube += ctn.cube; baseRows += _sdtItemRowCost(ctn.type); }
             });
+            var rowsFree = rowsTotal - baseRows;
+            // Candidates: any stage (stacked/staged/received), non-empty, free,
+            // excluding loose packages (they don't occupy rows).
+            var cands = c.containers.filter(function(x) {
+                return x.pkgs > 0 && !_sdtIsPkg(x.type) && !claimed[x.id] && !man[x.id] && !exc[x.id];
+            });
+            // Row-aware fill: assumes optimal packing (each pick consumes its row
+            // cost; cart = 1/3 row, pallet/shuttle/gaylord = 1/2 row). Skips items
+            // that don't fit so smaller ones can still be tried.
             function simulate(order) {
-                var picks = [], cube = baseCube, count = baseCount;
+                var picks = [], cube = baseCube, rows = 0;
                 for (var i = 0; i < order.length; i++) {
-                    if (cube >= tgt || count >= sdtChaseMaxCtns) break;
-                    picks.push(order[i]); cube += order[i].cube; count++;
+                    if (cube >= tgt) break;
+                    var cost = _sdtItemRowCost(order[i].type);
+                    if (rows + cost > rowsFree + 1e-9) continue;
+                    picks.push(order[i]); cube += order[i].cube; rows += cost;
                 }
                 return { picks: picks, cube: cube };
             }
-            // Prefer CLOSED containers: try closed-first; only fall back to a
-            // mixed cube-descending order if closed-first can't reach the
-            // target within the container cap.
+            var _dens = function(x) { return x.cube / _sdtItemRowCost(x.type); };
+            // Prefer CLOSED containers: try closed-first (densest closed first);
+            // only fall back to a density-ranked mix if closed-first can't reach
+            // the target within the trailer's remaining rows.
             var closedFirst = cands.slice().sort(function(a, b) {
                 var ac = a.state === 'CLOSED' ? 0 : 1, bc = b.state === 'CLOSED' ? 0 : 1;
-                return ac !== bc ? ac - bc : b.cube - a.cube;
+                return ac !== bc ? ac - bc : _dens(b) - _dens(a);
             });
             var best = simulate(closedFirst);
             if (best.cube < tgt) {
-                var mixed = simulate(cands.slice().sort(function(a, b) { return b.cube - a.cube; }));
+                var mixed = simulate(cands.slice().sort(function(a, b) { return _dens(b) - _dens(a); }));
                 if (mixed.cube > best.cube) best = mixed;
             }
             best.picks.forEach(function(ctn) { auto[ctn.id] = true; claimed[ctn.id] = true; });
@@ -15493,6 +15535,173 @@ if (k === 'eta') {
                  hit: newCube >= target, nPicks: nPicks, picks: picks,
                  noData: c.loadedCube == null };
     }
+    // ── Trailer row-capacity model ───────────────────────────────────────────
+    // A trailer has 12 rows. Each row fits 3 carts OR 2 pallets/shuttles/gaylords.
+    // We assume optimal loading (containers share leftover row space), so total
+    // row cost = carts/3 + twos/2, capped at the row count. Cart = 1/3 row;
+    // pallet/shuttle/gaylord = 1/2 row.
+    function _sdtTrailerRows() { return Math.max(1, Math.round((sdtChaseMaxCtns || 36) / 3)); }
+    // Loose packages don't occupy rows — ignore them entirely in layout/capacity.
+    function _sdtIsPkg(type) { return (type || '').toUpperCase().indexOf('PACKAGE') !== -1; }
+    function _sdtItemRowCost(type) {
+        var t = (type || '').toUpperCase();
+        if (t.indexOf('CART') !== -1) return 1 / 3;   // 3 carts per row
+        return 1 / 2;                                  // pallet / shuttle / gaylord: 2 per row
+    }
+    // Row cost of an already-loaded per-type count map.
+    function _sdtLoadedRowCost(byType) {
+        if (!byType) return null; // unknown breakdown
+        var carts = 0, twos = 0;
+        Object.keys(byType).forEach(function(k) {
+            var u = k.toUpperCase(), n = byType[k] || 0;
+            if (u.indexOf('CART') !== -1) carts += n; else twos += n;
+        });
+        return carts / 3 + twos / 2;
+    }
+    // Visual trailer diagram: 12 rows, each cell sized to its row cost (cart=1/3,
+    // pallet/shuttle/gaylord=1/2). Shows loaded containers + either the current
+    // picks or the active warning highlight (green add / red worst-case).
+    function _sdtTrailerDiagram(sel, picks, warnObj, warnActive) {
+        var rowsTotal = _sdtTrailerRows();
+        function letter(type) {
+            var t = (type || '').toUpperCase();
+            if (t.indexOf('CART') !== -1) return 'C';
+            if (t.indexOf('GAYLORD') !== -1) return 'G';
+            if (t.indexOf('SHUTTLE') !== -1) return 'S';
+            if (t.indexOf('PALLET') !== -1) return 'P';
+            return '\u00b7';
+        }
+        function col(kind) {
+            if (kind === 'loaded') return '#546e7a';
+            if (kind === 'pick') return '#20d4f0';
+            if (kind === 'correct') return '#66bb6a';
+            if (kind === 'wrong') return '#ef5350';
+            return '#334';
+        }
+        // Build item list: loaded first, then picks/highlight.
+        var items = [];
+        var bt = sel.loadedByType || {};
+        var lk = Object.keys(bt);
+        if (lk.length) {
+            lk.forEach(function(k) { for (var i = 0; i < (bt[k] || 0); i++) items.push({ kind: 'loaded', type: k }); });
+        } else if (sel.loadedCtns) {
+            for (var i = 0; i < sel.loadedCtns; i++) items.push({ kind: 'loaded', type: 'CART' });
+        }
+        var byId = {};
+        sel.containers.forEach(function(x) { byId[x.id] = x; });
+        if (warnActive && warnObj) {
+            var ids = warnObj.type === 'opportunity' ? warnObj.correctIds : warnObj.closedIds;
+            var kind = warnObj.type === 'opportunity' ? 'correct' : 'wrong';
+            ids.forEach(function(id) { var x = byId[id]; if (x) items.push({ kind: kind, type: x.type, id: id }); });
+        } else if (picks) {
+            sel.containers.forEach(function(x) { if (picks[x.id] && !_sdtIsPkg(x.type)) items.push({ kind: 'pick', type: x.type, id: x.id }); });
+        }
+        // Optimal pack: always assume optimal loading. Group by row cost (twos
+        // 1/2 first, then carts 1/3) so same-size items cluster and only the
+        // boundary row shares space — matching the carts/3 + twos/2 model.
+        items.sort(function(a, b) { return _sdtItemRowCost(b.type) - _sdtItemRowCost(a.type); });
+        var rows = [[]], cost = 0;
+        items.forEach(function(it) {
+            var ic = _sdtItemRowCost(it.type);
+            if (cost + ic > 1 + 1e-9) { rows.push([]); cost = 0; }
+            rows[rows.length - 1].push(it); cost += ic;
+        });
+        var overflow = rows.length > rowsTotal;
+        while (rows.length < rowsTotal) rows.push([]);
+        var rowsHtml = rows.map(function(row, ri) {
+            var cells = row.map(function(it) {
+                var w = _sdtItemRowCost(it.type) * 100;
+                return '<div title="' + (it.type || '') + (it.id ? ' \u00b7 ' + it.id : '') + '" style="width:' + w + '%;height:100%;box-sizing:border-box;border-right:1px solid rgba(0,0,0,0.45);background:' + col(it.kind) + ';display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:rgba(0,0,0,0.65)">' + letter(it.type) + '</div>';
+            }).join('');
+            return '<div style="display:flex;height:14px;margin-bottom:2px;background:var(--h-bg3,#1c2836);border:1px solid ' + (ri >= rowsTotal ? '#ef5350' : 'var(--h-border2,#3a4a5c)') + ';border-radius:2px;overflow:hidden" title="Row ' + (ri + 1) + '">' + cells + '</div>';
+        }).join('');
+        var pickLegend = (warnActive && warnObj)
+            ? (warnObj.type === 'opportunity'
+                ? '<span><i style="display:inline-block;width:9px;height:9px;background:#66bb6a;border-radius:2px;vertical-align:middle"></i> Add these</span>'
+                : '<span><i style="display:inline-block;width:9px;height:9px;background:#ef5350;border-radius:2px;vertical-align:middle"></i> Worst-case fill</span>')
+            : '<span><i style="display:inline-block;width:9px;height:9px;background:#20d4f0;border-radius:2px;vertical-align:middle"></i> Picked</span>';
+        var legend = '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--h-muted2,#7a8a9a);margin-top:5px">'
+            + '<span><i style="display:inline-block;width:9px;height:9px;background:#546e7a;border-radius:2px;vertical-align:middle"></i> Loaded</span>'
+            + pickLegend
+            + '<span>C=Cart \u00b7 G=Gaylord \u00b7 S=Shuttle \u00b7 P=Pallet</span>'
+            + '</div>';
+        return '<div style="font-size:11px;font-weight:700;color:var(--h-ob-accent,#20d4f0);margin-bottom:6px">Trailer layout \u2014 ' + rowsTotal + ' rows'
+            + (overflow ? ' <span style="color:#ef5350;font-weight:400">(over capacity)</span>' : '') + '</div>'
+            + rowsHtml + legend;
+    }
+    // Trailer underutilization detector. Associates load ANY closed container, so
+    // it's possible to fill every remaining ROW with closed containers and still
+    // miss the cube target. Returns null when that can't happen, else:
+    //   type 'opportunity' -> underutilization is possible BUT a floor mix
+    //                         (including OPEN containers) can still reach target.
+    //   type 'risk'        -> underutilization is possible and even the best floor
+    //                         mix can't reach target.
+    function _sdtChaseWarn(c) {
+        if (!c || !Array.isArray(c.containers)) return null;
+        // No warning for trailers that are done loading — can't add more.
+        var _st = (c.status || '').toUpperCase();
+        if (_st.indexOf('FINISHED') !== -1 || _st.indexOf('DEPART') !== -1 || _st.indexOf('COMPLET') !== -1) return null;
+        var target = (c.targetCube && c.targetCube > 0) ? c.targetCube : sdtChaseTarget;
+        if (!(target > 0)) return null;
+        var base = (c.loadedCube != null) ? c.loadedCube : 0;
+        if (base >= target) return null; // already at/above target
+        // Remaining ROW capacity (12 rows minus what's already loaded). Falls back
+        // to treating loaded containers as carts if the per-type breakdown is missing.
+        var rowsTotal = _sdtTrailerRows();
+        var usedRows = _sdtLoadedRowCost(c.loadedByType);
+        if (usedRows == null) usedRows = (c.loadedCtns || 0) / 3;
+        var rowsFree = rowsTotal - usedRows;
+        if (rowsFree <= 0) return null;
+        // Candidate universe: all 3 stages (stacked/staged/received), non-empty,
+        // excluding loose packages (they don't occupy rows).
+        // Also exclude containers involved in merge suggestions (assumed sidelined).
+        var _isCartXd = /CART/i.test(c.route || '');
+        var _mergePairs = _sdtMergePairs(c.containers, _isCartXd);
+        var _mergeExcl = {};
+        _mergePairs.forEach(function(p) { _mergeExcl[p.into.id] = true; _mergeExcl[p.from.id] = true; });
+        var cands = c.containers.filter(function(x) { return x.pkgs > 0 && !_sdtIsPkg(x.type) && !_mergeExcl[x.id]; });
+        var closed = cands.filter(function(x) { return x.state === 'CLOSED'; });
+        // Greedy row-aware fill: add containers (in the given order) until the next
+        // one won't fit in the remaining rows. Returns picked list + cube.
+        function fill(order) {
+            var picks = [], cube = base, rows = 0;
+            for (var i = 0; i < order.length; i++) {
+                var cost = _sdtItemRowCost(order[i].type);
+                if (rows + cost > rowsFree + 1e-9) continue; // doesn't fit — skip, try smaller ones
+                picks.push(order[i]); cube += order[i].cube; rows += cost;
+            }
+            return { picks: picks, cube: cube, rows: rows };
+        }
+        // RISK basis: closed containers can fill the remaining rows, and the
+        // worst-case closed fill (smallest cube first) still misses target.
+        var closedRowCost = closed.reduce(function(s, x) { return s + _sdtItemRowCost(x.type); }, 0);
+        if (closedRowCost < rowsFree - 1e-9) return null; // not enough closed to fill the trailer
+        var worst = fill(closed.slice().sort(function(a, b) { return a.cube - b.cube; }));
+        if (worst.cube >= target) return null; // even the worst closed fill reaches target — nothing to flag
+        // OPPORTUNITY test: given the limited ROW budget, we want the most cube we
+        // can fit. That's a knapsack (value = cube, weight = row cost), so pick by
+        // cube-PER-ROW density, not raw cube — a dense cart (40/⅓ = 120/row) beats
+        // a bigger-but-bulkier gaylord (44/½ = 88/row).
+        function _density(x) { return x.cube / _sdtItemRowCost(x.type); }
+        var byDensity = cands.slice().sort(function(a, b) { return _density(b) - _density(a); });
+        var mixPick = [], mixCube = base, mrows = 0;
+        for (var i = 0; i < byDensity.length; i++) {
+            var cost = _sdtItemRowCost(byDensity[i].type);
+            if (mrows + cost > rowsFree + 1e-9) continue;
+            mixPick.push(byDensity[i]); mixCube += byDensity[i].cube; mrows += cost;
+            if (mixCube >= target) break;
+        }
+        var canReach = mixCube >= target;
+        return {
+            type: canReach ? 'opportunity' : 'risk',
+            rowsFree: rowsFree,
+            target: target,
+            closedIds: worst.picks.map(function(x) { return x.id; }),
+            closedCube: worst.cube,
+            correctIds: canReach ? mixPick.map(function(x) { return x.id; }) : [],
+            correctCube: canReach ? mixCube : null
+        };
+    }
     function _sdtGauge(curCube, newCube, target, width) {
         var w = width || 260;
         var p1 = target > 0 ? Math.min(100, curCube / target * 100) : 0;
@@ -15508,7 +15717,7 @@ if (k === 'eta') {
     // "move the emptier into the fuller" is the suggested action.
     function _sdtMergePairs(containers, requireSf) {
         var cands = containers.filter(function(c) {
-            if (!(c.state === 'CLOSED' && c.pctFull != null && c.id && c.pkgs > 0)) return false;
+            if (!(c.state === 'CLOSED' && c.pctFull != null && c.id && c.pkgs > 0 && c.cube > 0)) return false;
             if (requireSf && !c.sf) return false; // can't verify the delivery station
             return true;
         });
@@ -15536,6 +15745,44 @@ if (k === 'eta') {
         var exc = sdtChaseExcluded[sel.key] || {};
         _sdtLastFloorCids.forEach(function(cid) { man[cid] = true; delete exc[cid]; });
         renderSdtChaseTable();
+    }
+    // Build the rail control bar: status filter dropdown + SDT/Cube sort toggle.
+    function _sdtRailControls(statuses) {
+        var opts = '<option value="">All statuses</option>' + (statuses || []).map(function(s) {
+            var sel = s === sdtChaseStatusFilter ? ' selected' : '';
+            return '<option value="' + s.replace(/"/g, '&quot;') + '"' + sel + '>' + _sdtStatusLabel(s) + '</option>';
+        }).join('');
+        var _btn = function(mode, label) {
+            var on = sdtChaseRailSort === mode;
+            return '<button class="sdt-rail-sort" data-sort="' + mode + '" style="flex:1;font-size:11px;font-weight:700;padding:4px 6px;cursor:pointer;'
+                + 'border:1px solid var(--h-border2, #3a4a5c);' + (mode === 'cube' ? 'border-left:none;border-radius:0 4px 4px 0;' : 'border-radius:4px 0 0 4px;')
+                + 'background:' + (on ? '#20d4f0' : 'var(--h-bg2, #16202c)') + ';color:' + (on ? '#0a1520' : 'var(--h-muted, #aab4c0)') + '">' + label + '</button>';
+        };
+        return '<div style="margin-bottom:8px">'
+            + '<select id="hydra-sdtchase-status" style="width:100%;box-sizing:border-box;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:5px;color:var(--h-text, #e8eaf0);font-size:11px;padding:5px 9px;margin-bottom:6px">' + opts + '</select>'
+            + '<div style="display:flex"><span style="font-size:10px;color:var(--h-muted2, #7a8a9a);align-self:center;margin-right:6px">Sort:</span>' + _btn('sdt', 'SDT') + _btn('cube', 'Cube') + '</div>'
+            + '</div>';
+    }
+    // Optional friendlier label for a status value
+    function _sdtStatusLabel(s) {
+        if (!s) return s;
+        return s.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+    }
+    // Wire up the rail control listeners (status dropdown + sort buttons).
+    function _wireSdtRailControls(targetEl) {
+        var _sf = document.getElementById('hydra-sdtchase-status');
+        if (_sf) _sf.addEventListener('change', function() {
+            sdtChaseStatusFilter = this.value;
+            try { saveAllSettings(); } catch (ex) {}
+            renderSdtChaseTable(targetEl);
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('.sdt-rail-sort'), function(b) {
+            b.addEventListener('click', function() {
+                sdtChaseRailSort = this.dataset.sort;
+                try { saveAllSettings(); } catch (ex) {}
+                renderSdtChaseTable(targetEl);
+            });
+        });
     }
     function renderSdtChaseTable(targetEl) {
         var tableWrap = targetEl || document.getElementById('hydra-table-wrap');
@@ -15566,34 +15813,30 @@ if (k === 'eta') {
             var _selIn = _railList.some(function(c) { return c.key === sdtChaseSel; });
             if (!_selIn) sdtChaseSel = _railList[0].key;
         }
-        // Rail filter box: vrid / route / door / status (sdtChaseRailFilter filter)
-        if (sdtChaseRailFilter) {
-            var _rf = sdtChaseRailFilter.toLowerCase();
-            var _filtered = _railList.filter(function(c) {
-                return (c.vrid || '').toLowerCase().indexOf(_rf) !== -1 ||
-                       (c.route || '').toLowerCase().indexOf(_rf) !== -1 ||
-                       (c.door || '').toLowerCase().indexOf(_rf) !== -1 ||
-                       (c.status || '').toLowerCase().indexOf(_rf) !== -1;
-            });
-            if (_filtered.length) {
-                _railList = _filtered;
-                if (!_railList.some(function(c) { return c.key === sdtChaseSel; })) sdtChaseSel = _railList[0].key;
-            } else {
-                _railList = [];
-            }
+        // Status filter (dropdown; '' = all)
+        if (sdtChaseStatusFilter) {
+            _railList = _railList.filter(function(c) { return (c.status || '') === sdtChaseStatusFilter; });
         }
+        // Build the set of statuses available for the dropdown (from the full list)
+        var _statusSet = {};
+        obTableData.sdtchase.forEach(function(c) { if (c.status) _statusSet[c.status] = true; });
+        var _statuses = Object.keys(_statusSet).sort();
         if (!_railList.length) {
-            // keep the filter box visible so the user can clear it
-            tableWrap.innerHTML = '<div style="max-width:280px;padding:4px 2px"><input type="text" id="hydra-sdtchase-railfilter" value="' + sdtChaseRailFilter.replace(/"/g, '&quot;') + '" placeholder="filter: vrid / route / door / status" style="width:100%;box-sizing:border-box;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:5px;color:var(--h-text, #e8eaf0);font-size:11px;padding:5px 9px"></div><div id="hydra-empty">No trailers match the rail filter.</div>';
-            var _rfEl0 = document.getElementById('hydra-sdtchase-railfilter');
-            if (_rfEl0) _rfEl0.addEventListener('input', function() {
-                sdtChaseRailFilter = this.value;
-                var pos = this.selectionStart;
-                renderSdtChaseTable(targetEl);
-                var again = document.getElementById('hydra-sdtchase-railfilter');
-                if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (ex) {} }
-            });
+            // Keep the controls visible so the user can clear the status filter
+            tableWrap.innerHTML = '<div id="hydra-sdtchase-root" style="display:flex;gap:14px;align-items:flex-start">'
+                + '<div style="min-width:240px;max-width:270px">'
+                + _sdtRailControls(_statuses)
+                + '<div id="hydra-empty" style="margin-top:8px">No trailers match the filter.</div>'
+                + '</div></div>';
+            _wireSdtRailControls(targetEl);
             return;
+        }
+        // Sort the rail: by SDT (ascending) or by loaded cube (descending)
+        _railList = _railList.slice();
+        if (sdtChaseRailSort === 'cube') {
+            _railList.sort(function(a, b) { return (b.loadedCube || 0) - (a.loadedCube || 0); });
+        } else {
+            _railList.sort(function(a, b) { return (a.sdtMs || Infinity) - (b.sdtMs || Infinity); });
         }
         if (!_sdtChaseCombo()) sdtChaseSel = _railList[0].key;
         var sel = _sdtChaseCombo();
@@ -15621,11 +15864,41 @@ if (k === 'eta') {
                 + '<div style="display:flex;align-items:center;gap:6px">' + _sdtGauge(m.curCube, m.newCube, m.target, 110)
                 + '<span style="font-size:10px;font-weight:700;color:' + (m.hit ? '#66bb6a' : 'var(--h-muted, #aab4c0)') + '">' + Math.round(m.newCube) + '</span>'
                 + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)">' + elig + ' on floor' + (m.nPicks ? ' \u00b7 ' + m.nPicks + ' picked' : '') + '</span>'
-                + '</div></div>';
+                + '</div>'
+                + (function() {
+                    var w = _sdtChaseWarn(c);
+                    if (!w) return '';
+                    var active = sdtChaseWarnHighlight === c.key;
+                    var isOpp = w.type === 'opportunity';
+                    var label = isOpp ? '\u2728 Opportunity' : '\u26a0 Risk';
+                    var baseCol = isOpp ? '#66bb6a' : '#ff8a80';
+                    var actBd = isOpp ? '#66bb6a' : '#ef5350';
+                    var idleBd = isOpp ? '#3a6a44' : '#a55';
+                    var actBg = isOpp ? 'rgba(102,187,106,0.18)' : 'rgba(255,179,0,0.18)';
+                    var idleBg = isOpp ? 'rgba(102,187,106,0.12)' : 'rgba(200,60,60,0.12)';
+                    var tip = isOpp
+                        ? 'Opportunity \u2014 worst case is ' + Math.round(w.closedCube) + '/' + Math.round(w.target) + ' cu ft using only closed containers. Action required: load ' + w.correctIds.length + ' floor container' + (w.correctIds.length === 1 ? '' : 's') + ' (incl. open) to fully utilize (' + Math.round(w.correctCube) + ' cu ft). Click to highlight.'
+                        : 'Risk \u2014 worst case is ' + Math.round(w.closedCube) + '/' + Math.round(w.target) + ' cu ft using only closed containers. There is no combination of containers currently on the floor that will fully utilize this trailer. Click to highlight the worst-case fill.';
+                    return '<div class="sdtchase-warn" data-key="' + c.key.replace(/"/g, '&quot;') + '" title="' + tip + '" style="margin-top:5px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;border:1px solid ' + (active ? actBd : idleBd) + ';background:' + (active ? actBg : idleBg) + ';color:' + baseCol + '">' + label + '</div>';
+                })()
+                + '</div>';
         }).join('');
 
         // ── Planner (center) ──
         var m = _sdtChaseMath(sel);
+        // Warning highlight sets (only when the active highlight is this combo)
+        var _warnHi = null;
+        if (sdtChaseWarnHighlight === sel.key) {
+            var _w = _sdtChaseWarn(sel);
+            if (_w) {
+                _warnHi = { wrong: {}, correct: {} };
+                _w.closedIds.forEach(function(id) { _warnHi.wrong[id] = true; });
+                _w.correctIds.forEach(function(id) { _warnHi.correct[id] = true; });
+            } else {
+                // Warning no longer applies (data changed) -- clear it
+                sdtChaseWarnHighlight = null;
+            }
+        }
         var floorAll = sel.containers.filter(function(x) { return x.stage === 'stacked' || !x.stage; });
         var stagedAll = sel.containers.filter(function(x) { return x.stage === 'staged'; });
         var receivedAll = sel.containers.filter(function(x) { return x.stage === 'received'; });
@@ -15670,8 +15943,22 @@ if (k === 'eta') {
             + '<span style="font-size:10px;color:var(--h-muted2, #7a8a9a)" title="' + (m.fromOb ? 'Target from route-name rule (Settings > SDT Chase)' : 'No route rule matched — using the default target') + '">' + (m.fromOb ? 'route rule' : 'default') + '</span>'
             + '</div>';
         pHtml += '<div style="font-size:11px;color:' + (m.hit ? '#66bb6a' : '#ffa726') + ';margin-bottom:8px">'
-            + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's') : Math.round(Math.max(0, m.target - m.newCube)) + ' cu ft to target')
+            + (m.hit ? '\u2714 target reached with ' + m.nPicks + ' pick' + (m.nPicks === 1 ? '' : 's')
+                     : Math.round(Math.max(0, m.target - m.newCube)) + ' cu ft to target' + (m.nPicks ? ' \u00b7 ' + m.nPicks + ' picked' : ''))
             + '</div>';
+        if (_warnHi) {
+            var _wobj = _sdtChaseWarn(sel);
+            if (_wobj && _wobj.type === 'opportunity') {
+                pHtml += '<div style="font-size:11px;padding:6px 9px;margin-bottom:8px;border-radius:5px;border:1px solid #66bb6a;background:rgba(102,187,106,0.12);color:var(--h-text, #e8eaf0)">'
+                    + '\u2728 <strong>Opportunity.</strong> Worst case is <span style="color:#ff8a80;font-weight:700">' + Math.round(_wobj.closedCube) + '</span>/' + Math.round(_wobj.target) + ' cu ft using only closed containers. '
+                    + 'Load the <span style="color:#66bb6a;font-weight:700">' + _wobj.correctIds.length + ' green</span> container' + (_wobj.correctIds.length === 1 ? '' : 's') + ' to fully utilize the trailer (' + Math.round(_wobj.correctCube) + ' cu ft).'
+                    + '</div>';
+            } else if (_wobj) {
+                pHtml += '<div style="font-size:11px;padding:6px 9px;margin-bottom:8px;border-radius:5px;border:1px solid #ef5350;background:rgba(239,83,80,0.12);color:var(--h-text, #e8eaf0)">'
+                    + '\u26a0 <strong>Risk.</strong> Worst case is <span style="color:#ff8a80;font-weight:700">' + Math.round(_wobj.closedCube) + '</span>/' + Math.round(_wobj.target) + ' cu ft using only closed containers. There is no combination of containers currently on the floor that will fully utilize this trailer. <span style="color:#ef5350;font-weight:700">Red</span> = worst-case fill.'
+                    + '</div>';
+            }
+        }
         pHtml += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
             + '<button id="hydra-sdtchase-auto" class="hydra-btn" style="font-size:11px;padding:3px 10px;' + (sdtChaseAutoOn ? 'background:#f9a825;color:#111;font-weight:700' : '') + '" title="Live suggestions for every trailer, earliest SDT first. Your picks and rejections are respected and reshuffle the rest.">\u26a1 Auto suggest: ' + (sdtChaseAutoOn ? 'ON' : 'OFF') + '</button>'
             + '<button id="hydra-sdtchase-clear" class="hydra-btn" style="font-size:11px;padding:3px 10px">Clear picks</button>'
@@ -15689,7 +15976,13 @@ if (k === 'eta') {
                 var mark = !on ? '+' : (isAuto ? '\u26a1' : '\u2713');
                 var markCol = !on ? 'var(--h-dim, #4a5a6a)' : (isAuto ? '#f9a825' : '#20d4f0');
                 var rowBg = on ? (isAuto ? 'background:rgba(249,168,37,0.12)' : 'background:rgba(32,212,240,0.14)') : '';
-                return '<tr class="data-row' + (selectable ? ' sdt-floor-row' : '') + (on ? ' selected' : '') + '" data-cid="' + ctn.id.replace(/"/g, '&quot;') + '" style="' + (selectable ? 'cursor:pointer;' : '') + rowBg + '">'
+                // Underutilization warning highlight: correct (green) wins over wrong (red)
+                var _warnCls = '';
+                if (_warnHi) {
+                    if (_warnHi.correct[ctn.id]) { rowBg = 'background:rgba(102,187,106,0.22)'; _warnCls = ' sdt-warn-correct'; }
+                    else if (_warnHi.wrong[ctn.id]) { rowBg = 'background:rgba(239,83,80,0.22)'; _warnCls = ' sdt-warn-wrong'; }
+                }
+                return '<tr class="data-row' + (selectable ? ' sdt-floor-row' : '') + (on ? ' selected' : '') + _warnCls + '" data-cid="' + ctn.id.replace(/"/g, '&quot;') + '" style="' + (selectable ? 'cursor:pointer;' : '') + rowBg + '">'
                     + (selectable ? '<td style="text-align:center;color:' + markCol + ';font-weight:700" title="' + (isAuto ? 'Auto-suggested (click to reject)' : (on ? 'Picked (click to remove)' : 'Click to pick')) + '">' + mark + '</td>' : '')
                     + '<td><span class="hydra-copy-id" data-copy="' + ctn.id + '" title="Click to copy">' + ctn.id + '</span>' + mg + '</td>'
                     + '<td>' + (ctn.type || '\u2014') + '</td>'
@@ -15732,7 +16025,9 @@ if (k === 'eta') {
         pHtml += '</div>'; // end received card
 
         // ── Merge panel (right) ──
-        var mHtml = _sdtCard.replace('margin-bottom:12px', 'margin-bottom:0'); // merge card
+        // Trailer layout diagram sits at the top of the right column.
+        var mHtml = _sdtCard + _sdtTrailerDiagram(sel, m.picks, _sdtChaseWarn(sel), !!_warnHi) + '</div>';
+        mHtml += _sdtCard.replace('margin-bottom:12px', 'margin-bottom:0'); // merge card
         mHtml += '<div style="font-weight:700;font-size:12px;color:#f9a825;margin-bottom:6px">\u21c4 Merge suggestions</div>';
         if (!mergePairs.length) {
             mHtml += _isCartXd
@@ -15806,22 +16101,31 @@ if (k === 'eta') {
 
         tableWrap.innerHTML = '<div id="hydra-sdtchase-root" style="display:flex;gap:14px;align-items:flex-start">'
             + '<div style="min-width:240px;max-width:270px">'
-            + '<input type="text" id="hydra-sdtchase-railfilter" value="' + sdtChaseRailFilter.replace(/"/g, '&quot;') + '" placeholder="filter: vrid / route / door / status" style="width:100%;box-sizing:border-box;background:var(--h-bg3, #1c2836);border:1px solid var(--h-border2, #3a4a5c);border-radius:5px;color:var(--h-text, #e8eaf0);font-size:11px;padding:5px 9px;margin-bottom:6px">'
-            + '<div class="hydra-sdt-vscroll" data-vh="72" style="max-height:72vh;overflow-y:auto;padding-right:2px">' + railHtml + '</div>'
+            + _sdtRailControls(_statuses)
+            + '<div class="hydra-sdt-vscroll">' + railHtml + '</div>'
             + '</div>'
             + '<div style="flex:1;min-width:0">' + pHtml + '</div>'
-            + '<div class="hydra-sdt-vscroll" data-vh="75" style="min-width:210px;max-width:250px;max-height:75vh;overflow-y:auto">' + mHtml + '</div>'
+            + '<div class="hydra-sdt-vscroll" style="min-width:210px;max-width:250px">' + mHtml + '</div>'
             + '</div>';
 
         // ── Events ──
         tableWrap.querySelectorAll('.sdtchase-card').forEach(function(el) {
             el.addEventListener('click', function() { sdtChaseSel = el.dataset.key; renderSdtChaseTable(targetEl); });
         });
+        // Underutilization warning: select the combo + toggle the highlight
+        tableWrap.querySelectorAll('.sdtchase-warn').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var k = el.dataset.key;
+                sdtChaseSel = k;
+                sdtChaseWarnHighlight = (sdtChaseWarnHighlight === k) ? null : k;
+                renderSdtChaseTable(targetEl);
+            });
+        });
         // Filter boxes: re-render on input, restore focus + caret
         [['hydra-sdtchase-ffilter', function(v) { sdtChaseFloorFilter = v; }],
          ['hydra-sdtchase-sfilter', function(v) { sdtChaseStagedFilter = v; }],
-         ['hydra-sdtchase-rfilter', function(v) { sdtChaseRecvFilter = v; }],
-         ['hydra-sdtchase-railfilter', function(v) { sdtChaseRailFilter = v; }]].forEach(function(cfg) {
+         ['hydra-sdtchase-rfilter', function(v) { sdtChaseRecvFilter = v; }]].forEach(function(cfg) {
             var el = document.getElementById(cfg[0]);
             if (el) el.addEventListener('input', function() {
                 cfg[1](this.value);
@@ -15832,6 +16136,7 @@ if (k === 'eta') {
                 if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (ex) {} }
             });
         });
+        _wireSdtRailControls(targetEl);
         // IB-style selection on the floor table: click toggle, shift-range,
         // drag-select (additive), Ctrl+A via sdtChaseSelectAll.
         (function() {
@@ -15991,6 +16296,8 @@ if (k === 'eta') {
             { key: 'finishTime',  label: 'Finish Time' },
             { key: 'cube',        label: 'Cubic Volume' },
             { key: 'ctns',        label: 'Containers' },
+            { key: 'fluid',       label: 'Fluid' },
+            { key: 'carts',       label: 'Carts' },
             { key: 'cptPerf',     label: 'CPT Performance %' },
             { key: 'bridge',      label: 'Bridge' }
         ];
@@ -16123,7 +16430,7 @@ if (k === 'eta') {
             st.textContent = parts.join(' \u00b7 ');
             if (cl) cl.style.display = '';
         }
-        var _cpRows = Array.from(tableWrap.querySelectorAll('.hydra-table tbody tr.data-row'));
+        var _cpRows = Array.from(tableWrap.querySelectorAll('#hydra-table tbody tr.data-row'));
         var _cpAnchor = null, _cpCurrent = null, _cpDragging = false, _cpLastClick = null;
         function _cpPaintSel() {
             _cpRows.forEach(function(r) { r.classList.toggle('selected', cptPerfSelected.has(r.dataset.vrid)); });
@@ -16139,7 +16446,7 @@ if (k === 'eta') {
         var _cpOnMove = function(e) {
             if (_cpAnchor === null) return;
             var t = document.elementFromPoint(e.clientX, e.clientY);
-            var tr = t && t.closest ? t.closest('.hydra-table tbody tr.data-row') : null;
+            var tr = t && t.closest ? t.closest('#hydra-table tbody tr.data-row') : null;
             if (!tr) return;
             var tidx = _cpRows.indexOf(tr);
             if (tidx === -1 || tidx === _cpCurrent) return;
@@ -17673,12 +17980,8 @@ if (k === 'eta') {
         if (_sdtRoot) {
             _sdtRoot.style.zoom = scale;
             _sdtRoot.querySelectorAll('.hydra-table').forEach(function(t) { t.style.zoom = 1; });
-            // vh units aren't compensated by CSS zoom -- shrink the scroll
-            // columns' caps so they still fit the viewport at high zoom.
-            _sdtRoot.querySelectorAll('.hydra-sdt-vscroll').forEach(function(el) {
-                var vh = parseFloat(el.dataset.vh) || 72;
-                el.style.maxHeight = (vh / scale) + 'vh';
-            });
+            // Columns no longer use independent scroll/height caps -- the whole
+            // #hydra-table-wrap scrolls as one, so nothing is clipped at the panel edge.
         }
         var tbl = document.getElementById('hydra-table');
         // In Hydra Vision there are multiple #hydra-table (one per pane) and
@@ -17814,6 +18117,12 @@ if (k === 'eta') {
                     }
                     if (typeof saveAllSettings === 'function') saveAllSettings();
                     console.log('[Hydra] Default window size restored via logo double-click');
+                    if (autoFitZoom) {
+                        setTimeout(function() {
+                            if (typeof applyZoom === 'function') applyZoom();
+                            if (typeof puActive !== 'undefined' && puActive && typeof renderAllPanes === 'function') renderAllPanes();
+                        }, 50);
+                    }
                 } catch(err) { console.warn('[Hydra] dblclick reset-size failed:', err); }
             });
         })();
@@ -19733,6 +20042,11 @@ if (k === 'eta') {
                     localStorage.setItem('hydra_panel_pos', JSON.stringify(pos));
                 } catch(e){}
                 saveAllSettings();
+                // Re-run auto-fit zoom after panel resize
+                if (autoFitZoom) {
+                    if (typeof applyZoom === 'function') applyZoom();
+                    if (typeof puActive !== 'undefined' && puActive && typeof renderAllPanes === 'function') renderAllPanes();
+                }
             }
 
             document.addEventListener('mousemove', move);
