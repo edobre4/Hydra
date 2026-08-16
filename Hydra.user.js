@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.63
+// @version      3.64
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5672,7 +5672,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.63') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.64') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -13847,7 +13847,7 @@ if (k === 'eta') {
             } catch (e) {}
         }
         var grid = {};
-        var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0, wsScans = 0;
+        var totalWip = 0, totalAssoc = 0, totalScans = 0, totalDiverted = 0, totalProcessed = 0;
         // ── Letter-lane mode (non-mezz sites, e.g. MDW5 shipping sorter) ──
         // Two workstation kinds join per letter+digit cell:
         //   'MDW5-ShippingSorter-CHUTE-K1'  -> associates + scan rates
@@ -14023,9 +14023,6 @@ if (k === 'eta') {
                         totalScans += _sc;
                         if (a.associateId) {
                             uniqueAssocs.add(a.associateId);
-                            // Track waterspider scans separately so the scan
-                            // rate reflects scanners only
-                            if (isWsRole(a.associateId)) wsScans += _sc;
                         }
                     });
                 }
@@ -14088,15 +14085,12 @@ if (k === 'eta') {
         });
 
         function isWsRole(lg) { return /\bAR\s+Waterspider/i.test(arMezzAssignedRole[lg] || ''); }
-        // Scanners = unique associates seen at build chutes, excluding
-        // RightStation-assigned waterspiders (they get their own card).
-        totalAssoc = 0;
-        uniqueAssocs.forEach(function(lg) { if (!isWsRole(lg)) totalAssoc++; });
-        totalProcessed = totalScans; // processed = total scans across all windows (incl. waterspiders)
-        // Avg Scan Rate: scanners only — waterspider scans excluded from both
-        // the numerator (scans) and the denominator (headcount)
-        var scannerScans = Math.max(0, totalScans - wsScans);
-        var avgScanRate = totalAssoc > 0 ? Math.round(scannerScans * (60 / arMezzMinutes) / totalAssoc) : 0;
+        // Scanners = every unique associate seen scanning at a build chute,
+        // waterspiders included.
+        totalAssoc = uniqueAssocs.size;
+        totalProcessed = totalScans; // processed = total scans across all windows
+        // Avg Scan Rate: all scans / all scanning associates (no waterspider carve-out)
+        var avgScanRate = totalAssoc > 0 ? Math.round(totalScans * (60 / arMezzMinutes) / totalAssoc) : 0;
 
         // Build set of AMZL (CYC) chute mapIds from QBCC data
         var amzlChutes = {};
@@ -14161,18 +14155,8 @@ if (k === 'eta') {
         // waterspiders) scaled to a 5-minute window. Answers "how fast are we
         // flowing", while Avg Scan Rate answers "how fast are scanners scanning".
         var fiveMinFlow = Math.round(totalScans * (5 / arMezzMinutes));
-        // Waterspiders card: counted from RightStation ASSIGNMENTS (waterspiders
-        // don't sign into their station, so sign-in data always reads zero).
-        // Cross-referenced with build-chute scan data to flag misplacements.
-        // Only AR Waterspiders count — Nonconauto / Miscellaneous excluded.
-        var wsAssigned = Object.keys(arMezzAssignedRole).filter(function(lg) { return /\bAR\s+Waterspider/i.test(arMezzAssignedRole[lg]); });
-        var wsTitle = wsAssigned.map(function(lg) {
-            return lg + ' \u2014 ' + arMezzAssignedRole[lg] + (globalAssocScans[lg] ? ' \u2014 \u26a0 scanning at a build chute' : '');
-        }).join('\n');
-        if (!wsTitle) wsTitle = staffingAssignments ? 'No associates assigned to AR Waterspider in RightStation' : 'Staffing assignments not loaded yet \u2014 refresh';
         var stats = [
             { label: 'Scanners', value: totalAssoc, color: '#4ade80' },
-            { label: 'Waterspiders', value: wsAssigned.length, color: '#f472b6', title: wsTitle },
             { label: 'Avg Scan Rate', value: avgScanRate + ' JPH', color: '#4ade80' },
             { label: '5m Flow', value: fiveMinFlow.toLocaleString(), color: '#22d3ee' },
             { label: 'Diverted', value: totalDiverted.toLocaleString(), color: '#60a5fa' },
