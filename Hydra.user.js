@@ -12025,6 +12025,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
+    // Series visibility toggles (legend click-to-toggle). Persist in-session.
+    var _fgHidden = { total: false, manual: false, d2c: false, tph: false, target: false };
+
     function renderFlowGraphChart(targetEl) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
         if (!wrap) return;
@@ -12035,30 +12038,211 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px;flex-direction:column;gap:8px"><div style="font-size:24px">⏳</div><div>Loading Flow Graph…</div></div>';
             } else {
                 wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px">Loading…</div>';
-                refreshFlowGraph(function() { if (ibActiveTab === 'flowgraph') renderIBTable(); });
+                refreshFlowGraph(function(err) {
+                    if (ibActiveTab !== 'flowgraph') return;
+                    if (err) {
+                        var w2 = targetEl || document.getElementById('hydra-table-wrap');
+                        if (w2) {
+                            var hint = (err.message === 'NO_TABLE')
+                                ? 'No data returned — open <strong>monitorportal.amazon.com</strong> once to refresh your Midway session, then Refresh.'
+                                : 'Flow Graph fetch failed: ' + (err.message || err);
+                            w2.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:#ef5350;font-size:13px;text-align:center;padding:0 40px">' + hint + '</div>';
+                        }
+                        return;
+                    }
+                    renderIBTable();
+                });
             }
             return;
         }
-        // Increment 2: minimal table dump to validate parsing end-to-end.
+
         var s = fgComputeSeries(d);
-        var html = '<div class="hydra-table" style="padding:8px 16px;overflow:auto;height:100%">';
-        html += '<div style="font-size:12px;color:var(--h-muted,#aab4c0);margin-bottom:8px">Flow Graph — ' + d.node + ' — ' + d.times.length + ' buckets — pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</div>';
-        html += '<table style="border-collapse:collapse;font-size:11px"><thead><tr>';
-        ['Time', 'Total', 'Manual', 'D2C', 'TPH', 'Target'].forEach(function(h) {
-            html += '<th style="border:1px solid #3a4a5c;padding:2px 6px;text-align:right">' + h + '</th>';
+        var n = d.times.length;
+
+        // Series definitions (color per spec). "total" is bold; "target" dotted.
+        var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
+        var series = [
+            { key: 'total',  label: 'Total Volume',  color: isLight ? '#111' : '#f5f7fa', width: 3,   data: s.total },
+            { key: 'manual', label: 'Manual',        color: '#22c55e',                    width: 2,   data: s.manual },
+            { key: 'd2c',    label: 'D2C',           color: '#3b82f6',                    width: 2,   data: s.d2c },
+            { key: 'tph',    label: 'TPH',           color: '#f59e0b',                    width: 2,   data: s.tph },
+            { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true }
+        ];
+
+        // PMET ingestion lags — the last 2 buckets read artificially low.
+        var LAG_BUCKETS = Math.min(2, n);
+        var lagStart = n - LAG_BUCKETS; // index at which the tail becomes "provisional"
+
+        // Y scale: max across all VISIBLE series (target included so the line shows).
+        var maxVal = 1;
+        series.forEach(function(se) {
+            if (_fgHidden[se.key]) return;
+            for (var i = 0; i < n; i++) { if (se.data[i] > maxVal) maxVal = se.data[i]; }
         });
-        html += '</tr></thead><tbody>';
-        for (var i = 0; i < d.times.length; i++) {
-            var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[i]) : new Date(d.times[i]).toLocaleTimeString();
-            html += '<tr>';
-            html += '<td style="border:1px solid #3a4a5c;padding:2px 6px">' + timeStr + '</td>';
-            [s.total[i], s.manual[i], s.d2c[i], Math.round(s.tph[i]), s.target[i]].forEach(function(v) {
-                html += '<td style="border:1px solid #3a4a5c;padding:2px 6px;text-align:right">' + Math.round(v).toLocaleString() + '</td>';
-            });
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
+        maxVal = maxVal * 1.1; // headroom
+
+        var cw = Math.max(wrap.clientWidth - 20, 400);
+        var ch = Math.max(wrap.clientHeight - 70, 250);
+        var pad = { top: 20, right: 14, bottom: 40, left: cw < 500 ? 50 : 70 };
+        var gw = cw - pad.left - pad.right;
+        var gh = ch - pad.top - pad.bottom;
+
+        // Controls row: inline target + divisor + hours + fetch time + legend.
+        var html = '<div class="hydra-table" style="padding:8px 16px;display:flex;flex-direction:column;align-items:center;height:100%">';
+        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
+        html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
+        html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
+        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
+        html += '<label style="font-size:12px;color:#f59e0b">TPH divisor:</label>';
+        html += '<input id="hydra-flowgraph-divisor" type="number" min="1" step="1" value="' + flowGraphDivisor + '" style="width:60px;background:var(--h-bg2,#16202c);border:1px solid #f59e0b;border-radius:4px;color:#f59e0b;padding:4px 8px;font-size:12px" title="Total × 12 ÷ divisor">';
+        html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Hours:</label>';
+        html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">';
+        html += '<span style="font-size:11px;color:var(--h-muted,#aab4c0)">pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</span>';
+        html += '</div>';
+        // Legend (click-to-toggle)
+        html += '<div id="hydra-flowgraph-legend" style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap;justify-content:center">';
+        series.forEach(function(se) {
+            var op = _fgHidden[se.key] ? '0.35' : '1';
+            html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + op + ';font-weight:600;user-select:none">' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
+        });
+        html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
+        html += '</div>';
+        html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
+        html += '</div>';
         wrap.innerHTML = html;
+
+        // Wire inline controls
+        var tIn = document.getElementById('hydra-flowgraph-target');
+        if (tIn) tIn.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} if (ibActiveTab === 'flowgraph') renderIBTable(); }
+        });
+        var dIn = document.getElementById('hydra-flowgraph-divisor');
+        if (dIn) dIn.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (!isNaN(v) && v > 0) { flowGraphDivisor = v; try { saveAllSettings(); } catch(e){} if (ibActiveTab === 'flowgraph') renderIBTable(); }
+        });
+        var hIn = document.getElementById('hydra-flowgraph-hours');
+        if (hIn) hIn.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); }); }
+        });
+        var legend = document.getElementById('hydra-flowgraph-legend');
+        if (legend) legend.addEventListener('click', function(e) {
+            var it = e.target.closest('.hydra-fg-legitem');
+            if (!it) return;
+            var k = it.getAttribute('data-key');
+            if (k in _fgHidden) { _fgHidden[k] = !_fgHidden[k]; if (ibActiveTab === 'flowgraph') renderIBTable(); }
+        });
+
+        // ---- Draw ----
+        var canvas = document.getElementById('hydra-flowgraph-canvas');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, cw, ch);
+
+        function xAt(i) { return pad.left + (n <= 1 ? 0 : (i / (n - 1)) * gw); }
+        function yAt(v) { return pad.top + gh - (v / maxVal) * gh; }
+
+        // Horizontal grid + Y labels
+        ctx.strokeStyle = '#1a2a3a'; ctx.lineWidth = 1;
+        for (var yi = 0; yi <= 5; yi++) {
+            var yy = pad.top + gh - (yi / 5) * gh;
+            ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + gw, yy); ctx.stroke();
+            ctx.fillStyle = '#c8d0d8'; ctx.font = '12px sans-serif'; ctx.textAlign = 'right';
+            ctx.fillText(Math.round(maxVal * yi / 5).toLocaleString(), pad.left - 8, yy + 3);
+        }
+        // Vertical grid + X time labels (~every ~6th bucket / 30 min)
+        var xStep = Math.max(1, Math.round(n / 8));
+        for (var xi = 0; xi < n; xi += xStep) {
+            var xx = xAt(xi);
+            ctx.strokeStyle = '#1a2a3a'; ctx.beginPath(); ctx.moveTo(xx, pad.top); ctx.lineTo(xx, pad.top + gh); ctx.stroke();
+            var tlabel = (typeof msToLocal === 'function') ? msToLocal(d.times[xi]) : new Date(d.times[xi]).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+            // msToLocal may return date+time; keep the HH:MM tail for compactness
+            tlabel = String(tlabel).replace(/^.*?(\d{1,2}:\d{2}).*$/, '$1') || tlabel;
+            ctx.fillStyle = '#c8d0d8'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(tlabel, xx, pad.top + gh + 16);
+        }
+
+        // Shade the provisional tail region (last LAG_BUCKETS buckets)
+        if (LAG_BUCKETS > 0 && n > LAG_BUCKETS) {
+            var shadeX = xAt(lagStart);
+            ctx.fillStyle = 'rgba(120,130,145,0.12)';
+            ctx.fillRect(shadeX, pad.top, (pad.left + gw) - shadeX, gh);
+        }
+
+        // Draw each visible series. The provisional tail is drawn dashed.
+        series.forEach(function(se) {
+            if (_fgHidden[se.key]) return;
+            // Solid portion: 0 .. lagStart (inclusive of lagStart as the join point)
+            ctx.strokeStyle = se.color; ctx.lineWidth = se.width;
+            if (se.dotted) ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            for (var i = 0; i < n; i++) {
+                var x = xAt(i), y = yAt(se.data[i]);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                // At the lag boundary, stroke the solid part then switch to dashed
+                if (!se.dotted && i === lagStart && lagStart < n - 1) {
+                    ctx.stroke();
+                    ctx.setLineDash([4, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                }
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
+
+        // Y axis title
+        ctx.fillStyle = '#e0e8f0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+        ctx.save(); ctx.translate(12, pad.top + gh / 2); ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Scans / 5 min', 0, 0); ctx.restore();
+
+        // ---- Hover crosshair + tooltip ----
+        var baseImage = ctx.getImageData(0, 0, cw, ch);
+        canvas.addEventListener('mousemove', function(e) {
+            var rect = canvas.getBoundingClientRect();
+            var scaleX = canvas.width / rect.width;
+            var mx = (e.clientX - rect.left) * scaleX;
+            if (mx < pad.left || mx > pad.left + gw) { ctx.putImageData(baseImage, 0, 0); return; }
+            ctx.putImageData(baseImage, 0, 0);
+            // nearest bucket index
+            var idx = Math.round(((mx - pad.left) / gw) * (n - 1));
+            idx = Math.max(0, Math.min(n - 1, idx));
+            var cx = xAt(idx);
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + gh); ctx.stroke();
+            ctx.setLineDash([]);
+            // Dots on each visible series at idx
+            series.forEach(function(se) {
+                if (_fgHidden[se.key]) return;
+                var cy = yAt(se.data[idx]);
+                ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fillStyle = se.color; ctx.fill();
+            });
+            // Tooltip box
+            var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[idx]) : new Date(d.times[idx]).toLocaleTimeString();
+            var lines = [{ text: timeStr + (idx >= lagStart ? '  (provisional)' : ''), color: '#fff' }];
+            series.forEach(function(se) {
+                if (_fgHidden[se.key]) return;
+                lines.push({ text: se.label + ': ' + Math.round(se.data[idx]).toLocaleString(), color: se.color });
+            });
+            ctx.font = 'bold 12px sans-serif';
+            var tw = 0; lines.forEach(function(l) { tw = Math.max(tw, ctx.measureText(l.text).width); });
+            tw += 16;
+            var thh = lines.length * 15 + 8;
+            var bx = cx + 10; if (bx + tw > pad.left + gw) bx = cx - tw - 10;
+            var by = pad.top + 8;
+            ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(bx, by, tw, thh);
+            ctx.strokeStyle = '#60d0ff'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, tw, thh);
+            ctx.textAlign = 'left';
+            lines.forEach(function(l, li) {
+                ctx.fillStyle = l.color;
+                ctx.fillText(l.text, bx + 8, by + 15 + li * 15 - 3);
+            });
+            ctx.restore();
+        });
+        canvas.addEventListener('mouseleave', function() { ctx.putImageData(baseImage, 0, 0); });
     }
 
     function renderVolAvailChart(targetEl, canvasOnly) {
