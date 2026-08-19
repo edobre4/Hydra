@@ -28,5 +28,6 @@
 // @connect      idp.federate.amazon.com
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
+// @connect      monitorportal.amazon.com
 // @connect      *
 // ==/UserScript==

@@ -28,6 +28,7 @@
 // @connect      idp.federate.amazon.com
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
+// @connect      monitorportal.amazon.com
 // @connect      track.relay.amazon.dev
 // @connect      axzile.corp.amazon.com
 // @connect      *
@@ -1170,6 +1171,11 @@
         if (t === 'GAYLORD') t = 'SHUTTLE';
         return sdtChaseTypeCap[t] > 0 ? sdtChaseTypeCap[t] : null;
     }
+    // --- Flow Graph tab settings (persisted via saveAllSettings) ---
+    var flowGraphTarget  = 927;   // per-5-min target line (magenta dotted)
+    var flowGraphDivisor = 220;   // TPH headcount divisor (Total*12/divisor)
+    var flowGraphHours   = 5;     // lookback window in hours
+
     var sdtChaseTarget = 2200;    // fill target in CUBE (cu ft) for routes matching no rule ("else", persisted)
     // Route-name -> target cube rules. First rule whose 'match' string appears
     // in the route name (case-insensitive) wins; no match -> sdtChaseTarget.
@@ -9301,6 +9307,175 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             });
         });
     }
+
+    // ===================================================================
+    // Flow Graph (INBOUND tab) — live 5-minute sort throughput from PMET
+    // via MonitorPortal, replicating Ivan's iGraph inside Hydra.
+    // Data source validated 2026-08-19: plain Midway cookie auth over
+    // GM_xmlhttpRequest (withCredentials via gmFetchRaw), one HTML <table>
+    // per request with one row per metric label.
+    // ===================================================================
+
+    // The 8 PMET metrics, node-templated (<NODE> -> uppercased node input).
+    // Order here is the canonical M1..M8 order used by the derived series.
+    // We give each a short unique "label" that MonitorPortal echoes back in
+    // the table so we can match rows regardless of response ordering.
+    var FLOWGRAPH_METRICS = [
+        { key: 'M1', label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success' },
+        { key: 'M2', label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success' },
+        { key: 'M3', label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success' },
+        { key: 'M4', label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success' },
+        { key: 'M5', label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success' },
+        { key: 'M6', label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success' },
+        { key: 'M7', label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success' },
+        { key: 'M8', label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success' }
+    ];
+
+    // Parsed Flow Graph state. times[] holds the UTC ms at the START of each
+    // 5-min bucket (computed from StartTime, NOT from the mashed header text).
+    // m[] is an array of 8 arrays (one per metric), each aligned to times[].
+    // fetchedAt = ms when the data was last pulled.
+    var flowGraphData = { times: [], m: [[], [], [], [], [], [], [], []], fetchedAt: 0, node: '' };
+
+    // Format a Date as MonitorPortal's expected ISO instant, e.g.
+    // 2026-08-19T18:30:00Z (UTC, no millis). Floors to the 5-min boundary.
+    function _fgIso(ms) {
+        var d = new Date(ms);
+        return d.getUTCFullYear() + '-' +
+            String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getUTCDate()).padStart(2, '0') + 'T' +
+            String(d.getUTCHours()).padStart(2, '0') + ':' +
+            String(d.getUTCMinutes()).padStart(2, '0') + ':' +
+            String(d.getUTCSeconds()).padStart(2, '0') + 'Z';
+    }
+
+    // Build the MonitorPortal GetMetricData URL for all 8 metrics in one call.
+    function _fgBuildUrl(node, startMs, endMs) {
+        var p = [];
+        p.push('Action=GetMetricData');
+        p.push('Version=2007-07-07');
+        p.push('StartTime1=' + encodeURIComponent(_fgIso(startMs)));
+        p.push('EndTime1=' + encodeURIComponent(_fgIso(endMs)));
+        // Common per-request params (index 1 shared across metrics).
+        p.push('SchemaName1=Service');
+        p.push('DataSet1=Prod');
+        p.push('Marketplace1=USAmazon');
+        p.push('HostGroup1=ALL');
+        p.push('Host1=ALL');
+        p.push('ServiceName1=SortCenterLaborManagementService');
+        p.push('MethodName1=ALL');
+        p.push('Client1=ALL');
+        p.push('MetricClass1=NONE');
+        p.push('Instance1=NONE');
+        FLOWGRAPH_METRICS.forEach(function(m, i) {
+            var n = i + 1;
+            p.push('Metric' + n + '=' + encodeURIComponent(m.metric.replace('<NODE>', node)));
+            p.push('Label' + n + '=' + encodeURIComponent(m.label));
+            p.push('Period_' + n + '=FiveMinute');
+            p.push('Stat_' + n + '=n');
+            p.push('SchemaName_' + n + '=Service');
+        });
+        return 'https://monitorportal.amazon.com/mws/data?' + p.join('&');
+    }
+
+    // Strip inner tags + whitespace from a table cell's inner HTML.
+    function _fgCellText(html) {
+        return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    // Parse the MonitorPortal HTML: locate the single <table>, split rows and
+    // cells. Row 0 is the header (Label|Min|Avg|Max|<bucket timestamps>). Each
+    // data row is <Label>|min|avg|max|<value per bucket>. Empty cell => 0.
+    // Returns { labels: {label -> number[]}, bucketCount }. Values are the raw
+    // scan counts per 5-min bucket (index 0 = first bucket at StartTime).
+    function _fgParseTable(htmlText) {
+        var tblMatch = htmlText.match(/<table[\s\S]*?<\/table>/i);
+        if (!tblMatch) return null; // no table => auth/session issue
+        var tblHtml = tblMatch[0];
+        var rowMatches = tblHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+        if (rowMatches.length < 2) return { labels: {}, bucketCount: 0 };
+        function cellsOf(rowHtml) {
+            var cells = [];
+            var cellRe = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi, cm;
+            while ((cm = cellRe.exec(rowHtml)) !== null) cells.push(_fgCellText(cm[1]));
+            return cells;
+        }
+        // Header cells: [Label, Min, Avg, Max, ts0, ts1, ...] => 4 fixed cols.
+        var headerCells = cellsOf(rowMatches[0]);
+        var FIXED = 4;
+        var bucketCount = Math.max(0, headerCells.length - FIXED);
+        var labels = {};
+        for (var r = 1; r < rowMatches.length; r++) {
+            var c = cellsOf(rowMatches[r]);
+            if (!c.length) continue;
+            var label = c[0];
+            if (!label) continue;
+            var vals = [];
+            for (var b = 0; b < bucketCount; b++) {
+                var raw = c[FIXED + b];
+                var v = (raw === undefined || raw === '') ? 0 : parseFloat(raw.replace(/,/g, ''));
+                vals.push(isNaN(v) ? 0 : v);
+            }
+            labels[label] = vals;
+        }
+        return { labels: labels, bucketCount: bucketCount };
+    }
+
+    // Fetch + parse all 8 Flow Graph metrics for `node`. Resolves to the
+    // parsed shape { times, m } and also stores it in flowGraphData.
+    // Window: last `flowGraphHours` hours ending at now (floored to 5 min).
+    function pullFlowGraph(node) {
+        node = (node || DEFAULT_NODE).toUpperCase();
+        var stepMs = 5 * 60 * 1000;
+        var endMs = Math.floor(Date.now() / stepMs) * stepMs;
+        var hours = (typeof flowGraphHours === 'number' && flowGraphHours > 0) ? flowGraphHours : 5;
+        var startMs = endMs - hours * 3600000;
+        var url = _fgBuildUrl(node, startMs, endMs);
+        return gmFetchRaw(url).then(function(text) {
+            var parsed = _fgParseTable(text);
+            if (!parsed) {
+                throw new Error('NO_TABLE'); // surfaced as auth/session hint in the UI
+            }
+            var bucketCount = parsed.bucketCount;
+            // Compute bucket start times from StartTime + i*5min (UTC). The
+            // header timestamps are mashed/ambiguous, so we never parse them.
+            var times = [];
+            for (var i = 0; i < bucketCount; i++) times.push(startMs + i * stepMs);
+            // Match each metric's row by its unique label text; missing row
+            // (metric had zero data across the window) => all-zero series.
+            var m = FLOWGRAPH_METRICS.map(function(def) {
+                var vals = parsed.labels[def.label];
+                if (!vals) { var z = []; for (var j = 0; j < bucketCount; j++) z.push(0); return z; }
+                // Pad/truncate to bucketCount for safety.
+                if (vals.length < bucketCount) { while (vals.length < bucketCount) vals.push(0); }
+                else if (vals.length > bucketCount) vals = vals.slice(0, bucketCount);
+                return vals;
+            });
+            flowGraphData = { times: times, m: m, fetchedAt: Date.now(), node: node };
+            return flowGraphData;
+        });
+    }
+
+    // Console probe to validate cross-origin + cookie auth + parsing BEFORE
+    // wiring any UI. Usage: hydraDebugFlowGraph() in the page console.
+    unsafeWindow.hydraDebugFlowGraph = function() {
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        console.log('[Hydra FlowGraph] fetching ' + FLOWGRAPH_METRICS.length + ' metrics for ' + node + ' ...');
+        pullFlowGraph(node).then(function(d) {
+            console.log('[Hydra FlowGraph] OK: ' + d.times.length + ' buckets, first=' +
+                (d.times[0] ? new Date(d.times[0]).toISOString() : 'n/a') + ' last=' +
+                (d.times.length ? new Date(d.times[d.times.length - 1]).toISOString() : 'n/a'));
+            FLOWGRAPH_METRICS.forEach(function(def, i) {
+                var sum = d.m[i].reduce(function(a, b) { return a + b; }, 0);
+                console.log('  ' + def.key + ' ' + def.label + ': sum=' + sum + ' [' + d.m[i].join(',') + ']');
+            });
+        }).catch(function(e) {
+            console.error('[Hydra FlowGraph] FAILED:', e && e.message ? e.message : e);
+            if (e && e.message === 'NO_TABLE') {
+                console.error('[Hydra FlowGraph] No <table> in response — open monitorportal.amazon.com once to refresh Midway, then retry.');
+            }
+        });
+    };
 
     // --- STEM GraphQL helpers ---
     var STEM_GQL_URL = 'https://stem-na.corp.amazon.com/sortcenter/equipmentmanagement/graphql';
