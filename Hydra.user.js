@@ -342,6 +342,7 @@
         { id: 'manifested',label: 'Manifested', filter: function(r) { return r.displayStatus === 'MANIFESTED'; } },
         { id: 'completed', label: 'Completed',  statuses: new Set(['COMPLETED']) },
         { id: 'volavail',  label: 'Vol Avail',  statuses: new Set([]), isChart: true },
+        { id: 'flowgraph', label: 'Flow Graph', statuses: new Set([]), isChart: true },
     ];
 
 
@@ -11980,6 +11981,86 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var volAvailCtnMode = GM_getValue('hydra_volavail_ctnmode', 'hr'); // 'hr' or '5m'
 
     function renderVolAvailCanvas(targetEl) { renderVolAvailChart(targetEl, true); }
+
+    // ===================================================================
+    // Flow Graph renderer — live 5-min sort throughput chart (PMET).
+    // ===================================================================
+
+    // Tracks an in-flight pullFlowGraph so we don't fire duplicate requests
+    // and can show a loading state on first entry to the tab.
+    var _flowGraphLoading = false;
+
+    // Compute the derived series from the 8 parsed metric arrays.
+    // Returns { total, manual, d2c, tph, target } — each an array aligned to
+    // flowGraphData.times. All computed client-side (no FunctionExpression).
+    function fgComputeSeries(d) {
+        var n = d.times.length;
+        var total = [], manual = [], d2c = [], tph = [], target = [];
+        var divisor = (flowGraphDivisor > 0) ? flowGraphDivisor : 220;
+        for (var i = 0; i < n; i++) {
+            var m1 = d.m[0][i] || 0, m2 = d.m[1][i] || 0, m3 = d.m[2][i] || 0, m4 = d.m[3][i] || 0,
+                m5 = d.m[4][i] || 0, m6 = d.m[5][i] || 0, m7 = d.m[6][i] || 0, m8 = d.m[7][i] || 0;
+            var t = m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8;
+            total.push(t);
+            manual.push(m1 + m2 + m3 + m4 + m5 + m6);
+            d2c.push(m7 + m8);
+            tph.push(t * 12 / divisor);
+            target.push(flowGraphTarget);
+        }
+        return { total: total, manual: manual, d2c: d2c, tph: tph, target: target };
+    }
+
+    // Kick a Flow Graph pull for the current node, then re-render the tab.
+    // Called on tab entry (no data yet) and by the normal refresh path.
+    function refreshFlowGraph(cb) {
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        _flowGraphLoading = true;
+        return pullFlowGraph(node).then(function() {
+            _flowGraphLoading = false;
+            if (cb) cb(null);
+        }).catch(function(e) {
+            _flowGraphLoading = false;
+            console.warn('[Hydra FlowGraph] pull failed:', e && e.message ? e.message : e);
+            if (cb) cb(e);
+        });
+    }
+
+    function renderFlowGraphChart(targetEl) {
+        var wrap = targetEl || document.getElementById('hydra-table-wrap');
+        if (!wrap) return;
+        var d = flowGraphData;
+        // No data yet: auto-pull once, show loading state.
+        if (!d.times.length) {
+            if (_flowGraphLoading) {
+                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px;flex-direction:column;gap:8px"><div style="font-size:24px">⏳</div><div>Loading Flow Graph…</div></div>';
+            } else {
+                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px">Loading…</div>';
+                refreshFlowGraph(function() { if (ibActiveTab === 'flowgraph') renderIBTable(); });
+            }
+            return;
+        }
+        // Increment 2: minimal table dump to validate parsing end-to-end.
+        var s = fgComputeSeries(d);
+        var html = '<div class="hydra-table" style="padding:8px 16px;overflow:auto;height:100%">';
+        html += '<div style="font-size:12px;color:var(--h-muted,#aab4c0);margin-bottom:8px">Flow Graph — ' + d.node + ' — ' + d.times.length + ' buckets — pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</div>';
+        html += '<table style="border-collapse:collapse;font-size:11px"><thead><tr>';
+        ['Time', 'Total', 'Manual', 'D2C', 'TPH', 'Target'].forEach(function(h) {
+            html += '<th style="border:1px solid #3a4a5c;padding:2px 6px;text-align:right">' + h + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        for (var i = 0; i < d.times.length; i++) {
+            var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[i]) : new Date(d.times[i]).toLocaleTimeString();
+            html += '<tr>';
+            html += '<td style="border:1px solid #3a4a5c;padding:2px 6px">' + timeStr + '</td>';
+            [s.total[i], s.manual[i], s.d2c[i], Math.round(s.tph[i]), s.target[i]].forEach(function(v) {
+                html += '<td style="border:1px solid #3a4a5c;padding:2px 6px;text-align:right">' + Math.round(v).toLocaleString() + '</td>';
+            });
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+        wrap.innerHTML = html;
+    }
+
     function renderVolAvailChart(targetEl, canvasOnly) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
         if (!wrap) return;
@@ -12316,6 +12397,13 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (ibActiveTab === 'volavail') {
             if (!targetEl && typeof puActive !== 'undefined' && puActive) return; // skip main panel in Vision mode
             renderVolAvailChart(targetEl || _wrap);
+            return;
+        }
+
+        // Flow Graph chart tab — live 5-min sort throughput from PMET
+        if (ibActiveTab === 'flowgraph') {
+            if (!targetEl && typeof puActive !== 'undefined' && puActive) return; // skip main panel in Vision mode
+            renderFlowGraphChart(targetEl || _wrap);
             return;
         }
 
@@ -17200,6 +17288,11 @@ if (k === 'eta') {
                         reconcileIbSelection();
                         _paint(function(){ renderIBTabs(); renderIBTable(); });
                         setStatus('\u2714 ' + data.length + ' inbound loads \u2014 ' + new Date().toLocaleTimeString());
+                        // Flow Graph tab: refetch the cheap PMET series on the
+                        // normal refresh path so the chart auto-updates.
+                        if (ibActiveTab === 'flowgraph') {
+                            refreshFlowGraph(function() { _paint(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); }); });
+                        }
                         // Pull OB load fullness for dock panel progress (fire-and-forget)
                         var _ibNode = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
                         if (obDockProgressEnabled && dockDoorEnabled) {
