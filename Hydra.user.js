@@ -137,6 +137,9 @@
         cptSlaHours:         4,
         cptSlaEnabled:       true,
         sesameEnabled:       false,
+        flowGraphTarget:     927,
+        flowGraphDivisor:    220,
+        flowGraphHours:      5,
         autoFitZoom:         false
     };
 
@@ -3585,6 +3588,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseRouteRules: sdtChaseRouteRules,
             sdtChaseTypeCap: sdtChaseTypeCap,
             sdtChaseMaxCtns: sdtChaseMaxCtns,
+            flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3733,6 +3737,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (Array.isArray(s.sdtChaseRouteRules)) sdtChaseRouteRules = s.sdtChaseRouteRules.filter(function(r){ return r && typeof r.match === 'string' && r.match.trim() && +r.cube > 0; }).map(function(r){ return { match: r.match.trim(), cube: +r.cube }; });
         if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
         if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
+        if (+s.flowGraphTarget > 0) flowGraphTarget = +s.flowGraphTarget;
+        if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
+        if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
         if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
@@ -3742,6 +3749,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
         if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw = document.getElementById('hydra-ob-window'); if (_obw) _obw.value = String(obWindowHours); }
         (function() { var _shi = document.getElementById('hydra-ib-sched-hrs'); if (_shi) _shi.value = ibSchedHorizonHrs > 0 ? ibSchedHorizonHrs : ''; })();
+        (function() { var _t = document.getElementById('hydra-flowgraph-target-set'); if (_t) _t.value = flowGraphTarget; var _dv = document.getElementById('hydra-flowgraph-divisor-set'); if (_dv) _dv.value = flowGraphDivisor; var _h = document.getElementById('hydra-flowgraph-hours-set'); if (_h) _h.value = flowGraphHours; })();
         if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
         if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
         if (s.autoChuteSep2 !== undefined) AUTO_CHUTE_SEP2 = s.autoChuteSep2;
@@ -4477,6 +4485,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseRouteRules: sdtChaseRouteRules,
                 sdtChaseTypeCap: sdtChaseTypeCap,
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
+                flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4658,6 +4667,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (Array.isArray(s.sdtChaseRouteRules)) sdtChaseRouteRules = s.sdtChaseRouteRules.filter(function(r){ return r && typeof r.match === 'string' && r.match.trim() && +r.cube > 0; }).map(function(r){ return { match: r.match.trim(), cube: +r.cube }; });
             if (s.sdtChaseTypeCap && typeof s.sdtChaseTypeCap === 'object') Object.keys(sdtChaseTypeCap).forEach(function(k) { if (+s.sdtChaseTypeCap[k] > 0) sdtChaseTypeCap[k] = +s.sdtChaseTypeCap[k]; });
             if (+s.sdtChaseMaxCtns > 0) sdtChaseMaxCtns = +s.sdtChaseMaxCtns;
+            if (+s.flowGraphTarget > 0) flowGraphTarget = +s.flowGraphTarget;
+            if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
+            if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
             if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
@@ -4667,6 +4679,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.wsYellowPct > 0) wsYellowPct = +s.wsYellowPct;
             if (s.obWindowHours) { obWindowHours = parseInt(s.obWindowHours) || 12; var _obw2 = document.getElementById('hydra-ob-window'); if (_obw2) _obw2.value = String(obWindowHours); }
             (function() { var _shi2 = document.getElementById('hydra-ib-sched-hrs'); if (_shi2) _shi2.value = ibSchedHorizonHrs > 0 ? ibSchedHorizonHrs : ''; })();
+            (function() { var _t2 = document.getElementById('hydra-flowgraph-target-set'); if (_t2) _t2.value = flowGraphTarget; var _dv2 = document.getElementById('hydra-flowgraph-divisor-set'); if (_dv2) _dv2.value = flowGraphDivisor; var _h2 = document.getElementById('hydra-flowgraph-hours-set'); if (_h2) _h2.value = flowGraphHours; })();
             if (s.autoChuteMin)    AUTO_CHUTE_MIN    = Math.max(1, parseInt(s.autoChuteMin) || 10);
             if (s.autoChuteSep1 !== undefined) AUTO_CHUTE_SEP1 = s.autoChuteSep1;
             if (s.autoChuteSep2 !== undefined) AUTO_CHUTE_SEP2 = s.autoChuteSep2;
@@ -5364,6 +5377,27 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<label>IB scheduled horizon (hrs):</label>' +
                                 '<input type="number" id="hydra-ib-sched-hrs" style="width:70px" min="0" max="72" step="1" placeholder="0">' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Inbound filter: only show SCHEDULED trailers arriving within this many hours (0 = all)</span>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<!-- Flow Graph Section -->' +
+                    '<div class="hydra-settings-section collapsed" id="hydra-section-flowgraph">' +
+                        '<div class="hydra-settings-section-title">Flow Graph</div>' +
+                        '<div class="hydra-settings-section-content">' +
+                            '<div class="hydra-settings-row">' +
+                                '<label>Target / 5 min:</label>' +
+                                '<input type="number" id="hydra-flowgraph-target-set" style="width:70px" min="1" step="1" value="927">' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Flat target line on the throughput chart (magenta)</span>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row">' +
+                                '<label>TPH divisor:</label>' +
+                                '<input type="number" id="hydra-flowgraph-divisor-set" style="width:70px" min="1" step="1" value="220">' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">TPH = Total \u00d7 12 \u00f7 divisor (headcount)</span>' +
+                            '</div>' +
+                            '<div class="hydra-settings-row">' +
+                                '<label>Lookback (hrs):</label>' +
+                                '<input type="number" id="hydra-flowgraph-hours-set" style="width:70px" min="1" max="24" step="1" value="5">' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">How many hours of 5-min buckets to chart</span>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
@@ -19301,6 +19335,33 @@ if (k === 'eta') {
                 try { saveAllSettings(); } catch (ex) {}
                 if (activeView === 'IB') renderIBTable();
                 setStatus(ibSchedHorizonHrs > 0 ? 'IB scheduled horizon: ' + ibSchedHorizonHrs + 'h' : 'IB scheduled horizon: off (showing all)');
+            });
+        }
+
+        // Flow Graph settings (Settings > Flow Graph). Mirror the inline
+        // tab editors so both stay in sync via saveAllSettings.
+        var _fgTargetSet = document.getElementById('hydra-flowgraph-target-set');
+        if (_fgTargetSet) {
+            _fgTargetSet.value = flowGraphTarget;
+            _fgTargetSet.addEventListener('change', function() {
+                var v = parseInt(this.value, 10);
+                if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch (ex) {} if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); }
+            });
+        }
+        var _fgDivisorSet = document.getElementById('hydra-flowgraph-divisor-set');
+        if (_fgDivisorSet) {
+            _fgDivisorSet.value = flowGraphDivisor;
+            _fgDivisorSet.addEventListener('change', function() {
+                var v = parseInt(this.value, 10);
+                if (!isNaN(v) && v > 0) { flowGraphDivisor = v; try { saveAllSettings(); } catch (ex) {} if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); }
+            });
+        }
+        var _fgHoursSet = document.getElementById('hydra-flowgraph-hours-set');
+        if (_fgHoursSet) {
+            _fgHoursSet.value = flowGraphHours;
+            _fgHoursSet.addEventListener('change', function() {
+                var v = parseInt(this.value, 10);
+                if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch (ex) {} if (ibActiveTab === 'flowgraph' && activeView === 'IB') refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); }); }
             });
         }
 
