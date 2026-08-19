@@ -1,5 +1,22 @@
 # Hydra Patch Notes
 
+## v3.65 — 2026-08-19
+
+### Flow Graph (new INBOUND tab)
+- **New "Flow Graph" tab** — live 5-minute sort throughput chart rendered
+  inside Hydra, replicating Ivan's MonitorPortal iGraph ("ORD9 Throughput -
+  5 Minute Periods"). Pulls PMET scan counts via MonitorPortal
+  (`GetMetricData`) over the operator's existing Midway cookie session and
+  refreshes on the normal refresh path.
+- **Series** — Total Volume (bold), Manual, D2C, and TPH lines plus a flat
+  Target/5-min reference line. All derived series are computed client-side
+  from the 8 underlying `postLabor` metrics (loaded + palletized paths).
+- **Interactivity** — click-to-toggle legend, hover crosshair with per-bucket
+  values, and inline editors for Target/5-min, TPH divisor, and lookback
+  window (also configurable under Settings ▸ Flow Graph, persisted).
+- **PMET lag guard** — the last 2 (still-ingesting) buckets are shaded and
+  dashed so the provisional tail dip is not misread as a flow crash.
+
 ## v3.63 — 2026-08-15
 
 ### Fixes
