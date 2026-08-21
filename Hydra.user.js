@@ -144,6 +144,7 @@
         flowGraphEnabled:    null,
         flowGraphWindowMode: 'hours',
         flowGraphShowStats:  true,
+        flowGraphRateMode:   '5m',
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -1187,6 +1188,7 @@
     // Window mode: 'hours' = last flowGraphHours; else a shift id from FG_SHIFTS.
     var flowGraphWindowMode = 'hours';
     var flowGraphShowStats = true;   // show per-metric stat cards above the chart
+    var flowGraphRateMode = '5m';    // '5m' = per-5-min flow, 'hr' = flow x12 (hourly rate)
     // Sort Times: editable shift windows in LOCAL site time (HH:MM 24h).
     // Overnight shifts (end <= start) wrap to the next day automatically.
     var FG_SHIFTS = [
@@ -3611,6 +3613,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphEnabled: fgEnabled,
             flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
             flowGraphShowStats: flowGraphShowStats,
+            flowGraphRateMode: flowGraphRateMode,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3766,6 +3769,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
         if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
         if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
+        if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4517,6 +4521,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphEnabled: fgEnabled,
                 flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
                 flowGraphShowStats: flowGraphShowStats,
+                flowGraphRateMode: flowGraphRateMode,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4705,6 +4710,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
             if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
             if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
+            if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -13232,6 +13238,10 @@ if (k === 'eta') {
                      width: d.width, data: s[d.dataKey] || [] };
         });
 
+        // Rate display factor: lines/tooltip flow/Y-axis show per-5-min values,
+        // or x12 for an hourly rate. Cumulative totals always use raw counts.
+        var rateFactor = (flowGraphRateMode === 'hr') ? 12 : 1;
+
         // PMET ingestion lags — the last 2 buckets read artificially low.
         var LAG_BUCKETS = Math.min(2, n);
         var lagStart = n - LAG_BUCKETS; // index at which the tail becomes "provisional"
@@ -13242,7 +13252,7 @@ if (k === 'eta') {
             if (_fgHidden[se.key]) return;
             for (var i = 0; i < n; i++) { if (se.data[i] > maxVal) maxVal = se.data[i]; }
         });
-        maxVal = maxVal * 1.1; // headroom
+        maxVal = maxVal * rateFactor * 1.1; // headroom (rate-scaled)
 
         var cw = Math.max(wrap.clientWidth - 20, 400);
         var ch = Math.max(wrap.clientHeight - (flowGraphShowStats ? 118 : 70), 220);
@@ -13264,6 +13274,11 @@ if (k === 'eta') {
         });
         html += '</select>';
         html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
+        html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Rate:</label>';
+        html += '<select id="hydra-flowgraph-ratemode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">' +
+                '<option value="5m"' + (flowGraphRateMode === '5m' ? ' selected' : '') + '>per 5 min</option>' +
+                '<option value="hr"' + (flowGraphRateMode === 'hr' ? ' selected' : '') + '>per hour</option>' +
+                '</select>';
         html += '<span style="font-size:11px;color:var(--h-muted,#aab4c0)">pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</span>';
         // Live TPH readout (current 5-min Total x12 / live WATT headcount). Not a
         // line — WATT headcount is a current snapshot only. Uses the last fully-
@@ -13353,6 +13368,12 @@ if (k === 'eta') {
             try { saveAllSettings(); } catch(e){}
             refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
         });
+        var rmSel = document.getElementById('hydra-flowgraph-ratemode');
+        if (rmSel) rmSel.addEventListener('change', function() {
+            flowGraphRateMode = (this.value === 'hr') ? 'hr' : '5m';
+            try { saveAllSettings(); } catch(e){}
+            renderFlowGraphChart(wrap); // display-only, no refetch
+        });
         var legend = document.getElementById('hydra-flowgraph-legend');
         if (legend) legend.addEventListener('click', function(e) {
             var it = e.target.closest('.hydra-fg-legitem');
@@ -13414,7 +13435,7 @@ if (k === 'eta') {
             if (se.dotted) ctx.setLineDash([5, 4]);
             ctx.beginPath();
             for (var i = 0; i < n; i++) {
-                var x = xAt(i), y = yAt(se.data[i]);
+                var x = xAt(i), y = yAt(se.data[i] * rateFactor);
                 if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                 // At the lag boundary, stroke the solid part then switch to dashed
                 if (!se.dotted && i === lagStart && lagStart < n - 1) {
@@ -13431,7 +13452,7 @@ if (k === 'eta') {
         // Y axis title
         ctx.fillStyle = '#e0e8f0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
         ctx.save(); ctx.translate(12, pad.top + gh / 2); ctx.rotate(-Math.PI / 2);
-        ctx.fillText('Scans / 5 min', 0, 0); ctx.restore();
+        ctx.fillText(flowGraphRateMode === 'hr' ? 'Scans / hr' : 'Scans / 5 min', 0, 0); ctx.restore();
 
         // ---- Hover crosshair + tooltip ----
         var baseImage = ctx.getImageData(0, 0, cw, ch);
@@ -13452,18 +13473,21 @@ if (k === 'eta') {
             // Dots on each visible series at idx
             series.forEach(function(se) {
                 if (_fgHidden[se.key]) return;
-                var cy = yAt(se.data[idx]);
+                var cy = yAt(se.data[idx] * rateFactor);
                 ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fillStyle = se.color; ctx.fill();
             });
             // Tooltip box
             var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[idx]) : new Date(d.times[idx]).toLocaleTimeString();
             var lines = [{ text: timeStr + (idx >= lagStart ? '  (provisional)' : ''), color: '#fff' }];
+            var rateUnit = (flowGraphRateMode === 'hr') ? '/hr' : '/5m';
             series.forEach(function(se) {
                 if (_fgHidden[se.key]) return;
-                // Cumulative total from window start THROUGH the hovered bucket.
+                // Per-interval flow at the hovered bucket (rate-scaled) + the
+                // cumulative total from window start through that bucket (raw).
+                var flow = Math.round((se.data[idx] || 0) * rateFactor);
                 var cum = 0;
                 for (var ci = 0; ci <= idx && ci < se.data.length; ci++) cum += (se.data[ci] || 0);
-                lines.push({ text: se.label + ': ' + Math.round(cum).toLocaleString(), color: se.color });
+                lines.push({ text: se.label + ': ' + flow.toLocaleString() + rateUnit + '  \u2211 ' + Math.round(cum).toLocaleString(), color: se.color });
             });
             ctx.font = 'bold 12px sans-serif';
             var tw = 0; lines.forEach(function(l) { tw = Math.max(tw, ctx.measureText(l.text).width); });
