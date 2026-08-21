@@ -13300,10 +13300,17 @@ if (k === 'eta') {
         // series (sum of package metrics); the last index with a nonzero value is
         // the last real data point. Fall back to n if Total is all zero.
         var _fgDataBuckets = (function() {
-            var tot = s.total || [];
+            // Last bucket with data across any VISIBLE non-target series (falls
+            // back to Total, then to full length). This is "up to the last data
+            // point" regardless of which metrics the site enabled.
             var last = -1;
-            for (var i = 0; i < tot.length; i++) { if (tot[i] > 0) last = i; }
-            return (last >= 0) ? (last + 1) : tot.length;
+            series.forEach(function(se) {
+                if (se.key === 'target' || _fgHidden[se.key]) return;
+                var arr = se.data || [];
+                for (var i = 0; i < arr.length; i++) { if (arr[i] > 0 && i > last) last = i; }
+            });
+            if (last < 0) { var tot = s.total || []; for (var j = 0; j < tot.length; j++) { if (tot[j] > 0) last = j; } }
+            return (last >= 0) ? (last + 1) : n;
         })();
         series.forEach(function(se) {
             if (_fgHidden[se.key]) return;
@@ -13453,7 +13460,10 @@ if (k === 'eta') {
             var lines = [{ text: timeStr + (idx >= lagStart ? '  (provisional)' : ''), color: '#fff' }];
             series.forEach(function(se) {
                 if (_fgHidden[se.key]) return;
-                lines.push({ text: se.label + ': ' + Math.round(se.data[idx]).toLocaleString(), color: se.color });
+                // Cumulative total from window start THROUGH the hovered bucket.
+                var cum = 0;
+                for (var ci = 0; ci <= idx && ci < se.data.length; ci++) cum += (se.data[ci] || 0);
+                lines.push({ text: se.label + ': ' + Math.round(cum).toLocaleString(), color: se.color });
             });
             ctx.font = 'bold 12px sans-serif';
             var tw = 0; lines.forEach(function(l) { tw = Math.max(tw, ctx.measureText(l.text).width); });
