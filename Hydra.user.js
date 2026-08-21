@@ -141,7 +141,7 @@
         flowGraphDivisor:    220,
         flowGraphHours:      5,
         flowGraphHidden:     null,
-        flowGraphEnabled:    null,
+        flowGraphFormulas:   null,
         flowGraphWindowMode: 'hours',
         flowGraphShowStats:  true,
         flowGraphRateMode:   '5m',
@@ -3612,7 +3612,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseMaxCtns: sdtChaseMaxCtns,
             flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
             flowGraphHidden: _fgHidden,
-            flowGraphEnabled: fgEnabled,
+            flowGraphFormulas: FG_FORMULAS,
             flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
             flowGraphShowStats: flowGraphShowStats,
             flowGraphRateMode: flowGraphRateMode,
@@ -3769,7 +3769,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
         if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
         if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
-        if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
+        if (Array.isArray(s.flowGraphFormulas) && s.flowGraphFormulas.length) { FG_FORMULAS = s.flowGraphFormulas.filter(function(x){ return x && x.id && typeof x.formula === 'string'; }).map(function(x){ return { id:x.id, name:x.name||x.id, color:x.color||'#94a3b8', formula:x.formula, enabled:!!x.enabled }; }); }
         if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
         if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
         if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
@@ -4522,7 +4522,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
                 flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
                 flowGraphHidden: _fgHidden,
-                flowGraphEnabled: fgEnabled,
+                flowGraphFormulas: FG_FORMULAS,
                 flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
                 flowGraphShowStats: flowGraphShowStats,
                 flowGraphRateMode: flowGraphRateMode,
@@ -4712,7 +4712,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
             if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
             if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
-            if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
+            if (Array.isArray(s.flowGraphFormulas) && s.flowGraphFormulas.length) { FG_FORMULAS = s.flowGraphFormulas.filter(function(x){ return x && x.id && typeof x.formula === 'string'; }).map(function(x){ return { id:x.id, name:x.name||x.id, color:x.color||'#94a3b8', formula:x.formula, enabled:!!x.enabled }; }); }
             if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
             if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
             if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
@@ -5437,7 +5437,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">Show stat cards</span>' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Per-metric totals above the chart</span>' +
                             '</label>' +
-                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Choose which metrics are available on the Flow Graph tab. Enabled ones show in the tab; toggle each line\'s visibility from the chart legend.</div>' +
+                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Define metrics as formulas over PMET metrics (use <b>+ metric</b> to insert one; supports + - \u00d7 \u00f7 and parentheses). Enabled metrics show on the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
                     '</div>' +
@@ -9404,32 +9404,90 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // We give each a short unique "label" that MonitorPortal echoes back in
     // the table so we can match rows regardless of response ordering.
     var FLOWGRAPH_METRICS = [
-        { key: 'M1',  label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success',        displayLabel: 'Pkgs: Sorted\u2192Dock',      color: '#f97316' },
-        { key: 'M2',  label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success',           displayLabel: 'Pkgs: Fluid Load',           color: '#fb923c' },
-        { key: 'M3',  label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success',          displayLabel: 'Pkgs: Pallet CB',            color: '#84cc16' },
-        { key: 'M4',  label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success',             displayLabel: 'Pkgs: Bag CB',               color: '#a3e635' },
-        { key: 'M5',  label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success',         displayLabel: 'Pkgs: Gaylord CB',           color: '#4ade80' },
-        { key: 'M6',  label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success',            displayLabel: 'Pkgs: Cart CB',              color: '#22d3ee' },
-        { key: 'M7',  label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success',           displayLabel: 'Pkgs: Cart D2C',             color: '#38bdf8' },
-        { key: 'M8',  label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success',        displayLabel: 'Pkgs: Gaylord D2C',          color: '#818cf8' },
-        { key: 'M9',  label: 'fg_indamtran',   metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success',                   displayLabel: 'Pkgs: Inducted (Amtran)',    color: '#f43f5e' },
-        { key: 'M10', label: 'fg_indfluid',    metric: 'postLabor.<NODE>.PackageInducted.FluidUnloadDirect.Success',        displayLabel: 'Pkgs: Inducted (Fluid)',     color: '#fb7185' },
-        { key: 'M11', label: 'fg_indnoncon',   metric: 'postLabor.<NODE>.PackageInducted.Nonconinduct.Success',             displayLabel: 'Pkgs: Inducted (NonCon)',    color: '#e11d48' },
-        { key: 'M12', label: 'fg_indscar',     metric: 'postLabor.<NODE>.PackageInducted.SCARInduct.Success',               displayLabel: 'Pkgs: Inducted (SCAR)',      color: '#be123c' },
-        { key: 'M13', label: 'fg_itemcoll',    metric: 'postLabor.<NODE>.ItemCollected.PackageSorted.Success',              displayLabel: 'Pkgs: Sorted (Collected)',   color: '#f59e0b' },
-        { key: 'M14', label: 'fg_dircoll',     metric: 'postLabor.<NODE>.PackagesCollected.DirectedCollecting.Success',     displayLabel: 'Pkgs: Directed Collect',     color: '#d97706' },
-        { key: 'M15', label: 'fg_ctnmerged',   metric: 'postLabor.<NODE>.ContainerMerged.ContainerPackagesMerged.Success',  displayLabel: 'Ctn: Merged (pkgs)',         color: '#a855f7' },
-        { key: 'M16', label: 'fg_wsclosed',    metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success',                 displayLabel: 'Ctn: Closed (WS)',           color: '#c084fc' },
-        { key: 'M17', label: 'fg_palletdock',  metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success',  displayLabel: 'Ctn: Pallet\u2192Dock',       color: '#2dd4bf' },
-        { key: 'M18', label: 'fg_gaylorddock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Gaylord.staging-dock.Success', displayLabel: 'Ctn: Gaylord\u2192Dock',      color: '#5eead4' },
-        { key: 'M19', label: 'fg_gaylordstk',  metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success', displayLabel: 'Ctn: Gaylord\u2192Stacking', color: '#facc15' },
-        { key: 'M20', label: 'fg_pscheckin',   metric: 'postLabor.<NODE>.ProblemSolveItemCheckin.Problem.Solve.Success',    displayLabel: 'PS: Item Checkin',           color: '#94a3b8' },
-        { key: 'M21', label: 'fg_bagdock',     metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Bag.staging-dock.Success',    displayLabel: 'Ctn: Bag\u2192Dock',          color: '#7dd3fc' }
+        { key: 'M1',  alias: 'SortingDock',   label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success',        displayLabel: 'Pkgs: Sorted\u2192Dock',      color: '#f97316' },
+        { key: 'M2',  alias: 'FluidLoad',     label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success',           displayLabel: 'Pkgs: Fluid Load',           color: '#fb923c' },
+        { key: 'M3',  alias: 'PalletCB',      label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success',          displayLabel: 'Pkgs: Pallet CB',            color: '#84cc16' },
+        { key: 'M4',  alias: 'BagCB',         label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success',             displayLabel: 'Pkgs: Bag CB',               color: '#a3e635' },
+        { key: 'M5',  alias: 'GaylordCB',     label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success',         displayLabel: 'Pkgs: Gaylord CB',           color: '#4ade80' },
+        { key: 'M6',  alias: 'CartCB',        label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success',            displayLabel: 'Pkgs: Cart CB',              color: '#22d3ee' },
+        { key: 'M7',  alias: 'CartD2C',       label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success',           displayLabel: 'Pkgs: Cart D2C',             color: '#38bdf8' },
+        { key: 'M8',  alias: 'GaylordD2C',    label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success',        displayLabel: 'Pkgs: Gaylord D2C',          color: '#818cf8' },
+        { key: 'M9',  alias: 'InductedAmtran',metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success',                   label: 'fg_indamtran',   displayLabel: 'Pkgs: Inducted (Amtran)',    color: '#f43f5e' },
+        { key: 'M10', alias: 'InductedFluidDirect', metric: 'postLabor.<NODE>.PackageInducted.FluidUnloadDirect.Success',  label: 'fg_indfluid',    displayLabel: 'Pkgs: Inducted (FluidDirect)', color: '#fb7185' },
+        { key: 'M11', alias: 'InductedNonCon',metric: 'postLabor.<NODE>.PackageInducted.Nonconinduct.Success',             label: 'fg_indnoncon',   displayLabel: 'Pkgs: Inducted (NonCon)',    color: '#e11d48' },
+        { key: 'M12', alias: 'InductedSCAR',  metric: 'postLabor.<NODE>.PackageInducted.SCARInduct.Success',               label: 'fg_indscar',     displayLabel: 'Pkgs: Inducted (SCAR)',      color: '#be123c' },
+        { key: 'M13', alias: 'ItemCollected', metric: 'postLabor.<NODE>.ItemCollected.PackageSorted.Success',              label: 'fg_itemcoll',    displayLabel: 'Pkgs: Sorted (Collected)',   color: '#f59e0b' },
+        { key: 'M14', alias: 'DirectedCollect', metric: 'postLabor.<NODE>.PackagesCollected.DirectedCollecting.Success',   label: 'fg_dircoll',     displayLabel: 'Pkgs: Directed Collect',     color: '#d97706' },
+        { key: 'M15', alias: 'ContainerMerged', metric: 'postLabor.<NODE>.ContainerMerged.ContainerPackagesMerged.Success', label: 'fg_ctnmerged',  displayLabel: 'Ctn: Merged (pkgs)',         color: '#a855f7' },
+        { key: 'M16', alias: 'ClosedWS',      metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success',                 label: 'fg_wsclosed',    displayLabel: 'Ctn: Closed (WS)',           color: '#c084fc' },
+        { key: 'M17', alias: 'PalletDock',    metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success',  label: 'fg_palletdock',  displayLabel: 'Ctn: Pallet\u2192Dock',       color: '#2dd4bf' },
+        { key: 'M18', alias: 'GaylordDock',   metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Gaylord.staging-dock.Success', label: 'fg_gaylorddock', displayLabel: 'Ctn: Gaylord\u2192Dock',      color: '#5eead4' },
+        { key: 'M19', alias: 'GaylordStaged', metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success', label: 'fg_gaylordstk', displayLabel: 'Ctn: Gaylord\u2192Stacking', color: '#facc15' },
+        { key: 'M20', alias: 'PSItemCheckin', metric: 'postLabor.<NODE>.ProblemSolveItemCheckin.Problem.Solve.Success',    label: 'fg_pscheckin',   displayLabel: 'PS: Item Checkin',           color: '#94a3b8' },
+        { key: 'M21', alias: 'BagDock',       metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Bag.staging-dock.Success',     label: 'fg_bagdock',     displayLabel: 'Ctn: Bag\u2192Dock',          color: '#7dd3fc' },
+        { key: 'M22', alias: 'InductedFluid', metric: 'postLabor.<NODE>.PackageInducted.FluidUnload.Success',              label: 'fg_indfluid2',   displayLabel: 'Pkgs: Inducted (FluidUnload)', color: '#f472b6' },
+        { key: 'M23', alias: 'GaylordDockStk', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Gaylord.stacking-dock.Success', label: 'fg_gaylordstkdock', displayLabel: 'Ctn: Gaylord\u2192Dock (stk)', color: '#99f6e4' },
+        { key: 'M24', alias: 'PalletStaged',  metric: 'postLabor.<NODE>.PalletMoved.Amtran.Pallet.stacking-staging.Success', label: 'fg_palletstk', displayLabel: 'Ctn: Pallet\u2192Stacking',   color: '#fde047' },
+        { key: 'M25', alias: 'BagStaged',     metric: 'postLabor.<NODE>.PalletMoved.Amtran.Bag.stacking-staging.Success',  label: 'fg_bagstk',      displayLabel: 'Ctn: Bag\u2192Stacking',      color: '#fef08a' },
+        { key: 'M26', alias: 'ClosedNonConWS', metric: 'postLabor.<NODE>.PalletMoved.NonCon.WS.Success',                   label: 'fg_ncwsclosed',  displayLabel: 'Ctn: NonCon Closed (WS)',    color: '#d946ef' }
     ];
 
     // Index of each metric key within FLOWGRAPH_METRICS / flowGraphData.m,
     // so derived series reference metrics by name (not fragile positions).
     var FG_IDX = (function() { var o = {}; FLOWGRAPH_METRICS.forEach(function(m, i) { o[m.key] = i; }); return o; })();
+    // alias (formula token) -> FLOWGRAPH_METRICS index, for the formula engine.
+    var FG_ALIAS_IDX = (function() { var o = {}; FLOWGRAPH_METRICS.forEach(function(m, i) { if (m.alias) o[m.alias] = i; }); return o; })();
+
+    // User-defined metrics: each is a named line whose value per 5-min bucket is
+    // an arithmetic formula over PMET metric aliases (+ numeric constants).
+    // Everything on the chart is one of these (uniform model). `target` is a
+    // special constant series kept for the target line. Persisted as flowGraphFormulas.
+    var FG_FORMULA_DEFAULTS = [
+        { id: 'total',  name: 'Total Volume', color: '#f5f7fa', formula: 'SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB + CartD2C + GaylordD2C', enabled: true },
+        { id: 'manual', name: 'Manual',       color: '#22c55e', formula: 'SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB', enabled: true },
+        { id: 'd2c',    name: 'D2C',          color: '#3b82f6', formula: 'CartD2C + GaylordD2C', enabled: true },
+        { id: 'tph',    name: 'TPH',          color: '#f59e0b', formula: '(SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB + CartD2C + GaylordD2C) * 12 / 220', enabled: false },
+        { id: 'inducted', name: 'Inducted',   color: '#ef4444', formula: 'InductedAmtran', enabled: false },
+        { id: 'ctnLoaded', name: 'Containers Loaded (all)', color: '#34d399', formula: 'PalletDock + GaylordDock + BagDock', enabled: false },
+        { id: 'ctnClosed', name: 'Containers Closed (WS)',  color: '#c084fc', formula: 'ClosedWS', enabled: false }
+    ];
+    // Deep-copy defaults so persisted edits don't mutate the template.
+    var FG_FORMULAS = FG_FORMULA_DEFAULTS.map(function(f) { return { id: f.id, name: f.name, color: f.color, formula: f.formula, enabled: f.enabled }; });
+
+    // ---- Formula engine: tokenize + shunting-yard -> RPN, evaluate per bucket.
+    // Operands are metric aliases (resolved to per-bucket values) or numbers.
+    // Supports + - * / and parentheses. Returns { fn, aliases } or throws.
+    function fgCompileFormula(src) {
+        var toks = [], re = /\s*([A-Za-z_][A-Za-z0-9_]*|\d+\.?\d*|[()+\-*/])\s*/g, m, last = 0;
+        while ((m = re.exec(src)) !== null) { if (m.index !== last) throw new Error('bad char'); toks.push(m[1]); last = re.lastIndex; }
+        if (last !== src.length && src.slice(last).trim() !== '') throw new Error('trailing');
+        var prec = { '+': 1, '-': 1, '*': 2, '/': 2 };
+        var out = [], ops = [], usedAliases = [];
+        toks.forEach(function(t) {
+            if (/^[A-Za-z_]/.test(t)) { out.push({ a: t }); if (usedAliases.indexOf(t) === -1) usedAliases.push(t); }
+            else if (/^[\d.]/.test(t)) { out.push({ n: parseFloat(t) }); }
+            else if (t === '(') { ops.push(t); }
+            else if (t === ')') { while (ops.length && ops[ops.length - 1] !== '(') out.push({ op: ops.pop() }); if (!ops.length) throw new Error('paren'); ops.pop(); }
+            else { while (ops.length && prec[ops[ops.length - 1]] >= prec[t]) out.push({ op: ops.pop() }); ops.push(t); }
+        });
+        while (ops.length) { var o = ops.pop(); if (o === '(') throw new Error('paren'); out.push({ op: o }); }
+        // Evaluator over a per-bucket alias-value lookup function av(alias)->number.
+        function fn(av) {
+            var st = [];
+            for (var i = 0; i < out.length; i++) {
+                var tk = out[i];
+                if ('n' in tk) st.push(tk.n);
+                else if ('a' in tk) st.push(av(tk.a));
+                else {
+                    var b = st.pop(); var a = st.pop();
+                    if (a == null) a = 0; if (b == null) b = 0;
+                    st.push(tk.op === '+' ? a + b : tk.op === '-' ? a - b : tk.op === '*' ? a * b : (b === 0 ? 0 : a / b));
+                }
+            }
+            return st.length === 1 ? st[0] : 0;
+        }
+        return { fn: fn, aliases: usedAliases };
+    }
 
     // Parsed Flow Graph state. times[] holds the UTC ms at the START of each
     // 5-min bucket (computed from StartTime, NOT from the mashed header text).
@@ -13058,6 +13116,19 @@ if (k === 'eta') {
         } catch (e) { if (cb) cb(); }
     }
 
+    // The "total volume" array for TPH/bucket math: prefer a formula literally
+    // named/id'd 'total'; else sum all enabled non-target formula arrays.
+    function _fgTotalArr(s, n) {
+        if (s.byId && s.byId.total) return s.byId.total;
+        var out = []; for (var i = 0; i < n; i++) out.push(0);
+        FG_FORMULAS.forEach(function(f) {
+            if (!f.enabled || f.id === 'target') return;
+            var arr = s.byId[f.id]; if (!arr) return;
+            for (var i = 0; i < n; i++) out[i] += (arr[i] || 0);
+        });
+        return out;
+    }
+
     // Recompute + patch only the Live TPH badge text (no full re-render), so
     // async headcount/refresh updates don't destroy an open dropdown or input.
     function _fgUpdateTphBadge() {
@@ -13067,101 +13138,186 @@ if (k === 'eta') {
         var n = d.times.length;
         if (!n) return;
         var s = fgComputeSeries(d);
+        var totArr = _fgTotalArr(s, n);
         var lastGood = n - Math.min(2, n) - 1;
         if (lastGood < 0) lastGood = n - 1;
-        var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
+        var curTotal = (lastGood >= 0 && totArr[lastGood] != null) ? totArr[lastGood] : 0;
         var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
         var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
         el.innerHTML = 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '\u2014')
             + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
     }
 
-    // Map a series def to the exact PMET metric code (node-substituted), or ''
-    // for derived series that have no single underlying metric.
-    function _fgMetricCode(d) {
-        if (d.group !== 'raw') return '';
-        var mkey = d.key.slice(4); // strip 'raw_'
-        var def = FLOWGRAPH_METRICS.filter(function(m){ return m.key === mkey; })[0];
-        if (!def) return '';
-        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
-        return def.metric.replace('<NODE>', node);
+    // Cache of discovered site metrics for the picker: [{alias, code, label}].
+    // Seeded from the static FLOWGRAPH_METRICS; refreshed live via Search.
+    var fgAvailableMetrics = FLOWGRAPH_METRICS.map(function(m) {
+        return { alias: m.alias, code: m.metric, label: m.displayLabel || m.alias };
+    });
+
+    // Discover the site's live PMET metrics via MWS Search (union-safe) and
+    // merge any new ones into fgAvailableMetrics (auto-aliased from the tail).
+    function fgRefreshAvailableMetrics(node, cb) {
+        node = (node || DEFAULT_NODE).toUpperCase();
+        var pat = 'schemaname=Service servicename=SortCenterLaborManagementService metric=' + node + ' metric=postLabor';
+        var end = Math.floor(Date.now() / 300000) * 300000;
+        var url = 'https://monitorportal.amazon.com/mws?Action=GetMetricData&Version=2007-07-07&SchemaName1=Search'
+            + '&Pattern1=' + encodeURIComponent(pat) + '&Period1=OneHour'
+            + '&StartTime1=' + encodeURIComponent(_fgIso(end - 3600000)) + '&EndTime1=' + encodeURIComponent(_fgIso(end));
+        gmFetchRaw(url).then(function(text) {
+            var codes = {}; var re = /<Metric>(postLabor\.[^<]+)<\/Metric>/g, m;
+            while ((m = re.exec(text)) !== null) codes[m[1]] = 1;
+            var known = {}; fgAvailableMetrics.forEach(function(x) { known[x.code.replace('<NODE>', node)] = 1; });
+            Object.keys(codes).forEach(function(code) {
+                if (known[code]) return;
+                // Auto-alias from the last 2 dotted segments, stripped of non-alnum.
+                var parts = code.split('.').filter(function(p){ return p !== 'Success'; });
+                var tail = parts.slice(-2).join('').replace(/[^A-Za-z0-9]/g, '');
+                var alias = tail || ('M' + (fgAvailableMetrics.length + 1));
+                var base = alias, i = 2; while (FG_ALIAS_IDX[alias] != null || fgAvailableMetrics.some(function(x){return x.alias===alias;})) { alias = base + i++; }
+                // Register as a fetchable metric so formulas can reference it.
+                var key = 'MX' + FLOWGRAPH_METRICS.length;
+                var def = { key: key, alias: alias, metric: code.replace(node, '<NODE>'), label: 'fg_' + alias.toLowerCase(), displayLabel: parts.slice(-2).join(' '), color: '#9ca3af' };
+                FLOWGRAPH_METRICS.push(def); FG_IDX[key] = FLOWGRAPH_METRICS.length - 1; FG_ALIAS_IDX[alias] = FLOWGRAPH_METRICS.length - 1;
+                fgAvailableMetrics.push({ alias: alias, code: def.metric, label: def.displayLabel });
+            });
+            if (cb) cb();
+        }).catch(function(e) { console.warn('[Hydra FlowGraph] metric discovery failed:', e && e.message ? e.message : e); if (cb) cb(); });
     }
 
-    // Build the Flow Graph metric list in Inbound Settings, in two groups:
-    //  - Enabled: series that appear in the Flow Graph tab (checkbox to remove).
-    //  - Available: everything else (checkbox to add). Raw metrics show their
-    //    EXACT metric code, unshortened.
-    // This controls availability (fgEnabled), NOT per-line visibility. Visibility
-    // is toggled from the tab legend and is independent + persistent.
-    function _fgRenderMetricToggles() {
-        var host = document.getElementById('hydra-flowgraph-metrics');
-        if (!host) return;
-        function rowHtml(d) {
-            var on = !!fgEnabled[d.key];
-            var code = _fgMetricCode(d);
-            var primary = code || d.label; // Available shows exact code; derived shows label
-            var sub = code ? '<span style="font-size:10px;color:var(--h-muted2,#7a8a9a);margin-left:6px">' + d.label + '</span>' : '';
-            return '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
-                 '<input type="checkbox" class="hydra-fg-metric-cb" data-key="' + d.key + '"' + (on ? ' checked' : '') + '>' +
-                 '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + d.color + ';flex:0 0 auto"></span>' +
-                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0);font-family:' + (code ? 'monospace' : 'inherit') + '">' + primary + '</span>' + sub +
-                 '</label>';
+    // Popup listing available PMET metrics; onPick(alias) inserts into a formula.
+    function _fgOpenMetricPicker(onPick) {
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        var old = document.getElementById('hydra-fg-picker'); if (old) old.remove();
+        var ov = document.createElement('div');
+        ov.id = 'hydra-fg-picker';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2147483646;display:flex;align-items:center;justify-content:center';
+        function render() {
+            var q = (document.getElementById('hydra-fg-picker-q') ? document.getElementById('hydra-fg-picker-q').value : '').toLowerCase();
+            var rows = fgAvailableMetrics.filter(function(x) {
+                return !q || x.alias.toLowerCase().indexOf(q) !== -1 || x.code.toLowerCase().indexOf(q) !== -1 || (x.label||'').toLowerCase().indexOf(q) !== -1;
+            }).map(function(x) {
+                var code = x.code.replace('<NODE>', node);
+                return '<div class="hydra-fg-pick" data-alias="' + x.alias + '" style="padding:6px 8px;border-bottom:1px solid var(--h-border2,#3a4a5c);cursor:pointer">' +
+                    '<div style="font-size:12px;font-weight:600;color:var(--h-text,#e8eaf0)">' + x.alias + ' <span style="font-weight:400;color:var(--h-muted2,#7a8a9a)">' + (x.label||'') + '</span></div>' +
+                    '<div style="font-size:10px;color:var(--h-muted,#aab4c0);font-family:monospace;word-break:break-all">' + code + '</div>' +
+                    '</div>';
+            }).join('');
+            var body = document.getElementById('hydra-fg-picker-list');
+            if (body) body.innerHTML = rows || '<div style="padding:10px;color:var(--h-muted2,#7a8a9a)">No metrics</div>';
         }
-        function header(txt) {
-            return '<div style="font-size:11px;font-weight:600;color:var(--h-muted,#aab4c0);margin:8px 0 2px;border-top:1px solid var(--h-border2,#3a4a5c);padding-top:6px">' + txt + '</div>';
-        }
-        var h = '';
-        var enabled   = FG_SERIES_DEFS.filter(function(d) { return fgEnabled[d.key]; });
-        var available = FG_SERIES_DEFS.filter(function(d) { return !fgEnabled[d.key]; });
-        h += header('Enabled');
-        h += enabled.length ? enabled.map(rowHtml).join('') : '<div style="font-size:11px;color:var(--h-muted2,#7a8a9a);padding:2px 0">None</div>';
-        h += header('Available');
-        h += available.length ? available.map(rowHtml).join('') : '<div style="font-size:11px;color:var(--h-muted2,#7a8a9a);padding:2px 0">None</div>';
-        host.innerHTML = h;
-        host.querySelectorAll('.hydra-fg-metric-cb').forEach(function(cb) {
-            cb.addEventListener('change', function() {
-                var k = this.getAttribute('data-key');
-                if (!(k in fgEnabled)) return;
-                fgEnabled[k] = this.checked;
-                // Newly enabled series start visible on the tab.
-                if (this.checked) _fgHidden[k] = false;
-                try { saveAllSettings(); } catch (ex) {}
-                if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
-                _fgRenderMetricToggles(); // re-partition Enabled / Available
-            });
+        ov.innerHTML = '<div style="background:var(--h-bg,#0d1520);border:1px solid var(--h-border2,#3a4a5c);border-radius:8px;width:560px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column">' +
+            '<div style="padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--h-border2,#3a4a5c)">' +
+            '<strong style="font-size:13px;color:var(--h-text,#e8eaf0)">Pick a PMET metric</strong>' +
+            '<input id="hydra-fg-picker-q" placeholder="filter…" style="flex:1;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">' +
+            '<button id="hydra-fg-picker-refresh" style="font-size:11px;padding:3px 8px;border:1px solid var(--h-border2,#3a4a5c);background:var(--h-bg2,#16202c);color:var(--h-muted,#aab4c0);border-radius:4px;cursor:pointer">Discover</button>' +
+            '<button id="hydra-fg-picker-close" style="font-size:14px;padding:2px 8px;border:none;background:transparent;color:var(--h-muted,#aab4c0);cursor:pointer">\u2715</button>' +
+            '</div>' +
+            '<div id="hydra-fg-picker-list" style="overflow:auto;flex:1"></div>' +
+            '</div>';
+        document.body.appendChild(ov);
+        render();
+        document.getElementById('hydra-fg-picker-q').addEventListener('input', render);
+        document.getElementById('hydra-fg-picker-close').addEventListener('click', function(){ ov.remove(); });
+        ov.addEventListener('click', function(e){ if (e.target === ov) ov.remove(); });
+        document.getElementById('hydra-fg-picker-refresh').addEventListener('click', function(){
+            this.textContent = '…'; var self = this;
+            fgRefreshAvailableMetrics(node, function(){ self.textContent = 'Discover'; render(); });
+        });
+        document.getElementById('hydra-fg-picker-list').addEventListener('click', function(e){
+            var it = e.target.closest('.hydra-fg-pick'); if (!it) return;
+            onPick(it.getAttribute('data-alias')); ov.remove();
         });
     }
 
-    // Compute the derived series from the 8 parsed metric arrays.
-    // Returns { total, manual, d2c, tph, target } — each an array aligned to
-    // flowGraphData.times. All computed client-side (no FunctionExpression).
+    // Render the Flow Graph formula editor in Inbound Settings: one row per
+    // user metric (name, formula text, enable, color, +metric, delete) + Add.
+    function _fgRenderFormulaEditor() {
+        var host = document.getElementById('hydra-flowgraph-metrics');
+        if (!host) return;
+        var h = '';
+        FG_FORMULAS.forEach(function(f, i) {
+            var c = null; try { c = fgCompileFormula(f.formula || '0'); } catch (e) {}
+            var err = !c;
+            h += '<div class="hydra-fg-frow" data-i="' + i + '" style="border:1px solid var(--h-border2,#3a4a5c);border-radius:6px;padding:6px;margin-bottom:6px;display:flex;flex-direction:column;gap:4px">' +
+                '<div style="display:flex;align-items:center;gap:6px">' +
+                '<input type="checkbox" class="hydra-fg-f-en"' + (f.enabled ? ' checked' : '') + ' title="Show on chart">' +
+                '<input type="color" class="hydra-fg-f-color" value="' + (f.color || '#94a3b8') + '" style="width:28px;height:22px;border:none;background:none;cursor:pointer">' +
+                '<input type="text" class="hydra-fg-f-name" value="' + (f.name || '').replace(/"/g,'&quot;') + '" placeholder="Metric name" style="flex:1;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">' +
+                '<button class="hydra-fg-f-del" title="Delete" style="font-size:12px;padding:2px 8px;border:1px solid #7f1d1d;background:transparent;color:#ef5350;border-radius:4px;cursor:pointer">\u2715</button>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:6px">' +
+                '<input type="text" class="hydra-fg-f-formula" value="' + (f.formula || '').replace(/"/g,'&quot;') + '" placeholder="e.g. PalletDock + GaylordDock + BagDock" style="flex:1;background:var(--h-bg2,#16202c);border:1px solid ' + (err ? '#ef5350' : 'var(--h-border2,#3a4a5c)') + ';border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;font-family:monospace">' +
+                '<button class="hydra-fg-f-pick" title="Insert a PMET metric" style="font-size:11px;padding:3px 8px;border:1px solid var(--h-border2,#3a4a5c);background:var(--h-bg2,#16202c);color:var(--h-muted,#aab4c0);border-radius:4px;cursor:pointer;white-space:nowrap">+ metric</button>' +
+                '</div>' +
+                (err ? '<div style="font-size:10px;color:#ef5350">Invalid formula</div>' : '') +
+                '</div>';
+        });
+        h += '<button id="hydra-fg-add" style="font-size:12px;padding:4px 10px;border:1px solid var(--h-border2,#3a4a5c);background:var(--h-bg2,#16202c);color:var(--h-text,#e8eaf0);border-radius:4px;cursor:pointer">+ Add metric</button>';
+        host.innerHTML = h;
+        function persistAndRepaint(rerenderEditor) {
+            try { saveAllSettings(); } catch (ex) {}
+            if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
+            if (rerenderEditor) _fgRenderFormulaEditor();
+        }
+        host.querySelectorAll('.hydra-fg-frow').forEach(function(row) {
+            var i = parseInt(row.getAttribute('data-i'), 10);
+            var f = FG_FORMULAS[i]; if (!f) return;
+            var enCb = row.querySelector('.hydra-fg-f-en');
+            var colIn = row.querySelector('.hydra-fg-f-color');
+            var nameIn = row.querySelector('.hydra-fg-f-name');
+            var formIn = row.querySelector('.hydra-fg-f-formula');
+            enCb.addEventListener('change', function(){ f.enabled = this.checked; if (this.checked) _fgHidden[f.id] = false; persistAndRepaint(false); });
+            colIn.addEventListener('change', function(){ f.color = this.value; persistAndRepaint(false); });
+            nameIn.addEventListener('change', function(){ f.name = this.value; persistAndRepaint(false); });
+            formIn.addEventListener('change', function(){ f.formula = this.value; persistAndRepaint(true); });
+            row.querySelector('.hydra-fg-f-pick').addEventListener('click', function(){
+                _fgOpenMetricPicker(function(alias){
+                    // Insert alias at cursor (or append) in the formula input.
+                    var el = formIn, start = el.selectionStart != null ? el.selectionStart : el.value.length, end = el.selectionEnd != null ? el.selectionEnd : el.value.length;
+                    var v = el.value; el.value = v.slice(0, start) + alias + v.slice(end);
+                    f.formula = el.value; persistAndRepaint(true);
+                });
+            });
+            row.querySelector('.hydra-fg-f-del').addEventListener('click', function(){
+                FG_FORMULAS.splice(i, 1); persistAndRepaint(true);
+            });
+        });
+        var addBtn = document.getElementById('hydra-fg-add');
+        if (addBtn) addBtn.addEventListener('click', function(){
+            var id = 'user' + Date.now();
+            var palette = ['#f472b6','#60a5fa','#34d399','#fbbf24','#a78bfa','#f87171','#22d3ee'];
+            FG_FORMULAS.push({ id: id, name: 'New metric', color: palette[FG_FORMULAS.length % palette.length], formula: '', enabled: false });
+            persistAndRepaint(true);
+        });
+    }
+    // Back-compat alias: earlier code paths call _fgRenderMetricToggles.
+    function _fgRenderMetricToggles() { return _fgRenderFormulaEditor(); }
+
+    // Evaluate each user formula per 5-min bucket over the parsed PMET metric
+    // arrays. Returns { byId: { formulaId: number[] }, target: number[] } where
+    // arrays align to d.times. Alias values resolve from FLOWGRAPH_METRICS via
+    // FG_ALIAS_IDX; unknown aliases evaluate to 0.
     function fgComputeSeries(d) {
         var n = d.times.length;
-        var total = [], manual = [], d2c = [], tph = [], target = [];
-        var inducted = [], closed = [], palletDock = [], gaylordStk = [], ctnLoaded = [];
-        var divisor = (flowGraphDivisor > 0) ? flowGraphDivisor : 220;
-        function val(key, i) { var idx = FG_IDX[key]; return (idx != null && d.m[idx] && d.m[idx][i]) ? d.m[idx][i] : 0; }
-        for (var i = 0; i < n; i++) {
-            var m1 = val('M1', i), m2 = val('M2', i), m3 = val('M3', i), m4 = val('M4', i),
-                m5 = val('M5', i), m6 = val('M6', i), m7 = val('M7', i), m8 = val('M8', i);
-            var t = m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8;
-            total.push(t);
-            manual.push(m1 + m2 + m3 + m4 + m5 + m6);
-            d2c.push(m7 + m8);
-            tph.push(t * 12 / divisor);
-            target.push(flowGraphTarget);
-            inducted.push(val('M9', i));   // PackageInducted.Amtran
-            closed.push(val('M16', i));     // PalletMoved.Sortation.WS
-            palletDock.push(val('M17', i)); // PalletLoaded.Amtran.Pallet.staging-dock
-            gaylordStk.push(val('M19', i)); // PalletMoved.Amtran.Gaylord.stacking-staging
-            // Containers loaded (all) = Pallet + Gaylord + Bag loaded to staging-dock.
-            ctnLoaded.push(val('M17', i) + val('M18', i) + val('M21', i));
+        // Precompile enabled formulas (skip broken ones gracefully).
+        var compiled = [];
+        FG_FORMULAS.forEach(function(f) {
+            try { var c = fgCompileFormula(f.formula || '0'); compiled.push({ id: f.id, fn: c.fn }); }
+            catch (e) { compiled.push({ id: f.id, fn: function() { return 0; }, err: true }); }
+        });
+        function aliasVal(alias, i) {
+            var idx = FG_ALIAS_IDX[alias];
+            return (idx != null && d.m[idx] && d.m[idx][i]) ? d.m[idx][i] : 0;
         }
-        var out = { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
-                 inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk,
-                 ctnLoaded: ctnLoaded };
-        // Expose each raw PMET metric as its own series (raw_<key>) so sites can
-        // chart whichever individual metric they need. Copy the aligned array.
+        var byId = {}; compiled.forEach(function(c) { byId[c.id] = []; });
+        var target = [];
+        for (var i = 0; i < n; i++) {
+            var av = (function(bi) { return function(alias) { return aliasVal(alias, bi); }; })(i);
+            compiled.forEach(function(c) { byId[c.id].push(c.fn(av)); });
+            target.push(flowGraphTarget);
+        }
+        var out = { byId: byId, target: target };
+        // Expose each raw PMET metric as raw_<key> too (for stat-card buckets fallback).
         FLOWGRAPH_METRICS.forEach(function(def) {
             var idx = FG_IDX[def.key];
             var arr = (idx != null && d.m[idx]) ? d.m[idx].slice(0, n) : [];
@@ -13251,12 +13407,11 @@ if (k === 'eta') {
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
         var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
-        // Only series ENABLED in Settings appear in the tab (legend + chart).
-        var series = FG_SERIES_DEFS.filter(function(d) { return fgEnabled[d.key]; }).map(function(d) {
-            return { key: d.key, label: d.label, dotted: d.dotted,
-                     color: (isLight && d.lightColor) ? d.lightColor : d.color,
-                     width: d.width, data: s[d.dataKey] || [] };
+        // Chart series = each ENABLED user formula, plus the Target line.
+        var series = FG_FORMULAS.filter(function(f) { return f.enabled; }).map(function(f) {
+            return { key: f.id, label: f.name, color: f.color, width: 2, data: s.byId[f.id] || [] };
         });
+        series.push({ key: 'target', label: 'Target 5min', color: '#e879f9', width: 2, dotted: true, data: s.target });
 
         // Rate display factor: lines/tooltip flow/Y-axis show per-5-min values,
         // or x12 for an hourly rate. Cumulative totals always use raw counts.
@@ -13321,9 +13476,10 @@ if (k === 'eta') {
         // line — WATT headcount is a current snapshot only. Uses the last fully-
         // ingested bucket (skips the provisional tail).
         (function() {
+            var totArr = _fgTotalArr(s, n);
             var lastGood = n - Math.min(2, n) - 1; // last non-provisional bucket
             if (lastGood < 0) lastGood = n - 1;
-            var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
+            var curTotal = (lastGood >= 0 && totArr[lastGood] != null) ? totArr[lastGood] : 0;
             var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
             var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
             html += '<span id="hydra-flowgraph-tph" style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / assigned associates (WATT getStaffingAssignments). Assigned, not clocked-in. Snapshot, not historical.">'
@@ -13361,7 +13517,7 @@ if (k === 'eta') {
                 var arr = se.data || [];
                 for (var i = 0; i < arr.length; i++) { if (arr[i] > 0 && i > last) last = i; }
             });
-            if (last < 0) { var tot = s.total || []; for (var j = 0; j < tot.length; j++) { if (tot[j] > 0) last = j; } }
+            if (last < 0) { var tot = _fgTotalArr(s, n); for (var j = 0; j < tot.length; j++) { if (tot[j] > 0) last = j; } }
             return (last >= 0) ? (last + 1) : n;
         })();
         series.forEach(function(se) {
