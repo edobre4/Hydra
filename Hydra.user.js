@@ -13534,10 +13534,6 @@ if (k === 'eta') {
             return { key: f.id, label: f.name, color: f.color, width: 2, data: s.byId[f.id] || [] };
         });
         series.push({ key: 'target', label: 'Target 5min', color: '#e879f9', width: 2, dotted: true, data: s.target });
-        if (flowGraphNCEnabled) {
-            var ncArr = []; for (var _ni = 0; _ni < n; _ni++) ncArr.push(flowGraphNCTarget);
-            series.push({ key: 'ncTarget', label: 'NC Target 5min', color: '#fb923c', width: 2, dotted: true, data: ncArr });
-        }
 
         // Rate display factor: lines/tooltip flow/Y-axis show per-5-min values,
         // or x12 for an hourly rate. Cumulative totals always use raw counts.
