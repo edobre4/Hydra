@@ -13278,22 +13278,36 @@ if (k === 'eta') {
         });
         html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
         html += '</div>';
-        // Stat cards: one per VISIBLE series (enabled + not hidden) showing the
-        // window total (Target shows its flat value, not a sum).
+        // Stat cards: one per VISIBLE series (enabled + not hidden). Data series
+        // show their window total; Target shows the CUMULATIVE target — i.e. what
+        // the total would be if every 5-min bucket up to the last bucket that has
+        // data hit the target (target x buckets-with-data).
         html += '<div id="hydra-flowgraph-stats" style="display:flex;align-items:stretch;gap:8px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
+        // Determine how many 5-min buckets actually have data. Use the Total
+        // series (sum of package metrics); the last index with a nonzero value is
+        // the last real data point. Fall back to n if Total is all zero.
+        var _fgDataBuckets = (function() {
+            var tot = s.total || [];
+            var last = -1;
+            for (var i = 0; i < tot.length; i++) { if (tot[i] > 0) last = i; }
+            return (last >= 0) ? (last + 1) : tot.length;
+        })();
         series.forEach(function(se) {
             if (_fgHidden[se.key]) return;
             var isTarget = (se.key === 'target');
-            var val;
+            var val, sub;
             if (isTarget) {
-                val = (se.data && se.data.length) ? se.data[0] : flowGraphTarget;
+                var perBucket = (se.data && se.data.length) ? se.data[0] : flowGraphTarget;
+                val = perBucket * _fgDataBuckets;
+                sub = 'target \u00d7 ' + _fgDataBuckets + ' buckets';
             } else {
                 val = 0; for (var i = 0; i < se.data.length; i++) val += (se.data[i] || 0);
+                sub = 'total';
             }
             html += '<div style="min-width:96px;border:1px solid ' + se.color + ';border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center">' +
                 '<div style="font-size:10px;color:' + se.color + ';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">' + se.label + '</div>' +
                 '<div style="font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0)">' + Math.round(val).toLocaleString() + '</div>' +
-                '<div style="font-size:9px;color:var(--h-muted2,#7a8a9a)">' + (isTarget ? 'per 5 min' : 'total') + '</div>' +
+                '<div style="font-size:9px;color:var(--h-muted2,#7a8a9a)">' + sub + '</div>' +
                 '</div>';
         });
         html += '</div>';
