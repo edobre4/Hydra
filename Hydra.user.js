@@ -13256,8 +13256,10 @@ if (k === 'eta') {
         if (!n) return;
         var s = fgComputeSeries(d);
         var totArr = _fgTotalArr(s, n);
-        var lastGood = n - Math.min(2, n) - 1;
-        if (lastGood < 0) lastGood = n - 1;
+        // Last bucket WITH data, then step back the provisional lag (2 buckets).
+        var lastData = -1; for (var _i = 0; _i < totArr.length; _i++) { if (totArr[_i] > 0) lastData = _i; }
+        var lastGood = lastData - 2;
+        if (lastGood < 0) lastGood = lastData;
         var curTotal = (lastGood >= 0 && totArr[lastGood] != null) ? totArr[lastGood] : 0;
         var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
         var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
@@ -13612,8 +13614,9 @@ if (k === 'eta') {
         // ingested bucket (skips the provisional tail).
         (function() {
             var totArr = _fgTotalArr(s, n);
-            var lastGood = n - Math.min(2, n) - 1; // last non-provisional bucket
-            if (lastGood < 0) lastGood = n - 1;
+            var lastData = -1; for (var _j = 0; _j < totArr.length; _j++) { if (totArr[_j] > 0) lastData = _j; }
+            var lastGood = lastData - 2; // step back the provisional lag
+            if (lastGood < 0) lastGood = lastData;
             var curTotal = (lastGood >= 0 && totArr[lastGood] != null) ? totArr[lastGood] : 0;
             var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
             var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
