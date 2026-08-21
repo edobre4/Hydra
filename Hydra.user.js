@@ -9423,7 +9423,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         { key: 'M17', label: 'fg_palletdock',  metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success',  displayLabel: 'Ctn: Pallet\u2192Dock',       color: '#2dd4bf' },
         { key: 'M18', label: 'fg_gaylorddock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Gaylord.staging-dock.Success', displayLabel: 'Ctn: Gaylord\u2192Dock',      color: '#5eead4' },
         { key: 'M19', label: 'fg_gaylordstk',  metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success', displayLabel: 'Ctn: Gaylord\u2192Stacking', color: '#facc15' },
-        { key: 'M20', label: 'fg_pscheckin',   metric: 'postLabor.<NODE>.ProblemSolveItemCheckin.Problem.Solve.Success',    displayLabel: 'PS: Item Checkin',           color: '#94a3b8' }
+        { key: 'M20', label: 'fg_pscheckin',   metric: 'postLabor.<NODE>.ProblemSolveItemCheckin.Problem.Solve.Success',    displayLabel: 'PS: Item Checkin',           color: '#94a3b8' },
+        { key: 'M21', label: 'fg_bagdock',     metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Bag.staging-dock.Success',    displayLabel: 'Ctn: Bag\u2192Dock',          color: '#7dd3fc' }
     ];
 
     // Index of each metric key within FLOWGRAPH_METRICS / flowGraphData.m,
@@ -9448,7 +9449,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         { key: 'inducted',   label: 'Inducted',          color: '#ef4444', width: 2, dataKey: 'inducted',   defaultOn: false },
         { key: 'closed',     label: 'Containers Closed',  color: '#a855f7', width: 2, dataKey: 'closed',     defaultOn: false },
         { key: 'palletDock', label: 'Pallet\u2192Dock',   color: '#14b8a6', width: 2, dataKey: 'palletDock', defaultOn: false },
-        { key: 'gaylordStk', label: 'Gaylord\u2192Stacking', color: '#eab308', width: 2, dataKey: 'gaylordStk', defaultOn: false }
+        { key: 'gaylordStk', label: 'Gaylord\u2192Stacking', color: '#eab308', width: 2, dataKey: 'gaylordStk', defaultOn: false },
+        { key: 'ctnLoaded',  label: 'Containers Loaded (all)', color: '#34d399', width: 2, dataKey: 'ctnLoaded', defaultOn: false }
     ];
     // Tag the derived series as group 'derived', then append one series per raw
     // PMET metric (group 'raw', default off) so each site can enable exactly the
@@ -13136,7 +13138,7 @@ if (k === 'eta') {
     function fgComputeSeries(d) {
         var n = d.times.length;
         var total = [], manual = [], d2c = [], tph = [], target = [];
-        var inducted = [], closed = [], palletDock = [], gaylordStk = [];
+        var inducted = [], closed = [], palletDock = [], gaylordStk = [], ctnLoaded = [];
         var divisor = (flowGraphDivisor > 0) ? flowGraphDivisor : 220;
         function val(key, i) { var idx = FG_IDX[key]; return (idx != null && d.m[idx] && d.m[idx][i]) ? d.m[idx][i] : 0; }
         for (var i = 0; i < n; i++) {
@@ -13152,9 +13154,12 @@ if (k === 'eta') {
             closed.push(val('M16', i));     // PalletMoved.Sortation.WS
             palletDock.push(val('M17', i)); // PalletLoaded.Amtran.Pallet.staging-dock
             gaylordStk.push(val('M19', i)); // PalletMoved.Amtran.Gaylord.stacking-staging
+            // Containers loaded (all) = Pallet + Gaylord + Bag loaded to staging-dock.
+            ctnLoaded.push(val('M17', i) + val('M18', i) + val('M21', i));
         }
         var out = { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
-                 inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk };
+                 inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk,
+                 ctnLoaded: ctnLoaded };
         // Expose each raw PMET metric as its own series (raw_<key>) so sites can
         // chart whichever individual metric they need. Copy the aligned array.
         FLOWGRAPH_METRICS.forEach(function(def) {
