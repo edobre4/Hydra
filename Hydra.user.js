@@ -143,6 +143,7 @@
         flowGraphHidden:     null,
         flowGraphEnabled:    null,
         flowGraphWindowMode: 'hours',
+        flowGraphShowStats:  true,
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -1185,6 +1186,7 @@
     var flowGraphHours   = 5;     // lookback window in hours
     // Window mode: 'hours' = last flowGraphHours; else a shift id from FG_SHIFTS.
     var flowGraphWindowMode = 'hours';
+    var flowGraphShowStats = true;   // show per-metric stat cards above the chart
     // Sort Times: editable shift windows in LOCAL site time (HH:MM 24h).
     // Overnight shifts (end <= start) wrap to the next day automatically.
     var FG_SHIFTS = [
@@ -3608,6 +3610,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphHidden: _fgHidden,
             flowGraphEnabled: fgEnabled,
             flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
+            flowGraphShowStats: flowGraphShowStats,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3762,6 +3765,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
         if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
         if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
+        if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4512,6 +4516,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphHidden: _fgHidden,
                 flowGraphEnabled: fgEnabled,
                 flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
+                flowGraphShowStats: flowGraphShowStats,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4699,6 +4704,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
             if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
             if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
+            if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -5414,6 +5420,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     '<div class="hydra-settings-section collapsed" id="hydra-section-flowgraph">' +
                         '<div class="hydra-settings-section-title">Flow Graph</div>' +
                         '<div class="hydra-settings-section-content">' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
+                                '<input type="checkbox" id="hydra-flowgraph-showstats" checked>' +
+                                '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">Show stat cards</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Per-metric totals above the chart</span>' +
+                            '</label>' +
                             '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Choose which metrics are available on the Flow Graph tab. Enabled ones show in the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
@@ -13234,7 +13245,7 @@ if (k === 'eta') {
         maxVal = maxVal * 1.1; // headroom
 
         var cw = Math.max(wrap.clientWidth - 20, 400);
-        var ch = Math.max(wrap.clientHeight - 118, 220);
+        var ch = Math.max(wrap.clientHeight - (flowGraphShowStats ? 118 : 70), 220);
         var pad = { top: 20, right: 14, bottom: 40, left: cw < 500 ? 50 : 70 };
         var gw = cw - pad.left - pad.right;
         var gh = ch - pad.top - pad.bottom;
@@ -13281,7 +13292,9 @@ if (k === 'eta') {
         // Stat cards: one per VISIBLE series (enabled + not hidden). Data series
         // show their window total; Target shows the CUMULATIVE target — i.e. what
         // the total would be if every 5-min bucket up to the last bucket that has
-        // data hit the target (target x buckets-with-data).
+        // data hit the target (target x buckets-with-data). Hidden when the
+        // flowGraphShowStats setting is off.
+        if (flowGraphShowStats) {
         html += '<div id="hydra-flowgraph-stats" style="display:flex;align-items:stretch;gap:8px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
         // Determine how many 5-min buckets actually have data. Use the Total
         // series (sum of package metrics); the last index with a nonzero value is
@@ -13311,6 +13324,7 @@ if (k === 'eta') {
                 '</div>';
         });
         html += '</div>';
+        }
         html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
         html += '</div>';
         wrap.innerHTML = html;
@@ -19700,6 +19714,16 @@ if (k === 'eta') {
         // Flow Graph metrics/lines: one checkbox per series, ENABLED ones on
         // top. Toggling updates _fgHidden, persists, and repaints the chart.
         _fgRenderMetricToggles();
+        // Show/hide stat cards toggle.
+        var _fgShowStats = document.getElementById('hydra-flowgraph-showstats');
+        if (_fgShowStats) {
+            _fgShowStats.checked = !!flowGraphShowStats;
+            _fgShowStats.addEventListener('change', function() {
+                flowGraphShowStats = this.checked;
+                try { saveAllSettings(); } catch (ex) {}
+                if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
+            });
+        }
         // Sort Times: build one editable start/end row per shift in FG_SHIFTS.
         (function() {
             var host = document.getElementById('hydra-sorttimes-rows');
