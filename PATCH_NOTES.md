@@ -1,5 +1,21 @@
 # Hydra Patch Notes
 
+## v3.66 — 2026-08-21
+
+### Flow Graph (fix)
+- **Fixed "No data returned" on the Flow Graph tab.** The MonitorPortal
+  request used the wrong per-metric param spelling (`Period_1`/`Stat_1` with
+  an underscore), which the API answers with the literal body
+  "No valid data found". Corrected to `Period1`/`Stat1` (no underscore).
+- **Fetch each metric in its own request.** Packing all 8 metrics into a
+  single request only ever returned the first metric's row; Hydra now issues
+  8 parallel single-metric requests and merges them into aligned 5-min
+  buckets. Metrics with no data for the window (e.g. Bag on a quiet shift)
+  render as a clean zero series instead of breaking the pull.
+- The auth/session hint ("open monitorportal.amazon.com once…") now only
+  shows when *every* metric request fails, so real empty data is no longer
+  mistaken for an auth problem.
+
 ## v3.65 — 2026-08-19
 
 ### Flow Graph (new INBOUND tab)

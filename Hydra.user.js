@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.65
+// @version      3.66
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5713,7 +5713,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.65') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.66') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -9384,14 +9384,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             String(d.getUTCSeconds()).padStart(2, '0') + 'Z';
     }
 
-    // Build the MonitorPortal GetMetricData URL for all 8 metrics in one call.
-    function _fgBuildUrl(node, startMs, endMs) {
+    // Build a MonitorPortal GetMetricData URL for ONE metric.
+    // NOTE (validated live 2026-08-21): the per-metric params are Period<n> /
+    // Stat<n> with NO underscore. The underscore form (Period_1) returns the
+    // literal body "No valid data found". Also, packing all 8 metrics into one
+    // request only ever returns the FIRST metric's row — so we fetch each
+    // metric in its own request and merge (see pullFlowGraph).
+    function _fgBuildUrl(node, startMs, endMs, metric, label) {
         var p = [];
         p.push('Action=GetMetricData');
         p.push('Version=2007-07-07');
         p.push('StartTime1=' + encodeURIComponent(_fgIso(startMs)));
         p.push('EndTime1=' + encodeURIComponent(_fgIso(endMs)));
-        // Common per-request params (index 1 shared across metrics).
         p.push('SchemaName1=Service');
         p.push('DataSet1=Prod');
         p.push('Marketplace1=USAmazon');
@@ -9402,14 +9406,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         p.push('Client1=ALL');
         p.push('MetricClass1=NONE');
         p.push('Instance1=NONE');
-        FLOWGRAPH_METRICS.forEach(function(m, i) {
-            var n = i + 1;
-            p.push('Metric' + n + '=' + encodeURIComponent(m.metric.replace('<NODE>', node)));
-            p.push('Label' + n + '=' + encodeURIComponent(m.label));
-            p.push('Period_' + n + '=FiveMinute');
-            p.push('Stat_' + n + '=n');
-            p.push('SchemaName_' + n + '=Service');
-        });
+        p.push('Metric1=' + encodeURIComponent(metric.replace('<NODE>', node)));
+        p.push('Label1=' + encodeURIComponent(label));
+        p.push('Period1=FiveMinute');
+        p.push('Stat1=n');
         return 'https://monitorportal.amazon.com/mws/data?' + p.join('&');
     }
 
@@ -9418,46 +9418,42 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
-    // Parse the MonitorPortal HTML: locate the single <table>, split rows and
-    // cells. Row 0 is the header (Label|Min|Avg|Max|<bucket timestamps>). Each
-    // data row is <Label>|min|avg|max|<value per bucket>. Empty cell => 0.
-    // Returns { labels: {label -> number[]}, bucketCount }. Values are the raw
-    // scan counts per 5-min bucket (index 0 = first bucket at StartTime).
-    function _fgParseTable(htmlText) {
+    // Parse a single-metric MonitorPortal HTML response. Locates the <table>
+    // (Label|Min|Avg|Max|<bucket timestamps>), reads the single data row and
+    // returns its per-bucket values as number[] (empty cell => 0).
+    // Returns:
+    //   - number[]           on success (may be shorter/longer than expected)
+    //   - []                 when the metric legitimately has no data (a table
+    //                        with no data row, or no bucket columns)
+    //   - null               when there is NO table at all (auth/session issue
+    //                        or the "No valid data found" body)
+    function _fgParseMetric(htmlText) {
+        if (/No valid data found/i.test(htmlText)) return []; // valid response, empty series
         var tblMatch = htmlText.match(/<table[\s\S]*?<\/table>/i);
         if (!tblMatch) return null; // no table => auth/session issue
-        var tblHtml = tblMatch[0];
-        var rowMatches = tblHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
-        if (rowMatches.length < 2) return { labels: {}, bucketCount: 0 };
+        var rowMatches = tblMatch[0].match(/<tr[\s\S]*?<\/tr>/gi) || [];
+        if (rowMatches.length < 2) return []; // header only => empty series
         function cellsOf(rowHtml) {
-            var cells = [];
-            var cellRe = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi, cm;
+            var cells = [], cellRe = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi, cm;
             while ((cm = cellRe.exec(rowHtml)) !== null) cells.push(_fgCellText(cm[1]));
             return cells;
         }
-        // Header cells: [Label, Min, Avg, Max, ts0, ts1, ...] => 4 fixed cols.
-        var headerCells = cellsOf(rowMatches[0]);
-        var FIXED = 4;
-        var bucketCount = Math.max(0, headerCells.length - FIXED);
-        var labels = {};
-        for (var r = 1; r < rowMatches.length; r++) {
-            var c = cellsOf(rowMatches[r]);
-            if (!c.length) continue;
-            var label = c[0];
-            if (!label) continue;
-            var vals = [];
-            for (var b = 0; b < bucketCount; b++) {
-                var raw = c[FIXED + b];
-                var v = (raw === undefined || raw === '') ? 0 : parseFloat(raw.replace(/,/g, ''));
-                vals.push(isNaN(v) ? 0 : v);
-            }
-            labels[label] = vals;
+        var FIXED = 4; // Label, Min, Avg, Max
+        var header = cellsOf(rowMatches[0]);
+        var bucketCount = Math.max(0, header.length - FIXED);
+        var data = cellsOf(rowMatches[1]);
+        var vals = [];
+        for (var b = 0; b < bucketCount; b++) {
+            var raw = data[FIXED + b];
+            var v = (raw === undefined || raw === '') ? 0 : parseFloat(raw.replace(/,/g, ''));
+            vals.push(isNaN(v) ? 0 : v);
         }
-        return { labels: labels, bucketCount: bucketCount };
+        return vals;
     }
 
-    // Fetch + parse all 8 Flow Graph metrics for `node`. Resolves to the
-    // parsed shape { times, m } and also stores it in flowGraphData.
+    // Fetch + parse all 8 Flow Graph metrics for `node`, one request each,
+    // in parallel, then merge into aligned per-bucket arrays. Resolves to the
+    // parsed shape { times, m } and stores it in flowGraphData.
     // Window: last `flowGraphHours` hours ending at now (floored to 5 min).
     function pullFlowGraph(node) {
         node = (node || DEFAULT_NODE).toUpperCase();
@@ -9465,24 +9461,29 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var endMs = Math.floor(Date.now() / stepMs) * stepMs;
         var hours = (typeof flowGraphHours === 'number' && flowGraphHours > 0) ? flowGraphHours : 5;
         var startMs = endMs - hours * 3600000;
-        var url = _fgBuildUrl(node, startMs, endMs);
-        return gmFetchRaw(url).then(function(text) {
-            var parsed = _fgParseTable(text);
-            if (!parsed) {
-                throw new Error('NO_TABLE'); // surfaced as auth/session hint in the UI
-            }
-            var bucketCount = parsed.bucketCount;
-            // Compute bucket start times from StartTime + i*5min (UTC). The
-            // header timestamps are mashed/ambiguous, so we never parse them.
-            var times = [];
-            for (var i = 0; i < bucketCount; i++) times.push(startMs + i * stepMs);
-            // Match each metric's row by its unique label text; missing row
-            // (metric had zero data across the window) => all-zero series.
-            var m = FLOWGRAPH_METRICS.map(function(def) {
-                var vals = parsed.labels[def.label];
-                if (!vals) { var z = []; for (var j = 0; j < bucketCount; j++) z.push(0); return z; }
-                // Pad/truncate to bucketCount for safety.
-                if (vals.length < bucketCount) { while (vals.length < bucketCount) vals.push(0); }
+        // Expected bucket count from the window (StartTime + i*5min). The API
+        // returns [Start, End) so bucketCount === (end-start)/5min.
+        var bucketCount = Math.round((endMs - startMs) / stepMs);
+        var times = [];
+        for (var i = 0; i < bucketCount; i++) times.push(startMs + i * stepMs);
+
+        var fetches = FLOWGRAPH_METRICS.map(function(def) {
+            var url = _fgBuildUrl(node, startMs, endMs, def.metric, def.label);
+            return gmFetchRaw(url).then(function(text) {
+                return { def: def, vals: _fgParseMetric(text) };
+            });
+        });
+
+        return Promise.all(fetches).then(function(results) {
+            // If EVERY metric returned null (no table), it's an auth/session
+            // issue — surface the NO_TABLE hint. If at least one parsed (even
+            // to an empty series), auth is fine and empties are real zeros.
+            var anyTable = results.some(function(r) { return r.vals !== null; });
+            if (!anyTable) throw new Error('NO_TABLE');
+            var m = results.map(function(r) {
+                var vals = (r.vals === null) ? [] : r.vals;
+                // Normalize to bucketCount: pad missing tail with 0, truncate extra.
+                if (vals.length < bucketCount) { vals = vals.slice(); while (vals.length < bucketCount) vals.push(0); }
                 else if (vals.length > bucketCount) vals = vals.slice(0, bucketCount);
                 return vals;
             });
@@ -9502,12 +9503,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 (d.times.length ? new Date(d.times[d.times.length - 1]).toISOString() : 'n/a'));
             FLOWGRAPH_METRICS.forEach(function(def, i) {
                 var sum = d.m[i].reduce(function(a, b) { return a + b; }, 0);
-                console.log('  ' + def.key + ' ' + def.label + ': sum=' + sum + ' [' + d.m[i].join(',') + ']');
+                console.log('  ' + def.key + ' ' + def.label + ': sum=' + sum);
             });
         }).catch(function(e) {
             console.error('[Hydra FlowGraph] FAILED:', e && e.message ? e.message : e);
             if (e && e.message === 'NO_TABLE') {
-                console.error('[Hydra FlowGraph] No <table> in response — open monitorportal.amazon.com once to refresh Midway, then retry.');
+                console.error('[Hydra FlowGraph] No <table> in any response — open monitorportal.amazon.com once to refresh Midway, then retry.');
             }
         });
     };
