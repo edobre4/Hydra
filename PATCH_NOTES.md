@@ -1,5 +1,24 @@
 # Hydra Patch Notes
 
+## v3.73 — 2026-08-21
+
+### Flow Graph
+- **Two-level metric model.** Settings ▸ Flow Graph now controls which metrics
+  are *available* on the tab (Enabled vs Available groups). The tab's legend
+  only shows enabled metrics, and toggling a line's visibility there does NOT
+  change what's enabled in Settings. Both availability and visibility persist.
+- **Available group shows the exact PMET metric code** (node-substituted,
+  unshortened, monospace) so you can see precisely what each line pulls.
+- **Full metric catalog** — all discovered ORD9 SortCenterLaborManagementService
+  postLabor metrics are now listed (induction paths: Amtran/Fluid/NonCon/SCAR;
+  ItemCollected, DirectedCollecting, ContainerMerged, PalletLoaded Pallet/Gaylord,
+  PalletMoved WS/Gaylord, ProblemSolve checkin, etc.).
+- **Decoupled refresh.** On the Flow Graph tab, Refresh pulls only the Flow
+  Graph (no inbound loads); on other Inbound tabs, Refresh no longer pulls the
+  Flow Graph.
+- Removed Target and Lookback from the Flow Graph settings section (they live on
+  the tab's main controls).
+
 ## v3.72 — 2026-08-21
 
 ### Flow Graph

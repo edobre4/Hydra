@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.72
+// @version      3.73
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -141,6 +141,7 @@
         flowGraphDivisor:    220,
         flowGraphHours:      5,
         flowGraphHidden:     null,
+        flowGraphEnabled:    null,
         flowGraphWindowMode: 'hours',
         flowGraphShifts:     null,
         autoFitZoom:         false
@@ -3605,6 +3606,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseMaxCtns: sdtChaseMaxCtns,
             flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
             flowGraphHidden: _fgHidden,
+            flowGraphEnabled: fgEnabled,
             flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
@@ -3758,6 +3760,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
         if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
         if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
+        if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
         if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
@@ -4507,6 +4510,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
                 flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
                 flowGraphHidden: _fgHidden,
+                flowGraphEnabled: fgEnabled,
                 flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
@@ -4693,6 +4697,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
             if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
             if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
+            if (s.flowGraphEnabled && typeof s.flowGraphEnabled === 'object') { Object.keys(fgEnabled).forEach(function(k){ if (k in s.flowGraphEnabled) fgEnabled[k] = !!s.flowGraphEnabled[k]; }); }
             if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
@@ -5409,17 +5414,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     '<div class="hydra-settings-section collapsed" id="hydra-section-flowgraph">' +
                         '<div class="hydra-settings-section-title">Flow Graph</div>' +
                         '<div class="hydra-settings-section-content">' +
-                            '<div class="hydra-settings-row">' +
-                                '<label>Target / 5 min:</label>' +
-                                '<input type="number" id="hydra-flowgraph-target-set" style="width:70px" min="1" step="1" value="927">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Flat target line on the throughput chart (magenta)</span>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row">' +
-                                '<label>Lookback (hrs):</label>' +
-                                '<input type="number" id="hydra-flowgraph-hours-set" style="width:70px" min="1" max="24" step="1" value="5">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">How many hours of 5-min buckets to chart</span>' +
-                            '</div>' +
-                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:8px 0 4px">Metrics / lines \u2014 toggle which series appear on the chart. Enabled ones are listed first.</div>' +
+                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Choose which metrics are available on the Flow Graph tab. Enabled ones show in the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
                     '</div>' +
@@ -5743,7 +5738,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.72') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.73') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -9386,23 +9381,26 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // We give each a short unique "label" that MonitorPortal echoes back in
     // the table so we can match rows regardless of response ordering.
     var FLOWGRAPH_METRICS = [
-        { key: 'M1', label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success', displayLabel: 'Pkgs: Sorted→Dock', color: '#f97316' },
-        { key: 'M2', label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success', displayLabel: 'Pkgs: Fluid Load', color: '#fb923c' },
-        { key: 'M3', label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success', displayLabel: 'Pkgs: Pallet CB', color: '#84cc16' },
-        { key: 'M4', label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success', displayLabel: 'Pkgs: Bag CB', color: '#a3e635' },
-        { key: 'M5', label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success', displayLabel: 'Pkgs: Gaylord CB', color: '#4ade80' },
-        { key: 'M6', label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success', displayLabel: 'Pkgs: Cart CB', color: '#22d3ee' },
-        { key: 'M7', label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success', displayLabel: 'Pkgs: Cart D2C', color: '#38bdf8' },
-        { key: 'M8', label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success', displayLabel: 'Pkgs: Gaylord D2C', color: '#818cf8' },
-        // Induction (inbound). ORD9 exposes the Amtran induction path.
-        { key: 'M9', label: 'fg_inducted',    metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success', displayLabel: 'Pkgs: Inducted', color: '#f43f5e' },
-        // Container lifecycle (per-5-min container events). PalletMoved.Sortation.WS
-        // is the WS close event — may cover all container types, hence the generic
-        // "Containers Closed" label. Pallet->staging-dock and Gaylord->stacking are
-        // the loaded/staged moves. (No separate Cart-close metric exists at ORD9.)
-        { key: 'M10', label: 'fg_wsclosed',   metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success', displayLabel: 'Ctn: Closed (WS)', color: '#c084fc' },
-        { key: 'M11', label: 'fg_palletdock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success', displayLabel: 'Ctn: Pallet→Dock', color: '#2dd4bf' },
-        { key: 'M12', label: 'fg_gaylordstk', metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success', displayLabel: 'Ctn: Gaylord→Stacking', color: '#facc15' }
+        { key: 'M1',  label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success',        displayLabel: 'Pkgs: Sorted\u2192Dock',      color: '#f97316' },
+        { key: 'M2',  label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success',           displayLabel: 'Pkgs: Fluid Load',           color: '#fb923c' },
+        { key: 'M3',  label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success',          displayLabel: 'Pkgs: Pallet CB',            color: '#84cc16' },
+        { key: 'M4',  label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success',             displayLabel: 'Pkgs: Bag CB',               color: '#a3e635' },
+        { key: 'M5',  label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success',         displayLabel: 'Pkgs: Gaylord CB',           color: '#4ade80' },
+        { key: 'M6',  label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success',            displayLabel: 'Pkgs: Cart CB',              color: '#22d3ee' },
+        { key: 'M7',  label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success',           displayLabel: 'Pkgs: Cart D2C',             color: '#38bdf8' },
+        { key: 'M8',  label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success',        displayLabel: 'Pkgs: Gaylord D2C',          color: '#818cf8' },
+        { key: 'M9',  label: 'fg_indamtran',   metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success',                   displayLabel: 'Pkgs: Inducted (Amtran)',    color: '#f43f5e' },
+        { key: 'M10', label: 'fg_indfluid',    metric: 'postLabor.<NODE>.PackageInducted.FluidUnloadDirect.Success',        displayLabel: 'Pkgs: Inducted (Fluid)',     color: '#fb7185' },
+        { key: 'M11', label: 'fg_indnoncon',   metric: 'postLabor.<NODE>.PackageInducted.Nonconinduct.Success',             displayLabel: 'Pkgs: Inducted (NonCon)',    color: '#e11d48' },
+        { key: 'M12', label: 'fg_indscar',     metric: 'postLabor.<NODE>.PackageInducted.SCARInduct.Success',               displayLabel: 'Pkgs: Inducted (SCAR)',      color: '#be123c' },
+        { key: 'M13', label: 'fg_itemcoll',    metric: 'postLabor.<NODE>.ItemCollected.PackageSorted.Success',              displayLabel: 'Pkgs: Sorted (Collected)',   color: '#f59e0b' },
+        { key: 'M14', label: 'fg_dircoll',     metric: 'postLabor.<NODE>.PackagesCollected.DirectedCollecting.Success',     displayLabel: 'Pkgs: Directed Collect',     color: '#d97706' },
+        { key: 'M15', label: 'fg_ctnmerged',   metric: 'postLabor.<NODE>.ContainerMerged.ContainerPackagesMerged.Success',  displayLabel: 'Ctn: Merged (pkgs)',         color: '#a855f7' },
+        { key: 'M16', label: 'fg_wsclosed',    metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success',                 displayLabel: 'Ctn: Closed (WS)',           color: '#c084fc' },
+        { key: 'M17', label: 'fg_palletdock',  metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success',  displayLabel: 'Ctn: Pallet\u2192Dock',       color: '#2dd4bf' },
+        { key: 'M18', label: 'fg_gaylorddock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Gaylord.staging-dock.Success', displayLabel: 'Ctn: Gaylord\u2192Dock',      color: '#5eead4' },
+        { key: 'M19', label: 'fg_gaylordstk',  metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success', displayLabel: 'Ctn: Gaylord\u2192Stacking', color: '#facc15' },
+        { key: 'M20', label: 'fg_pscheckin',   metric: 'postLabor.<NODE>.ProblemSolveItemCheckin.Problem.Solve.Success',    displayLabel: 'PS: Item Checkin',           color: '#94a3b8' }
     ];
 
     // Index of each metric key within FLOWGRAPH_METRICS / flowGraphData.m,
@@ -13044,43 +13042,58 @@ if (k === 'eta') {
             + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
     }
 
-    // Build the Flow Graph metric/line toggle list in Inbound Settings.
-    // Every series in FG_SERIES_DEFS gets a checkbox; ENABLED ones are listed
-    // first (default-on grouping). Toggling updates _fgHidden, persists, repaints
-    // the chart if it's showing, and re-orders the list so the enabled set
-    // floats to the top.
+    // Map a series def to the exact PMET metric code (node-substituted), or ''
+    // for derived series that have no single underlying metric.
+    function _fgMetricCode(d) {
+        if (d.group !== 'raw') return '';
+        var mkey = d.key.slice(4); // strip 'raw_'
+        var def = FLOWGRAPH_METRICS.filter(function(m){ return m.key === mkey; })[0];
+        if (!def) return '';
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        return def.metric.replace('<NODE>', node);
+    }
+
+    // Build the Flow Graph metric list in Inbound Settings, in two groups:
+    //  - Enabled: series that appear in the Flow Graph tab (checkbox to remove).
+    //  - Available: everything else (checkbox to add). Raw metrics show their
+    //    EXACT metric code, unshortened.
+    // This controls availability (fgEnabled), NOT per-line visibility. Visibility
+    // is toggled from the tab legend and is independent + persistent.
     function _fgRenderMetricToggles() {
         var host = document.getElementById('hydra-flowgraph-metrics');
         if (!host) return;
         function rowHtml(d) {
-            var on = !_fgHidden[d.key];
+            var on = !!fgEnabled[d.key];
+            var code = _fgMetricCode(d);
+            var primary = code || d.label; // Available shows exact code; derived shows label
+            var sub = code ? '<span style="font-size:10px;color:var(--h-muted2,#7a8a9a);margin-left:6px">' + d.label + '</span>' : '';
             return '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
                  '<input type="checkbox" class="hydra-fg-metric-cb" data-key="' + d.key + '"' + (on ? ' checked' : '') + '>' +
-                 '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + d.color + '"></span>' +
-                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">' + d.label + '</span>' +
+                 '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + d.color + ';flex:0 0 auto"></span>' +
+                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0);font-family:' + (code ? 'monospace' : 'inherit') + '">' + primary + '</span>' + sub +
                  '</label>';
         }
         function header(txt) {
             return '<div style="font-size:11px;font-weight:600;color:var(--h-muted,#aab4c0);margin:8px 0 2px;border-top:1px solid var(--h-border2,#3a4a5c);padding-top:6px">' + txt + '</div>';
         }
         var h = '';
-        // 1) Everything currently ENABLED, on top (any group), in defs order.
-        var enabled = FG_SERIES_DEFS.filter(function(d) { return !_fgHidden[d.key]; });
-        if (enabled.length) { h += header('Enabled'); enabled.forEach(function(d) { h += rowHtml(d); }); }
-        // 2) The rest, grouped: Derived first, then Raw PMET metrics.
-        var offDerived = FG_SERIES_DEFS.filter(function(d) { return _fgHidden[d.key] && d.group !== 'raw'; });
-        var offRaw     = FG_SERIES_DEFS.filter(function(d) { return _fgHidden[d.key] && d.group === 'raw'; });
-        if (offDerived.length) { h += header('Derived'); offDerived.forEach(function(d) { h += rowHtml(d); }); }
-        if (offRaw.length) { h += header('Raw PMET metrics (per-site)'); offRaw.forEach(function(d) { h += rowHtml(d); }); }
+        var enabled   = FG_SERIES_DEFS.filter(function(d) { return fgEnabled[d.key]; });
+        var available = FG_SERIES_DEFS.filter(function(d) { return !fgEnabled[d.key]; });
+        h += header('Enabled');
+        h += enabled.length ? enabled.map(rowHtml).join('') : '<div style="font-size:11px;color:var(--h-muted2,#7a8a9a);padding:2px 0">None</div>';
+        h += header('Available');
+        h += available.length ? available.map(rowHtml).join('') : '<div style="font-size:11px;color:var(--h-muted2,#7a8a9a);padding:2px 0">None</div>';
         host.innerHTML = h;
         host.querySelectorAll('.hydra-fg-metric-cb').forEach(function(cb) {
             cb.addEventListener('change', function() {
                 var k = this.getAttribute('data-key');
-                if (!(k in _fgHidden)) return;
-                _fgHidden[k] = !this.checked;
+                if (!(k in fgEnabled)) return;
+                fgEnabled[k] = this.checked;
+                // Newly enabled series start visible on the tab.
+                if (this.checked) _fgHidden[k] = false;
                 try { saveAllSettings(); } catch (ex) {}
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
-                _fgRenderMetricToggles(); // re-order enabled-first
+                _fgRenderMetricToggles(); // re-partition Enabled / Available
             });
         });
     }
@@ -13103,10 +13116,10 @@ if (k === 'eta') {
             d2c.push(m7 + m8);
             tph.push(t * 12 / divisor);
             target.push(flowGraphTarget);
-            inducted.push(val('M9', i));
-            closed.push(val('M10', i));
-            palletDock.push(val('M11', i));
-            gaylordStk.push(val('M12', i));
+            inducted.push(val('M9', i));   // PackageInducted.Amtran
+            closed.push(val('M16', i));     // PalletMoved.Sortation.WS
+            palletDock.push(val('M17', i)); // PalletLoaded.Amtran.Pallet.staging-dock
+            gaylordStk.push(val('M19', i)); // PalletMoved.Amtran.Gaylord.stacking-staging
         }
         var out = { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
                  inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk };
@@ -13136,11 +13149,19 @@ if (k === 'eta') {
         });
     }
 
-    // Series visibility toggles (legend click-to-toggle). Persist in-session.
-    // Series visibility toggles (legend click-to-toggle), persisted via
-    // saveAllSettings as flowGraphHidden. New/extra container lines default
-    // hidden so the chart stays readable until the user opts in.
-    var _fgHidden = (function() { var o = {}; FG_SERIES_DEFS.forEach(function(d) { o[d.key] = !d.defaultOn; }); return o; })();
+    // Two independent, persisted maps per series key:
+    //  - fgEnabled: whether the series is AVAILABLE in the Flow Graph UI (chosen
+    //    in Settings). Only enabled series appear in the tab's legend/chart.
+    //  - _fgHidden: per-series VISIBILITY toggled from the tab legend. Toggling
+    //    visibility never changes fgEnabled. A series draws when it is enabled
+    //    AND not hidden.
+    // Defaults: FG_SERIES_DEFS.defaultOn => enabled + visible; everything else
+    // is neither enabled nor... (hidden default true so if later enabled it
+    // starts visible? No — we want a freshly-enabled series to be visible, so
+    // _fgHidden defaults to false for all; visibility is only meaningful once
+    // enabled). fgEnabled defaults to defaultOn.
+    var fgEnabled = (function() { var o = {}; FG_SERIES_DEFS.forEach(function(d) { o[d.key] = !!d.defaultOn; }); return o; })();
+    var _fgHidden = (function() { var o = {}; FG_SERIES_DEFS.forEach(function(d) { o[d.key] = false; }); return o; })();
 
     function renderFlowGraphChart(targetEl) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
@@ -13193,7 +13214,8 @@ if (k === 'eta') {
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
         var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
-        var series = FG_SERIES_DEFS.map(function(d) {
+        // Only series ENABLED in Settings appear in the tab (legend + chart).
+        var series = FG_SERIES_DEFS.filter(function(d) { return fgEnabled[d.key]; }).map(function(d) {
             return { key: d.key, label: d.label, dotted: d.dotted,
                      color: (isLight && d.lightColor) ? d.lightColor : d.color,
                      width: d.width, data: s[d.dataKey] || [] };
@@ -17769,6 +17791,15 @@ if (k === 'eta') {
                         setStatus('\u2714 PS dashboard loaded \u2014 ' + new Date().toLocaleTimeString());
                     });
                 } else if (_fview === 'IB') {
+                    // Flow Graph tab: refresh ONLY the PMET series — do not pull
+                    // inbound loads. (And other IB tabs never pull Flow Graph.)
+                    if (ibActiveTab === 'flowgraph') {
+                        setStatus('Refreshing Flow Graph...');
+                        return refreshFlowGraph(function() {
+                            _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
+                            setStatus('\u2714 Flow Graph updated \u2014 ' + new Date().toLocaleTimeString());
+                        });
+                    }
                     // onPatch: a background enricher/ETA finished -> re-render (if still on IB).
                     return fetchAndBuildIB(function() {
                         _paint(function(){ renderIBTabs(); renderIBTable(); });
@@ -17777,11 +17808,6 @@ if (k === 'eta') {
                         reconcileIbSelection();
                         _paint(function(){ renderIBTabs(); renderIBTable(); });
                         setStatus('\u2714 ' + data.length + ' inbound loads \u2014 ' + new Date().toLocaleTimeString());
-                        // Flow Graph tab: refetch the cheap PMET series on the
-                        // normal refresh path so the chart auto-updates.
-                        if (ibActiveTab === 'flowgraph') {
-                            refreshFlowGraph(function() { _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderIBTable(); } finally { _fgBackgroundRender = false; } } }); });
-                        }
                         // Pull OB load fullness for dock panel progress (fire-and-forget)
                         var _ibNode = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
                         if (obDockProgressEnabled && dockDoorEnabled) {
