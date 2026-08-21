@@ -13288,7 +13288,11 @@ if (k === 'eta') {
             return dl.getUTCFullYear() + '-' + ('0' + (dl.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + dl.getUTCDate()).slice(-2);
         })();
         var html = '<div class="hydra-table" style="padding:8px 16px;display:flex;flex-direction:column;align-items:center;height:100%">';
-        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;justify-content:flex-start;width:100%">';
+        // Controls row: two tidy groups separated across the width. Left =
+        // window/date; right = site, target, rate, status, live TPH.
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px;flex-wrap:wrap;width:100%">';
+        // --- Left group: window + (hours | date) ---
+        html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Window:</label>';
         html += '<select id="hydra-flowgraph-winmode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">';
         html += '<option value="hours"' + (flowGraphWindowMode === 'hours' ? ' selected' : '') + '>Past hours</option>';
@@ -13296,13 +13300,14 @@ if (k === 'eta') {
             html += '<option value="' + sh.id + '"' + (flowGraphWindowMode === sh.id ? ' selected' : '') + '>' + sh.label + ' (' + sh.start + '\u2013' + sh.end + ')</option>';
         });
         html += '</select>';
-        html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
-        // Editable date for shift windows (which day the shift anchors to).
+        html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
         html += '<input id="hydra-flowgraph-shiftdate" type="date" value="' + _fgResolvedDate + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'none' : 'inline-block') + '" title="Date of the selected shift (editable)">';
-        html += '<span style="flex:1 1 auto"></span>';
+        html += '</div>';
+        // --- Right group: site + target + rate + status + live TPH ---
+        html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
         html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
         html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
-        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
+        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:64px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Rate:</label>';
         html += '<select id="hydra-flowgraph-ratemode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">' +
                 '<option value="5m"' + (flowGraphRateMode === '5m' ? ' selected' : '') + '>per 5 min</option>' +
@@ -13323,7 +13328,8 @@ if (k === 'eta') {
                 + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
                 + '</span>';
         })();
-        html += '</div>';
+        html += '</div>'; // right group
+        html += '</div>'; // controls row
         // Legend (click-to-toggle)
         html += '<div id="hydra-flowgraph-legend" style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap;justify-content:center">';
         series.forEach(function(se) {
