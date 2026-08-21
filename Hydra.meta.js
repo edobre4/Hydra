@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.66
+// @version      3.67
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js

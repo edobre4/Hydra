@@ -1,5 +1,20 @@
 # Hydra Patch Notes
 
+## v3.67 — 2026-08-21
+
+### Flow Graph
+- **New series** (each toggleable via the legend, visibility now persists):
+  Inducted, Containers Closed (WS), Pallet\u2192Dock, and Gaylord\u2192Stacking, from
+  verified PMET metrics. Total/Manual/D2C/TPH still use only the package
+  throughput metrics.
+- **Live TPH badge** \u2014 current 5-min Total \u00d7 12 \u00f7 live headcount (from WATT
+  getStaffingAssignments). A numeric readout, not a line, since WATT headcount
+  is a current snapshot with no history.
+- **Window picker** \u2014 choose "Past hours" or a named shift (Day/Twi/Nit/Mor/
+  WD/OVN). Shift windows resolve in local site time and handle overnight wrap.
+- **Sort Times settings** \u2014 new section to edit each shift's start/end (local
+  24h HH:MM); drives the window picker.
+
 ## v3.66 — 2026-08-21
 
 ### Flow Graph (fix)
