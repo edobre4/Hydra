@@ -1,5 +1,18 @@
 # Hydra Patch Notes
 
+## v3.70 — 2026-08-21
+
+### Flow Graph (fix)
+- **Fixed "refreshFlowGraph is not defined" error** on refresh/settings. The
+  Flow Graph functions were accidentally nested inside renderIBTable, so the
+  refresh path and settings handlers (outside that scope) couldn't see them.
+  Moved them to top level. This also fixes their state vars (loading flag,
+  headcount cache) silently resetting on every render.
+- **Clarified Live TPH denominator.** The badge now reads "@ N assigned"
+  because it divides by WATT getStaffingAssignments (assigned associates), not
+  clocked-in. On the Right Station dashboard this is the "Assigned" number, not
+  "Clocked in".
+
 ## v3.69 — 2026-08-21
 
 ### Flow Graph

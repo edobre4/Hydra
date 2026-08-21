@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.69
+// @version      3.70
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5746,7 +5746,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.69') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.70') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -12110,371 +12110,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function renderVolAvailCanvas(targetEl) { renderVolAvailChart(targetEl, true); }
 
-    // ===================================================================
-    // Flow Graph renderer — live 5-min sort throughput chart (PMET).
-    // ===================================================================
-
-    // Tracks an in-flight pullFlowGraph so we don't fire duplicate requests
-    // and can show a loading state on first entry to the tab.
-    var _flowGraphLoading = false;
-    // Set true only around background/auto re-renders so renderFlowGraphChart
-    // can avoid destroying an open control; user actions leave it false.
-    var _fgBackgroundRender = false;
-
-    // Live headcount snapshot (from WATT getStaffingAssignments) for the
-    // current-TPH readout. This is a CURRENT count only (WATT has no history),
-    // so it powers a live numeric badge, not a per-bucket line.
-    var fgLiveHeadcount = null;   // number of associates currently on the clock, or null if unknown
-    var fgLiveHeadcountAt = 0;    // ms when it was fetched
-
-    // Fetch current headcount = distinct associates in getStaffingAssignments.
-    // Fire-and-forget; updates fgLiveHeadcount then optionally re-renders.
-    function refreshFlowGraphHeadcount(cb) {
-        try {
-            fetchStaffingAssignments().then(function(rows) {
-                var seen = {};
-                (rows || []).forEach(function(a) { if (a && a.associateId) seen[a.associateId] = 1; });
-                fgLiveHeadcount = Object.keys(seen).length;
-                fgLiveHeadcountAt = Date.now();
-                if (cb) cb();
-            }).catch(function(e) {
-                console.warn('[Hydra FlowGraph] headcount fetch failed:', e && e.message ? e.message : e);
-                if (cb) cb();
-            });
-        } catch (e) { if (cb) cb(); }
-    }
-
-    // Recompute + patch only the Live TPH badge text (no full re-render), so
-    // async headcount/refresh updates don't destroy an open dropdown or input.
-    function _fgUpdateTphBadge() {
-        var el = document.getElementById('hydra-flowgraph-tph');
-        if (!el) return;
-        var d = flowGraphData;
-        var n = d.times.length;
-        if (!n) return;
-        var s = fgComputeSeries(d);
-        var lastGood = n - Math.min(2, n) - 1;
-        if (lastGood < 0) lastGood = n - 1;
-        var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
-        var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
-        var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
-        el.innerHTML = 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '\u2014')
-            + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' HC</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
-    }
-
-    // Compute the derived series from the 8 parsed metric arrays.
-    // Returns { total, manual, d2c, tph, target } — each an array aligned to
-    // flowGraphData.times. All computed client-side (no FunctionExpression).
-    function fgComputeSeries(d) {
-        var n = d.times.length;
-        var total = [], manual = [], d2c = [], tph = [], target = [];
-        var inducted = [], closed = [], palletDock = [], gaylordStk = [];
-        var divisor = (flowGraphDivisor > 0) ? flowGraphDivisor : 220;
-        function val(key, i) { var idx = FG_IDX[key]; return (idx != null && d.m[idx] && d.m[idx][i]) ? d.m[idx][i] : 0; }
-        for (var i = 0; i < n; i++) {
-            var m1 = val('M1', i), m2 = val('M2', i), m3 = val('M3', i), m4 = val('M4', i),
-                m5 = val('M5', i), m6 = val('M6', i), m7 = val('M7', i), m8 = val('M8', i);
-            var t = m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8;
-            total.push(t);
-            manual.push(m1 + m2 + m3 + m4 + m5 + m6);
-            d2c.push(m7 + m8);
-            tph.push(t * 12 / divisor);
-            target.push(flowGraphTarget);
-            inducted.push(val('M9', i));
-            closed.push(val('M10', i));
-            palletDock.push(val('M11', i));
-            gaylordStk.push(val('M12', i));
-        }
-        return { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
-                 inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk };
-    }
-
-    // Kick a Flow Graph pull for the current node, then re-render the tab.
-    // Called on tab entry (no data yet) and by the normal refresh path.
-    function refreshFlowGraph(cb) {
-        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
-        _flowGraphLoading = true;
-        return pullFlowGraph(node).then(function() {
-            _flowGraphLoading = false;
-            if (cb) cb(null);
-        }).catch(function(e) {
-            _flowGraphLoading = false;
-            console.warn('[Hydra FlowGraph] pull failed:', e && e.message ? e.message : e);
-            if (cb) cb(e);
-        });
-    }
-
-    // Series visibility toggles (legend click-to-toggle). Persist in-session.
-    // Series visibility toggles (legend click-to-toggle), persisted via
-    // saveAllSettings as flowGraphHidden. New/extra container lines default
-    // hidden so the chart stays readable until the user opts in.
-    var _fgHidden = { total: false, manual: false, d2c: false, target: false,
-                      inducted: true, closed: true, palletDock: true, gaylordStk: true };
-
-    function renderFlowGraphChart(targetEl) {
-        var wrap = targetEl || document.getElementById('hydra-table-wrap');
-        if (!wrap) return;
-        var d = flowGraphData;
-        // Skip a rebuild ONLY when it's a background refresh (auto-refresh /
-        // async headcount) AND the user is mid-interaction with a control — a
-        // full innerHTML rebuild would snap an open <select> shut. User-driven
-        // re-renders (legend toggle, control change) always paint.
-        if (!targetEl && _fgBackgroundRender) {
-            var ae = document.activeElement;
-            if (ae && wrap.contains(ae) && /^(SELECT|INPUT)$/.test(ae.tagName) &&
-                document.getElementById('hydra-flowgraph-canvas')) {
-                return;
-            }
-        }
-        // No data yet: auto-pull once, show loading state.
-        if (!d.times.length) {
-            if (_flowGraphLoading) {
-                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px;flex-direction:column;gap:8px"><div style="font-size:24px">⏳</div><div>Loading Flow Graph…</div></div>';
-            } else {
-                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px">Loading…</div>';
-                refreshFlowGraph(function(err) {
-                    if (ibActiveTab !== 'flowgraph') return;
-                    if (err) {
-                        var w2 = targetEl || document.getElementById('hydra-table-wrap');
-                        if (w2) {
-                            var hint = (err.message === 'NO_TABLE')
-                                ? 'No data returned — open <strong>monitorportal.amazon.com</strong> once to refresh your Midway session, then Refresh.'
-                                : 'Flow Graph fetch failed: ' + (err.message || err);
-                            w2.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:#ef5350;font-size:13px;text-align:center;padding:0 40px">' + hint + '</div>';
-                        }
-                        return;
-                    }
-                    renderIBTable();
-                });
-            }
-            return;
-        }
-
-        var s = fgComputeSeries(d);
-        var n = d.times.length;
-
-        // Refresh live headcount if we've never fetched it or it's >2 min stale,
-        // then patch ONLY the Live TPH badge in place (a full re-render here
-        // would destroy an open <select>/focused input mid-interaction).
-        if (fgLiveHeadcount === null || (Date.now() - fgLiveHeadcountAt) > 120000) {
-            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') _fgUpdateTphBadge(); });
-        }
-
-        // Series definitions (color per spec). "total" is bold; "target" dotted.
-        var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
-        var series = [
-            { key: 'total',  label: 'Total Volume',  color: isLight ? '#111' : '#f5f7fa', width: 3,   data: s.total },
-            { key: 'manual', label: 'Manual',        color: '#22c55e',                    width: 2,   data: s.manual },
-            { key: 'd2c',    label: 'D2C',           color: '#3b82f6',                    width: 2,   data: s.d2c },
-            { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true },
-            { key: 'inducted',   label: 'Inducted',        color: '#ef4444', width: 2, data: s.inducted },
-            { key: 'closed',     label: 'Containers Closed', color: '#a855f7', width: 2, data: s.closed },
-            { key: 'palletDock', label: 'Pallet→Dock',     color: '#14b8a6', width: 2, data: s.palletDock },
-            { key: 'gaylordStk', label: 'Gaylord→Stacking', color: '#eab308', width: 2, data: s.gaylordStk }
-        ];
-
-        // PMET ingestion lags — the last 2 buckets read artificially low.
-        var LAG_BUCKETS = Math.min(2, n);
-        var lagStart = n - LAG_BUCKETS; // index at which the tail becomes "provisional"
-
-        // Y scale: max across all VISIBLE series (target included so the line shows).
-        var maxVal = 1;
-        series.forEach(function(se) {
-            if (_fgHidden[se.key]) return;
-            for (var i = 0; i < n; i++) { if (se.data[i] > maxVal) maxVal = se.data[i]; }
-        });
-        maxVal = maxVal * 1.1; // headroom
-
-        var cw = Math.max(wrap.clientWidth - 20, 400);
-        var ch = Math.max(wrap.clientHeight - 70, 250);
-        var pad = { top: 20, right: 14, bottom: 40, left: cw < 500 ? 50 : 70 };
-        var gw = cw - pad.left - pad.right;
-        var gh = ch - pad.top - pad.bottom;
-
-        // Controls row: inline target + divisor + hours + fetch time + legend.
-        var html = '<div class="hydra-table" style="padding:8px 16px;display:flex;flex-direction:column;align-items:center;height:100%">';
-        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
-        html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
-        html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
-        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
-        html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Window:</label>';
-        html += '<select id="hydra-flowgraph-winmode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">';
-        html += '<option value="hours"' + (flowGraphWindowMode === 'hours' ? ' selected' : '') + '>Past hours</option>';
-        FG_SHIFTS.forEach(function(sh) {
-            html += '<option value="' + sh.id + '"' + (flowGraphWindowMode === sh.id ? ' selected' : '') + '>' + sh.label + ' (' + sh.start + '\u2013' + sh.end + ')</option>';
-        });
-        html += '</select>';
-        html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
-        html += '<span style="font-size:11px;color:var(--h-muted,#aab4c0)">pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</span>';
-        // Live TPH readout (current 5-min Total x12 / live WATT headcount). Not a
-        // line — WATT headcount is a current snapshot only. Uses the last fully-
-        // ingested bucket (skips the provisional tail).
-        (function() {
-            var lastGood = n - Math.min(2, n) - 1; // last non-provisional bucket
-            if (lastGood < 0) lastGood = n - 1;
-            var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
-            var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
-            var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
-            html += '<span id="hydra-flowgraph-tph" style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / live headcount (WATT). Snapshot, not historical.">'
-                + 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '—')
-                + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' HC</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
-                + '</span>';
-        })();
-        html += '</div>';
-        // Legend (click-to-toggle)
-        html += '<div id="hydra-flowgraph-legend" style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap;justify-content:center">';
-        series.forEach(function(se) {
-            var off = !!_fgHidden[se.key];
-            var box = off ? '\u2610' : '\u2611'; // empty vs checked box
-            html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + (off ? '0.45' : '1') + ';font-weight:600;user-select:none;text-decoration:' + (off ? 'line-through' : 'none') + '">' + box + ' ' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
-        });
-        html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
-        html += '</div>';
-        html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
-        html += '</div>';
-        wrap.innerHTML = html;
-
-        // Wire inline controls
-        var tIn = document.getElementById('hydra-flowgraph-target');
-        if (tIn) tIn.addEventListener('change', function() {
-            var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
-        });
-        var hIn = document.getElementById('hydra-flowgraph-hours');
-        if (hIn) hIn.addEventListener('change', function() {
-            var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); }); }
-        });
-        var wmSel = document.getElementById('hydra-flowgraph-winmode');
-        if (wmSel) wmSel.addEventListener('change', function() {
-            flowGraphWindowMode = this.value || 'hours';
-            try { saveAllSettings(); } catch(e){}
-            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
-        });
-        var legend = document.getElementById('hydra-flowgraph-legend');
-        if (legend) legend.addEventListener('click', function(e) {
-            var it = e.target.closest('.hydra-fg-legitem');
-            if (!it) return;
-            var k = it.getAttribute('data-key');
-            if (k in _fgHidden) {
-                _fgHidden[k] = !_fgHidden[k];
-                try { saveAllSettings(); } catch(e){}
-                // Re-render the chart directly into its current container so the
-                // toggle takes effect immediately (renderIBTable would first reset
-                // the wrap to an empty <table>, causing a flash/race).
-                renderFlowGraphChart(wrap);
-            }
-        });
-
-        // ---- Draw ----
-        var canvas = document.getElementById('hydra-flowgraph-canvas');
-        if (!canvas) return;
-        var ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, cw, ch);
-
-        function xAt(i) { return pad.left + (n <= 1 ? 0 : (i / (n - 1)) * gw); }
-        function yAt(v) { return pad.top + gh - (v / maxVal) * gh; }
-
-        // Horizontal grid + Y labels
-        ctx.strokeStyle = '#1a2a3a'; ctx.lineWidth = 1;
-        for (var yi = 0; yi <= 5; yi++) {
-            var yy = pad.top + gh - (yi / 5) * gh;
-            ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + gw, yy); ctx.stroke();
-            ctx.fillStyle = '#c8d0d8'; ctx.font = '12px sans-serif'; ctx.textAlign = 'right';
-            ctx.fillText(Math.round(maxVal * yi / 5).toLocaleString(), pad.left - 8, yy + 3);
-        }
-        // Vertical grid + X time labels (~every ~6th bucket / 30 min)
-        var xStep = Math.max(1, Math.round(n / 8));
-        for (var xi = 0; xi < n; xi += xStep) {
-            var xx = xAt(xi);
-            ctx.strokeStyle = '#1a2a3a'; ctx.beginPath(); ctx.moveTo(xx, pad.top); ctx.lineTo(xx, pad.top + gh); ctx.stroke();
-            var tlabel = (typeof msToLocal === 'function') ? msToLocal(d.times[xi]) : new Date(d.times[xi]).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
-            // msToLocal may return date+time; keep the HH:MM tail for compactness
-            tlabel = String(tlabel).replace(/^.*?(\d{1,2}:\d{2}).*$/, '$1') || tlabel;
-            ctx.fillStyle = '#c8d0d8'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText(tlabel, xx, pad.top + gh + 16);
-        }
-
-        // Shade the provisional tail region (last LAG_BUCKETS buckets)
-        if (LAG_BUCKETS > 0 && n > LAG_BUCKETS) {
-            var shadeX = xAt(lagStart);
-            ctx.fillStyle = 'rgba(120,130,145,0.12)';
-            ctx.fillRect(shadeX, pad.top, (pad.left + gw) - shadeX, gh);
-        }
-
-        // Draw each visible series. The provisional tail is drawn dashed.
-        series.forEach(function(se) {
-            if (_fgHidden[se.key]) return;
-            // Solid portion: 0 .. lagStart (inclusive of lagStart as the join point)
-            ctx.strokeStyle = se.color; ctx.lineWidth = se.width;
-            if (se.dotted) ctx.setLineDash([5, 4]);
-            ctx.beginPath();
-            for (var i = 0; i < n; i++) {
-                var x = xAt(i), y = yAt(se.data[i]);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-                // At the lag boundary, stroke the solid part then switch to dashed
-                if (!se.dotted && i === lagStart && lagStart < n - 1) {
-                    ctx.stroke();
-                    ctx.setLineDash([4, 3]);
-                    ctx.beginPath();
-                    ctx.moveTo(x, y);
-                }
-            }
-            ctx.stroke();
-            ctx.setLineDash([]);
-        });
-
-        // Y axis title
-        ctx.fillStyle = '#e0e8f0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
-        ctx.save(); ctx.translate(12, pad.top + gh / 2); ctx.rotate(-Math.PI / 2);
-        ctx.fillText('Scans / 5 min', 0, 0); ctx.restore();
-
-        // ---- Hover crosshair + tooltip ----
-        var baseImage = ctx.getImageData(0, 0, cw, ch);
-        canvas.addEventListener('mousemove', function(e) {
-            var rect = canvas.getBoundingClientRect();
-            var scaleX = canvas.width / rect.width;
-            var mx = (e.clientX - rect.left) * scaleX;
-            if (mx < pad.left || mx > pad.left + gw) { ctx.putImageData(baseImage, 0, 0); return; }
-            ctx.putImageData(baseImage, 0, 0);
-            // nearest bucket index
-            var idx = Math.round(((mx - pad.left) / gw) * (n - 1));
-            idx = Math.max(0, Math.min(n - 1, idx));
-            var cx = xAt(idx);
-            ctx.save();
-            ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + gh); ctx.stroke();
-            ctx.setLineDash([]);
-            // Dots on each visible series at idx
-            series.forEach(function(se) {
-                if (_fgHidden[se.key]) return;
-                var cy = yAt(se.data[idx]);
-                ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fillStyle = se.color; ctx.fill();
-            });
-            // Tooltip box
-            var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[idx]) : new Date(d.times[idx]).toLocaleTimeString();
-            var lines = [{ text: timeStr + (idx >= lagStart ? '  (provisional)' : ''), color: '#fff' }];
-            series.forEach(function(se) {
-                if (_fgHidden[se.key]) return;
-                lines.push({ text: se.label + ': ' + Math.round(se.data[idx]).toLocaleString(), color: se.color });
-            });
-            ctx.font = 'bold 12px sans-serif';
-            var tw = 0; lines.forEach(function(l) { tw = Math.max(tw, ctx.measureText(l.text).width); });
-            tw += 16;
-            var thh = lines.length * 15 + 8;
-            var bx = cx + 10; if (bx + tw > pad.left + gw) bx = cx - tw - 10;
-            var by = pad.top + 8;
-            ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(bx, by, tw, thh);
-            ctx.strokeStyle = '#60d0ff'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, tw, thh);
-            ctx.textAlign = 'left';
-            lines.forEach(function(l, li) {
-                ctx.fillStyle = l.color;
-                ctx.fillText(l.text, bx + 8, by + 15 + li * 15 - 3);
-            });
-            ctx.restore();
-        });
-        canvas.addEventListener('mouseleave', function() { ctx.putImageData(baseImage, 0, 0); });
-    }
 
     function renderVolAvailChart(targetEl, canvasOnly) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
@@ -13328,6 +12963,372 @@ if (k === 'eta') {
             document.removeEventListener('mousemove', ibOnMouseMove);
             document.removeEventListener('mouseup', ibOnMouseUp);
         };
+    }
+
+    // ===================================================================
+    // Flow Graph renderer — live 5-min sort throughput chart (PMET).
+    // ===================================================================
+
+    // Tracks an in-flight pullFlowGraph so we don't fire duplicate requests
+    // and can show a loading state on first entry to the tab.
+    var _flowGraphLoading = false;
+    // Set true only around background/auto re-renders so renderFlowGraphChart
+    // can avoid destroying an open control; user actions leave it false.
+    var _fgBackgroundRender = false;
+
+    // Live headcount snapshot (from WATT getStaffingAssignments) for the
+    // current-TPH readout. This is a CURRENT count only (WATT has no history),
+    // so it powers a live numeric badge, not a per-bucket line.
+    var fgLiveHeadcount = null;   // number of associates currently on the clock, or null if unknown
+    var fgLiveHeadcountAt = 0;    // ms when it was fetched
+
+    // Fetch current headcount = distinct associates in getStaffingAssignments.
+    // Fire-and-forget; updates fgLiveHeadcount then optionally re-renders.
+    function refreshFlowGraphHeadcount(cb) {
+        try {
+            fetchStaffingAssignments().then(function(rows) {
+                var seen = {};
+                (rows || []).forEach(function(a) { if (a && a.associateId) seen[a.associateId] = 1; });
+                fgLiveHeadcount = Object.keys(seen).length;
+                fgLiveHeadcountAt = Date.now();
+                if (cb) cb();
+            }).catch(function(e) {
+                console.warn('[Hydra FlowGraph] headcount fetch failed:', e && e.message ? e.message : e);
+                if (cb) cb();
+            });
+        } catch (e) { if (cb) cb(); }
+    }
+
+    // Recompute + patch only the Live TPH badge text (no full re-render), so
+    // async headcount/refresh updates don't destroy an open dropdown or input.
+    function _fgUpdateTphBadge() {
+        var el = document.getElementById('hydra-flowgraph-tph');
+        if (!el) return;
+        var d = flowGraphData;
+        var n = d.times.length;
+        if (!n) return;
+        var s = fgComputeSeries(d);
+        var lastGood = n - Math.min(2, n) - 1;
+        if (lastGood < 0) lastGood = n - 1;
+        var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
+        var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
+        var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
+        el.innerHTML = 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '\u2014')
+            + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
+    }
+
+    // Compute the derived series from the 8 parsed metric arrays.
+    // Returns { total, manual, d2c, tph, target } — each an array aligned to
+    // flowGraphData.times. All computed client-side (no FunctionExpression).
+    function fgComputeSeries(d) {
+        var n = d.times.length;
+        var total = [], manual = [], d2c = [], tph = [], target = [];
+        var inducted = [], closed = [], palletDock = [], gaylordStk = [];
+        var divisor = (flowGraphDivisor > 0) ? flowGraphDivisor : 220;
+        function val(key, i) { var idx = FG_IDX[key]; return (idx != null && d.m[idx] && d.m[idx][i]) ? d.m[idx][i] : 0; }
+        for (var i = 0; i < n; i++) {
+            var m1 = val('M1', i), m2 = val('M2', i), m3 = val('M3', i), m4 = val('M4', i),
+                m5 = val('M5', i), m6 = val('M6', i), m7 = val('M7', i), m8 = val('M8', i);
+            var t = m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8;
+            total.push(t);
+            manual.push(m1 + m2 + m3 + m4 + m5 + m6);
+            d2c.push(m7 + m8);
+            tph.push(t * 12 / divisor);
+            target.push(flowGraphTarget);
+            inducted.push(val('M9', i));
+            closed.push(val('M10', i));
+            palletDock.push(val('M11', i));
+            gaylordStk.push(val('M12', i));
+        }
+        return { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
+                 inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk };
+    }
+
+    // Kick a Flow Graph pull for the current node, then re-render the tab.
+    // Called on tab entry (no data yet) and by the normal refresh path.
+    function refreshFlowGraph(cb) {
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        _flowGraphLoading = true;
+        return pullFlowGraph(node).then(function() {
+            _flowGraphLoading = false;
+            if (cb) cb(null);
+        }).catch(function(e) {
+            _flowGraphLoading = false;
+            console.warn('[Hydra FlowGraph] pull failed:', e && e.message ? e.message : e);
+            if (cb) cb(e);
+        });
+    }
+
+    // Series visibility toggles (legend click-to-toggle). Persist in-session.
+    // Series visibility toggles (legend click-to-toggle), persisted via
+    // saveAllSettings as flowGraphHidden. New/extra container lines default
+    // hidden so the chart stays readable until the user opts in.
+    var _fgHidden = { total: false, manual: false, d2c: false, target: false,
+                      inducted: true, closed: true, palletDock: true, gaylordStk: true };
+
+    function renderFlowGraphChart(targetEl) {
+        var wrap = targetEl || document.getElementById('hydra-table-wrap');
+        if (!wrap) return;
+        var d = flowGraphData;
+        // Skip a rebuild ONLY when it's a background refresh (auto-refresh /
+        // async headcount) AND the user is mid-interaction with a control — a
+        // full innerHTML rebuild would snap an open <select> shut. User-driven
+        // re-renders (legend toggle, control change) always paint.
+        if (!targetEl && _fgBackgroundRender) {
+            var ae = document.activeElement;
+            if (ae && wrap.contains(ae) && /^(SELECT|INPUT)$/.test(ae.tagName) &&
+                document.getElementById('hydra-flowgraph-canvas')) {
+                return;
+            }
+        }
+        // No data yet: auto-pull once, show loading state.
+        if (!d.times.length) {
+            if (_flowGraphLoading) {
+                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px;flex-direction:column;gap:8px"><div style="font-size:24px">⏳</div><div>Loading Flow Graph…</div></div>';
+            } else {
+                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px">Loading…</div>';
+                refreshFlowGraph(function(err) {
+                    if (ibActiveTab !== 'flowgraph') return;
+                    if (err) {
+                        var w2 = targetEl || document.getElementById('hydra-table-wrap');
+                        if (w2) {
+                            var hint = (err.message === 'NO_TABLE')
+                                ? 'No data returned — open <strong>monitorportal.amazon.com</strong> once to refresh your Midway session, then Refresh.'
+                                : 'Flow Graph fetch failed: ' + (err.message || err);
+                            w2.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:#ef5350;font-size:13px;text-align:center;padding:0 40px">' + hint + '</div>';
+                        }
+                        return;
+                    }
+                    renderIBTable();
+                });
+            }
+            return;
+        }
+
+        var s = fgComputeSeries(d);
+        var n = d.times.length;
+
+        // Refresh live headcount if we've never fetched it or it's >2 min stale,
+        // then patch ONLY the Live TPH badge in place (a full re-render here
+        // would destroy an open <select>/focused input mid-interaction).
+        if (fgLiveHeadcount === null || (Date.now() - fgLiveHeadcountAt) > 120000) {
+            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') _fgUpdateTphBadge(); });
+        }
+
+        // Series definitions (color per spec). "total" is bold; "target" dotted.
+        var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
+        var series = [
+            { key: 'total',  label: 'Total Volume',  color: isLight ? '#111' : '#f5f7fa', width: 3,   data: s.total },
+            { key: 'manual', label: 'Manual',        color: '#22c55e',                    width: 2,   data: s.manual },
+            { key: 'd2c',    label: 'D2C',           color: '#3b82f6',                    width: 2,   data: s.d2c },
+            { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true },
+            { key: 'inducted',   label: 'Inducted',        color: '#ef4444', width: 2, data: s.inducted },
+            { key: 'closed',     label: 'Containers Closed', color: '#a855f7', width: 2, data: s.closed },
+            { key: 'palletDock', label: 'Pallet→Dock',     color: '#14b8a6', width: 2, data: s.palletDock },
+            { key: 'gaylordStk', label: 'Gaylord→Stacking', color: '#eab308', width: 2, data: s.gaylordStk }
+        ];
+
+        // PMET ingestion lags — the last 2 buckets read artificially low.
+        var LAG_BUCKETS = Math.min(2, n);
+        var lagStart = n - LAG_BUCKETS; // index at which the tail becomes "provisional"
+
+        // Y scale: max across all VISIBLE series (target included so the line shows).
+        var maxVal = 1;
+        series.forEach(function(se) {
+            if (_fgHidden[se.key]) return;
+            for (var i = 0; i < n; i++) { if (se.data[i] > maxVal) maxVal = se.data[i]; }
+        });
+        maxVal = maxVal * 1.1; // headroom
+
+        var cw = Math.max(wrap.clientWidth - 20, 400);
+        var ch = Math.max(wrap.clientHeight - 70, 250);
+        var pad = { top: 20, right: 14, bottom: 40, left: cw < 500 ? 50 : 70 };
+        var gw = cw - pad.left - pad.right;
+        var gh = ch - pad.top - pad.bottom;
+
+        // Controls row: inline target + divisor + hours + fetch time + legend.
+        var html = '<div class="hydra-table" style="padding:8px 16px;display:flex;flex-direction:column;align-items:center;height:100%">';
+        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
+        html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
+        html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
+        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
+        html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Window:</label>';
+        html += '<select id="hydra-flowgraph-winmode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">';
+        html += '<option value="hours"' + (flowGraphWindowMode === 'hours' ? ' selected' : '') + '>Past hours</option>';
+        FG_SHIFTS.forEach(function(sh) {
+            html += '<option value="' + sh.id + '"' + (flowGraphWindowMode === sh.id ? ' selected' : '') + '>' + sh.label + ' (' + sh.start + '\u2013' + sh.end + ')</option>';
+        });
+        html += '</select>';
+        html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
+        html += '<span style="font-size:11px;color:var(--h-muted,#aab4c0)">pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</span>';
+        // Live TPH readout (current 5-min Total x12 / live WATT headcount). Not a
+        // line — WATT headcount is a current snapshot only. Uses the last fully-
+        // ingested bucket (skips the provisional tail).
+        (function() {
+            var lastGood = n - Math.min(2, n) - 1; // last non-provisional bucket
+            if (lastGood < 0) lastGood = n - 1;
+            var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
+            var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
+            var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
+            html += '<span id="hydra-flowgraph-tph" style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / assigned associates (WATT getStaffingAssignments). Assigned, not clocked-in. Snapshot, not historical.">'
+                + 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '—')
+                + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
+                + '</span>';
+        })();
+        html += '</div>';
+        // Legend (click-to-toggle)
+        html += '<div id="hydra-flowgraph-legend" style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap;justify-content:center">';
+        series.forEach(function(se) {
+            var off = !!_fgHidden[se.key];
+            var box = off ? '\u2610' : '\u2611'; // empty vs checked box
+            html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + (off ? '0.45' : '1') + ';font-weight:600;user-select:none;text-decoration:' + (off ? 'line-through' : 'none') + '">' + box + ' ' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
+        });
+        html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
+        html += '</div>';
+        html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
+        html += '</div>';
+        wrap.innerHTML = html;
+
+        // Wire inline controls
+        var tIn = document.getElementById('hydra-flowgraph-target');
+        if (tIn) tIn.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
+        });
+        var hIn = document.getElementById('hydra-flowgraph-hours');
+        if (hIn) hIn.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); }); }
+        });
+        var wmSel = document.getElementById('hydra-flowgraph-winmode');
+        if (wmSel) wmSel.addEventListener('change', function() {
+            flowGraphWindowMode = this.value || 'hours';
+            try { saveAllSettings(); } catch(e){}
+            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
+        });
+        var legend = document.getElementById('hydra-flowgraph-legend');
+        if (legend) legend.addEventListener('click', function(e) {
+            var it = e.target.closest('.hydra-fg-legitem');
+            if (!it) return;
+            var k = it.getAttribute('data-key');
+            if (k in _fgHidden) {
+                _fgHidden[k] = !_fgHidden[k];
+                try { saveAllSettings(); } catch(e){}
+                // Re-render the chart directly into its current container so the
+                // toggle takes effect immediately (renderIBTable would first reset
+                // the wrap to an empty <table>, causing a flash/race).
+                renderFlowGraphChart(wrap);
+            }
+        });
+
+        // ---- Draw ----
+        var canvas = document.getElementById('hydra-flowgraph-canvas');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, cw, ch);
+
+        function xAt(i) { return pad.left + (n <= 1 ? 0 : (i / (n - 1)) * gw); }
+        function yAt(v) { return pad.top + gh - (v / maxVal) * gh; }
+
+        // Horizontal grid + Y labels
+        ctx.strokeStyle = '#1a2a3a'; ctx.lineWidth = 1;
+        for (var yi = 0; yi <= 5; yi++) {
+            var yy = pad.top + gh - (yi / 5) * gh;
+            ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + gw, yy); ctx.stroke();
+            ctx.fillStyle = '#c8d0d8'; ctx.font = '12px sans-serif'; ctx.textAlign = 'right';
+            ctx.fillText(Math.round(maxVal * yi / 5).toLocaleString(), pad.left - 8, yy + 3);
+        }
+        // Vertical grid + X time labels (~every ~6th bucket / 30 min)
+        var xStep = Math.max(1, Math.round(n / 8));
+        for (var xi = 0; xi < n; xi += xStep) {
+            var xx = xAt(xi);
+            ctx.strokeStyle = '#1a2a3a'; ctx.beginPath(); ctx.moveTo(xx, pad.top); ctx.lineTo(xx, pad.top + gh); ctx.stroke();
+            var tlabel = (typeof msToLocal === 'function') ? msToLocal(d.times[xi]) : new Date(d.times[xi]).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+            // msToLocal may return date+time; keep the HH:MM tail for compactness
+            tlabel = String(tlabel).replace(/^.*?(\d{1,2}:\d{2}).*$/, '$1') || tlabel;
+            ctx.fillStyle = '#c8d0d8'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(tlabel, xx, pad.top + gh + 16);
+        }
+
+        // Shade the provisional tail region (last LAG_BUCKETS buckets)
+        if (LAG_BUCKETS > 0 && n > LAG_BUCKETS) {
+            var shadeX = xAt(lagStart);
+            ctx.fillStyle = 'rgba(120,130,145,0.12)';
+            ctx.fillRect(shadeX, pad.top, (pad.left + gw) - shadeX, gh);
+        }
+
+        // Draw each visible series. The provisional tail is drawn dashed.
+        series.forEach(function(se) {
+            if (_fgHidden[se.key]) return;
+            // Solid portion: 0 .. lagStart (inclusive of lagStart as the join point)
+            ctx.strokeStyle = se.color; ctx.lineWidth = se.width;
+            if (se.dotted) ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            for (var i = 0; i < n; i++) {
+                var x = xAt(i), y = yAt(se.data[i]);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                // At the lag boundary, stroke the solid part then switch to dashed
+                if (!se.dotted && i === lagStart && lagStart < n - 1) {
+                    ctx.stroke();
+                    ctx.setLineDash([4, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                }
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
+
+        // Y axis title
+        ctx.fillStyle = '#e0e8f0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+        ctx.save(); ctx.translate(12, pad.top + gh / 2); ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Scans / 5 min', 0, 0); ctx.restore();
+
+        // ---- Hover crosshair + tooltip ----
+        var baseImage = ctx.getImageData(0, 0, cw, ch);
+        canvas.addEventListener('mousemove', function(e) {
+            var rect = canvas.getBoundingClientRect();
+            var scaleX = canvas.width / rect.width;
+            var mx = (e.clientX - rect.left) * scaleX;
+            if (mx < pad.left || mx > pad.left + gw) { ctx.putImageData(baseImage, 0, 0); return; }
+            ctx.putImageData(baseImage, 0, 0);
+            // nearest bucket index
+            var idx = Math.round(((mx - pad.left) / gw) * (n - 1));
+            idx = Math.max(0, Math.min(n - 1, idx));
+            var cx = xAt(idx);
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + gh); ctx.stroke();
+            ctx.setLineDash([]);
+            // Dots on each visible series at idx
+            series.forEach(function(se) {
+                if (_fgHidden[se.key]) return;
+                var cy = yAt(se.data[idx]);
+                ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fillStyle = se.color; ctx.fill();
+            });
+            // Tooltip box
+            var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[idx]) : new Date(d.times[idx]).toLocaleTimeString();
+            var lines = [{ text: timeStr + (idx >= lagStart ? '  (provisional)' : ''), color: '#fff' }];
+            series.forEach(function(se) {
+                if (_fgHidden[se.key]) return;
+                lines.push({ text: se.label + ': ' + Math.round(se.data[idx]).toLocaleString(), color: se.color });
+            });
+            ctx.font = 'bold 12px sans-serif';
+            var tw = 0; lines.forEach(function(l) { tw = Math.max(tw, ctx.measureText(l.text).width); });
+            tw += 16;
+            var thh = lines.length * 15 + 8;
+            var bx = cx + 10; if (bx + tw > pad.left + gw) bx = cx - tw - 10;
+            var by = pad.top + 8;
+            ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(bx, by, tw, thh);
+            ctx.strokeStyle = '#60d0ff'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, tw, thh);
+            ctx.textAlign = 'left';
+            lines.forEach(function(l, li) {
+                ctx.fillStyle = l.color;
+                ctx.fillText(l.text, bx + 8, by + 15 + li * 15 - 3);
+            });
+            ctx.restore();
+        });
+        canvas.addEventListener('mouseleave', function() { ctx.putImageData(baseImage, 0, 0); });
     }
 
 
