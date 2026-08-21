@@ -13479,7 +13479,6 @@ if (k === 'eta') {
             // Tooltip box
             var timeStr = (typeof msToLocal === 'function') ? msToLocal(d.times[idx]) : new Date(d.times[idx]).toLocaleTimeString();
             var lines = [{ text: timeStr + (idx >= lagStart ? '  (provisional)' : ''), color: '#fff' }];
-            var rateUnit = (flowGraphRateMode === 'hr') ? '/hr' : '/5m';
             series.forEach(function(se) {
                 if (_fgHidden[se.key]) return;
                 // Per-interval flow at the hovered bucket (rate-scaled) + the
@@ -13487,7 +13486,7 @@ if (k === 'eta') {
                 var flow = Math.round((se.data[idx] || 0) * rateFactor);
                 var cum = 0;
                 for (var ci = 0; ci <= idx && ci < se.data.length; ci++) cum += (se.data[ci] || 0);
-                lines.push({ text: se.label + ': ' + flow.toLocaleString() + rateUnit + '  \u2211 ' + Math.round(cum).toLocaleString(), color: se.color });
+                lines.push({ text: se.label + ' - ' + flow.toLocaleString() + ' (' + Math.round(cum).toLocaleString() + ')', color: se.color });
             });
             ctx.font = 'bold 12px sans-serif';
             var tw = 0; lines.forEach(function(l) { tw = Math.max(tw, ctx.measureText(l.text).width); });
