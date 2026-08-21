@@ -1,5 +1,14 @@
 # Hydra Patch Notes
 
+## v3.68 — 2026-08-21
+
+### Flow Graph (fix)
+- **Fixed the window dropdown snapping shut immediately.** The async live-
+  headcount fetch (and background refreshes) re-rendered the whole tab via
+  innerHTML, destroying the open native `<select>` mid-click. Now the Live TPH
+  badge updates in place, and a full re-render is skipped whenever one of the
+  Flow Graph controls (a `<select>` or focused input) is being interacted with.
+
 ## v3.67 — 2026-08-21
 
 ### Flow Graph

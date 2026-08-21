@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.67
+// @version      3.68
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5746,7 +5746,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.67') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.68') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -12141,6 +12141,24 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         } catch (e) { if (cb) cb(); }
     }
 
+    // Recompute + patch only the Live TPH badge text (no full re-render), so
+    // async headcount/refresh updates don't destroy an open dropdown or input.
+    function _fgUpdateTphBadge() {
+        var el = document.getElementById('hydra-flowgraph-tph');
+        if (!el) return;
+        var d = flowGraphData;
+        var n = d.times.length;
+        if (!n) return;
+        var s = fgComputeSeries(d);
+        var lastGood = n - Math.min(2, n) - 1;
+        if (lastGood < 0) lastGood = n - 1;
+        var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
+        var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
+        var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
+        el.innerHTML = 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '\u2014')
+            + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' HC</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
+    }
+
     // Compute the derived series from the 8 parsed metric arrays.
     // Returns { total, manual, d2c, tph, target } — each an array aligned to
     // flowGraphData.times. All computed client-side (no FunctionExpression).
@@ -12194,6 +12212,19 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
         if (!wrap) return;
         var d = flowGraphData;
+        // Don't rebuild the DOM if the user is mid-interaction with one of our
+        // controls (an open <select> or a focused input): a full innerHTML
+        // rebuild would snap the native dropdown shut. Skip this refresh; the
+        // next one (or the control's own change handler) will repaint. Only
+        // applies to the main-panel render on an already-built chart, not the
+        // first paint and not Vision panes.
+        if (!targetEl) {
+            var ae = document.activeElement;
+            if (ae && wrap.contains(ae) && /^(SELECT|INPUT)$/.test(ae.tagName) &&
+                document.getElementById('hydra-flowgraph-canvas')) {
+                return;
+            }
+        }
         // No data yet: auto-pull once, show loading state.
         if (!d.times.length) {
             if (_flowGraphLoading) {
@@ -12222,9 +12253,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var n = d.times.length;
 
         // Refresh live headcount if we've never fetched it or it's >2 min stale,
-        // then re-render so the Live TPH badge fills in (fire-and-forget).
+        // then patch ONLY the Live TPH badge in place (a full re-render here
+        // would destroy an open <select>/focused input mid-interaction).
         if (fgLiveHeadcount === null || (Date.now() - fgLiveHeadcountAt) > 120000) {
-            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') renderIBTable(); });
+            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') _fgUpdateTphBadge(); });
         }
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
@@ -12285,7 +12317,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
             var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
             var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
-            html += '<span style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / live headcount (WATT). Snapshot, not historical.">'
+            html += '<span id="hydra-flowgraph-tph" style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / live headcount (WATT). Snapshot, not historical.">'
                 + 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '—')
                 + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' HC</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
                 + '</span>';
