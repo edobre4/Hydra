@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.68
+// @version      3.69
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5746,7 +5746,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.68') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.69') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -12117,6 +12117,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Tracks an in-flight pullFlowGraph so we don't fire duplicate requests
     // and can show a loading state on first entry to the tab.
     var _flowGraphLoading = false;
+    // Set true only around background/auto re-renders so renderFlowGraphChart
+    // can avoid destroying an open control; user actions leave it false.
+    var _fgBackgroundRender = false;
 
     // Live headcount snapshot (from WATT getStaffingAssignments) for the
     // current-TPH readout. This is a CURRENT count only (WATT has no history),
@@ -12205,20 +12208,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Series visibility toggles (legend click-to-toggle), persisted via
     // saveAllSettings as flowGraphHidden. New/extra container lines default
     // hidden so the chart stays readable until the user opts in.
-    var _fgHidden = { total: false, manual: false, d2c: false, tph: false, target: false,
+    var _fgHidden = { total: false, manual: false, d2c: false, target: false,
                       inducted: true, closed: true, palletDock: true, gaylordStk: true };
 
     function renderFlowGraphChart(targetEl) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
         if (!wrap) return;
         var d = flowGraphData;
-        // Don't rebuild the DOM if the user is mid-interaction with one of our
-        // controls (an open <select> or a focused input): a full innerHTML
-        // rebuild would snap the native dropdown shut. Skip this refresh; the
-        // next one (or the control's own change handler) will repaint. Only
-        // applies to the main-panel render on an already-built chart, not the
-        // first paint and not Vision panes.
-        if (!targetEl) {
+        // Skip a rebuild ONLY when it's a background refresh (auto-refresh /
+        // async headcount) AND the user is mid-interaction with a control — a
+        // full innerHTML rebuild would snap an open <select> shut. User-driven
+        // re-renders (legend toggle, control change) always paint.
+        if (!targetEl && _fgBackgroundRender) {
             var ae = document.activeElement;
             if (ae && wrap.contains(ae) && /^(SELECT|INPUT)$/.test(ae.tagName) &&
                 document.getElementById('hydra-flowgraph-canvas')) {
@@ -12265,7 +12266,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             { key: 'total',  label: 'Total Volume',  color: isLight ? '#111' : '#f5f7fa', width: 3,   data: s.total },
             { key: 'manual', label: 'Manual',        color: '#22c55e',                    width: 2,   data: s.manual },
             { key: 'd2c',    label: 'D2C',           color: '#3b82f6',                    width: 2,   data: s.d2c },
-            { key: 'tph',    label: 'TPH',           color: '#f59e0b',                    width: 2,   data: s.tph },
             { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true },
             { key: 'inducted',   label: 'Inducted',        color: '#ef4444', width: 2, data: s.inducted },
             { key: 'closed',     label: 'Containers Closed', color: '#a855f7', width: 2, data: s.closed },
@@ -12297,8 +12297,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
         html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
         html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
-        html += '<label style="font-size:12px;color:#f59e0b">TPH divisor:</label>';
-        html += '<input id="hydra-flowgraph-divisor" type="number" min="1" step="1" value="' + flowGraphDivisor + '" style="width:60px;background:var(--h-bg2,#16202c);border:1px solid #f59e0b;border-radius:4px;color:#f59e0b;padding:4px 8px;font-size:12px" title="Total × 12 ÷ divisor">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Window:</label>';
         html += '<select id="hydra-flowgraph-winmode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">';
         html += '<option value="hours"' + (flowGraphWindowMode === 'hours' ? ' selected' : '') + '>Past hours</option>';
@@ -12326,8 +12324,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // Legend (click-to-toggle)
         html += '<div id="hydra-flowgraph-legend" style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap;justify-content:center">';
         series.forEach(function(se) {
-            var op = _fgHidden[se.key] ? '0.35' : '1';
-            html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + op + ';font-weight:600;user-select:none">' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
+            var off = !!_fgHidden[se.key];
+            var box = off ? '\u2610' : '\u2611'; // empty vs checked box
+            html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + (off ? '0.45' : '1') + ';font-weight:600;user-select:none;text-decoration:' + (off ? 'line-through' : 'none') + '">' + box + ' ' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
         });
         html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
         html += '</div>';
@@ -12339,30 +12338,32 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var tIn = document.getElementById('hydra-flowgraph-target');
         if (tIn) tIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} if (ibActiveTab === 'flowgraph') renderIBTable(); }
-        });
-        var dIn = document.getElementById('hydra-flowgraph-divisor');
-        if (dIn) dIn.addEventListener('change', function() {
-            var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0) { flowGraphDivisor = v; try { saveAllSettings(); } catch(e){} if (ibActiveTab === 'flowgraph') renderIBTable(); }
+            if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
         });
         var hIn = document.getElementById('hydra-flowgraph-hours');
         if (hIn) hIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); }); }
+            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); }); }
         });
         var wmSel = document.getElementById('hydra-flowgraph-winmode');
         if (wmSel) wmSel.addEventListener('change', function() {
             flowGraphWindowMode = this.value || 'hours';
             try { saveAllSettings(); } catch(e){}
-            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); });
+            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
         });
         var legend = document.getElementById('hydra-flowgraph-legend');
         if (legend) legend.addEventListener('click', function(e) {
             var it = e.target.closest('.hydra-fg-legitem');
             if (!it) return;
             var k = it.getAttribute('data-key');
-            if (k in _fgHidden) { _fgHidden[k] = !_fgHidden[k]; try { saveAllSettings(); } catch(e){} if (ibActiveTab === 'flowgraph') renderIBTable(); }
+            if (k in _fgHidden) {
+                _fgHidden[k] = !_fgHidden[k];
+                try { saveAllSettings(); } catch(e){}
+                // Re-render the chart directly into its current container so the
+                // toggle takes effect immediately (renderIBTable would first reset
+                // the wrap to an empty <table>, causing a flash/race).
+                renderFlowGraphChart(wrap);
+            }
         });
 
         // ---- Draw ----
@@ -17705,7 +17706,7 @@ if (k === 'eta') {
                         // Flow Graph tab: refetch the cheap PMET series on the
                         // normal refresh path so the chart auto-updates.
                         if (ibActiveTab === 'flowgraph') {
-                            refreshFlowGraph(function() { _paint(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); }); });
+                            refreshFlowGraph(function() { _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderIBTable(); } finally { _fgBackgroundRender = false; } } }); });
                         }
                         // Pull OB load fullness for dock panel progress (fire-and-forget)
                         var _ibNode = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();

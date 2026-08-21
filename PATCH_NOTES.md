@@ -1,5 +1,15 @@
 # Hydra Patch Notes
 
+## v3.69 — 2026-08-21
+
+### Flow Graph
+- **Removed the TPH line** from the chart (the Live TPH badge stays).
+- **Fixed legend toggles not doing anything.** Clicking a series now re-renders
+  the chart directly into its container instead of routing through the IB table
+  renderer (which reset the container first and dropped the change). Legend
+  entries now show a ☑/☐ checkbox and strike through when a series is hidden,
+  so on/off state is obvious. Target/Hours/Window controls repaint the same way.
+
 ## v3.68 — 2026-08-21
 
 ### Flow Graph (fix)
