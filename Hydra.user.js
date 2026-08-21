@@ -5452,13 +5452,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
                                 '<input type="checkbox" id="hydra-flowgraph-nc-enabled">' +
                                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">NC tracking</span>' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">NC target line + NC card (FCLM Container Build, NC + NC Plus)</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">NC target line + NC card (FCLM Container Build, NC + NC Plus). Set NC target on the tab.</span>' +
                             '</label>' +
-                            '<div class="hydra-settings-row" style="align-items:center;gap:8px">' +
-                                '<label style="font-size:12px;color:#fb923c">NC Target / 5 min:</label>' +
-                                '<input type="number" id="hydra-flowgraph-nc-target" style="width:70px" min="1" step="1" value="50">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Delta = NC processed \u2212 (NC target \u00d7 settled 5-min buckets)</span>' +
-                            '</div>' +
                             '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Define metrics as formulas over PMET metrics (use <b>+ metric</b> to insert one; supports + - \u00d7 \u00f7 and parentheses). Enabled metrics show on the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
@@ -13609,6 +13604,8 @@ if (k === 'eta') {
         html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
         html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
         html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:64px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
+        html += '<label style="font-size:12px;color:#fb923c;display:' + (flowGraphNCEnabled ? 'inline' : 'none') + '" id="hydra-flowgraph-nc-target-lbl">NC/5min:</label>';
+        html += '<input id="hydra-flowgraph-nc-target-in" type="number" min="1" step="1" value="' + flowGraphNCTarget + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid #fb923c;border-radius:4px;color:#fb923c;padding:4px 8px;font-size:12px;display:' + (flowGraphNCEnabled ? 'inline-block' : 'none') + '">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Rate:</label>';
         html += '<select id="hydra-flowgraph-ratemode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">' +
                 '<option value="5m"' + (flowGraphRateMode === '5m' ? ' selected' : '') + '>per 5 min</option>' +
@@ -13696,6 +13693,11 @@ if (k === 'eta') {
         if (tIn) tIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
             if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
+        });
+        var ncIn = document.getElementById('hydra-flowgraph-nc-target-in');
+        if (ncIn) ncIn.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (!isNaN(v) && v > 0) { flowGraphNCTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
         });
         var hIn = document.getElementById('hydra-flowgraph-hours');
         if (hIn) hIn.addEventListener('change', function() {
@@ -20117,14 +20119,6 @@ if (k === 'eta') {
                 if (this.checked) { _fgHidden.ncTarget = false; flowGraphNC.processed = null; }
                 try { saveAllSettings(); } catch (ex) {}
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB') { renderIBTable(); if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); }); }
-            });
-        }
-        var _fgNCtgt = document.getElementById('hydra-flowgraph-nc-target');
-        if (_fgNCtgt) {
-            _fgNCtgt.value = flowGraphNCTarget;
-            _fgNCtgt.addEventListener('change', function() {
-                var v = parseInt(this.value, 10);
-                if (!isNaN(v) && v > 0) { flowGraphNCTarget = v; try { saveAllSettings(); } catch (ex) {} if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); }
             });
         }
         // Sort Times: build one editable start/end row per shift in FG_SHIFTS.
