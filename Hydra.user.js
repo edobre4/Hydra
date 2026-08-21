@@ -9646,8 +9646,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (!chosen) chosen = cands[cands.length - 1];
         }
         var startMs = Math.floor(chosen.s / stepMs) * stepMs;
-        var endCap = Math.floor(nowMs / stepMs) * stepMs;
-        var endMs = Math.min(Math.floor(chosen.e / stepMs) * stepMs, endCap);
+        // Show the ENTIRE selected shift window on the axis. We request through
+        // the full shift end even if that's in the future; future buckets come
+        // back empty (0) and the line simply stops at the last real data point.
+        var endMs = Math.ceil(chosen.e / stepMs) * stepMs;
         if (endMs <= startMs) endMs = startMs + stepMs; // guard
         return { startMs: startMs, endMs: endMs };
     }
@@ -13417,9 +13419,20 @@ if (k === 'eta') {
         // or x12 for an hourly rate. Cumulative totals always use raw counts.
         var rateFactor = (flowGraphRateMode === 'hr') ? 12 : 1;
 
-        // PMET ingestion lags — the last 2 buckets read artificially low.
-        var LAG_BUCKETS = Math.min(2, n);
-        var lagStart = n - LAG_BUCKETS; // index at which the tail becomes "provisional"
+        // Last bucket that has real data across any non-target series. For shift
+        // windows the axis extends to the full shift end (future buckets empty),
+        // so lines/provisional-tail must stop here, not at the window end.
+        var lastDataIdx = -1;
+        series.forEach(function(se) {
+            if (se.key === 'target') return;
+            var a = se.data || [];
+            for (var i = 0; i < a.length; i++) { if (a[i] > 0 && i > lastDataIdx) lastDataIdx = i; }
+        });
+        if (lastDataIdx < 0) lastDataIdx = n - 1;
+
+        // PMET ingestion lags — the last 2 buckets WITH DATA read artificially low.
+        var LAG_BUCKETS = Math.min(2, lastDataIdx + 1);
+        var lagStart = (lastDataIdx + 1) - LAG_BUCKETS; // provisional-tail start (within real data)
 
         // Y scale: max across all VISIBLE series (target included so the line shows).
         var maxVal = 1;
@@ -13621,10 +13634,11 @@ if (k === 'eta') {
         }
 
         // Shade the provisional tail region (last LAG_BUCKETS buckets)
-        if (LAG_BUCKETS > 0 && n > LAG_BUCKETS) {
+        if (LAG_BUCKETS > 0 && lastDataIdx >= LAG_BUCKETS) {
             var shadeX = xAt(lagStart);
+            var shadeEnd = xAt(lastDataIdx);
             ctx.fillStyle = 'rgba(120,130,145,0.12)';
-            ctx.fillRect(shadeX, pad.top, (pad.left + gw) - shadeX, gh);
+            ctx.fillRect(shadeX, pad.top, shadeEnd - shadeX, gh);
         }
 
         // Draw each visible series. The provisional tail is drawn dashed.
@@ -13633,12 +13647,15 @@ if (k === 'eta') {
             // Solid portion: 0 .. lagStart (inclusive of lagStart as the join point)
             ctx.strokeStyle = se.color; ctx.lineWidth = se.width;
             if (se.dotted) ctx.setLineDash([5, 4]);
+            // Target (constant) spans the whole window; data series stop at the
+            // last real-data bucket so the empty future tail isn't drawn to 0.
+            var endI = (se.key === 'target') ? (n - 1) : lastDataIdx;
             ctx.beginPath();
-            for (var i = 0; i < n; i++) {
+            for (var i = 0; i <= endI; i++) {
                 var x = xAt(i), y = yAt(se.data[i] * rateFactor);
                 if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                 // At the lag boundary, stroke the solid part then switch to dashed
-                if (!se.dotted && i === lagStart && lagStart < n - 1) {
+                if (!se.dotted && i === lagStart && lagStart < endI) {
                     ctx.stroke();
                     ctx.setLineDash([4, 3]);
                     ctx.beginPath();
