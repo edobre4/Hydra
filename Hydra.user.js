@@ -145,6 +145,7 @@
         flowGraphWindowMode: 'hours',
         flowGraphShowStats:  true,
         flowGraphRateMode:   '5m',
+        flowGraphShiftDate:  '',
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -1189,6 +1190,7 @@
     var flowGraphWindowMode = 'hours';
     var flowGraphShowStats = true;   // show per-metric stat cards above the chart
     var flowGraphRateMode = '5m';    // '5m' = per-5-min flow, 'hr' = flow x12 (hourly rate)
+    var flowGraphShiftDate = '';     // local YYYY-MM-DD anchor for shift windows ('' = auto)
     // Sort Times: editable shift windows in LOCAL site time (HH:MM 24h).
     // Overnight shifts (end <= start) wrap to the next day automatically.
     var FG_SHIFTS = [
@@ -3614,6 +3616,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
             flowGraphShowStats: flowGraphShowStats,
             flowGraphRateMode: flowGraphRateMode,
+            flowGraphShiftDate: flowGraphShiftDate,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3770,6 +3773,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
         if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
         if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
+        if (typeof s.flowGraphShiftDate === 'string') flowGraphShiftDate = s.flowGraphShiftDate;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4522,6 +4526,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphWindowMode: flowGraphWindowMode, flowGraphShifts: FG_SHIFTS,
                 flowGraphShowStats: flowGraphShowStats,
                 flowGraphRateMode: flowGraphRateMode,
+                flowGraphShiftDate: flowGraphShiftDate,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4711,6 +4716,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (typeof s.flowGraphWindowMode === 'string') flowGraphWindowMode = s.flowGraphWindowMode;
             if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
             if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
+            if (typeof s.flowGraphShiftDate === 'string') flowGraphShiftDate = s.flowGraphShiftDate;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -9557,19 +9563,28 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         // Local wall-clock -> UTC ms.
         function localToUtc(yy, mm, dd, hh, min) { return Date.UTC(yy, mm, dd, hh, min, 0) - tzOff * 3600000; }
         var overnight = (en.h * 60 + en.m) <= (st.h * 60 + st.m); // end at/after midnight
-        // Candidate occurrences anchored to today and yesterday; pick the latest
-        // whose start <= now (in progress or already started).
         var nowMs = Date.now();
-        var cands = [];
-        [0, -1].forEach(function(dayShift) {
-            var sMs = localToUtc(y, mo, da + dayShift, st.h, st.m);
-            var eMs = localToUtc(y, mo, da + dayShift + (overnight ? 1 : 0), en.h, en.m);
-            cands.push({ s: sMs, e: eMs });
-        });
-        // Choose the occurrence with the greatest start that is <= now; else the earliest.
+        // If the user pinned a specific local date (YYYY-MM-DD), anchor the shift
+        // start to that day. Otherwise auto-pick the in-progress / most-recent
+        // occurrence from today or yesterday.
         var chosen = null;
-        cands.forEach(function(c) { if (c.s <= nowMs && (!chosen || c.s > chosen.s)) chosen = c; });
-        if (!chosen) chosen = cands[cands.length - 1];
+        var dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(flowGraphShiftDate || '');
+        if (dm) {
+            var dy = +dm[1], dmo = +dm[2] - 1, dda = +dm[3];
+            chosen = {
+                s: localToUtc(dy, dmo, dda, st.h, st.m),
+                e: localToUtc(dy, dmo, dda + (overnight ? 1 : 0), en.h, en.m)
+            };
+        } else {
+            var cands = [];
+            [0, -1].forEach(function(dayShift) {
+                var sMs = localToUtc(y, mo, da + dayShift, st.h, st.m);
+                var eMs = localToUtc(y, mo, da + dayShift + (overnight ? 1 : 0), en.h, en.m);
+                cands.push({ s: sMs, e: eMs });
+            });
+            cands.forEach(function(c) { if (c.s <= nowMs && (!chosen || c.s > chosen.s)) chosen = c; });
+            if (!chosen) chosen = cands[cands.length - 1];
+        }
         var startMs = Math.floor(chosen.s / stepMs) * stepMs;
         var endCap = Math.floor(nowMs / stepMs) * stepMs;
         var endMs = Math.min(Math.floor(chosen.e / stepMs) * stepMs, endCap);
@@ -13260,12 +13275,20 @@ if (k === 'eta') {
         var gw = cw - pad.left - pad.right;
         var gh = ch - pad.top - pad.bottom;
 
-        // Controls row: inline target + divisor + hours + fetch time + legend.
+        // Controls row: Window/date on the left, then node/target/rate/status.
+        // Resolve the date the current shift window actually anchors to (local),
+        // so the editable date field shows the day being viewed.
+        var _fgResolvedDate = (function() {
+            if (flowGraphWindowMode === 'hours') return '';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(flowGraphShiftDate || '')) return flowGraphShiftDate;
+            // Derive from the first bucket's local date.
+            var t0 = (d.times && d.times.length) ? d.times[0] : Date.now();
+            var tzOff = (typeof getEffectiveTzOffset === 'function') ? getEffectiveTzOffset() : (-new Date().getTimezoneOffset() / 60);
+            var dl = new Date(t0 + tzOff * 3600000);
+            return dl.getUTCFullYear() + '-' + ('0' + (dl.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + dl.getUTCDate()).slice(-2);
+        })();
         var html = '<div class="hydra-table" style="padding:8px 16px;display:flex;flex-direction:column;align-items:center;height:100%">';
-        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
-        html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
-        html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
-        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
+        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;justify-content:flex-start;width:100%">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Window:</label>';
         html += '<select id="hydra-flowgraph-winmode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">';
         html += '<option value="hours"' + (flowGraphWindowMode === 'hours' ? ' selected' : '') + '>Past hours</option>';
@@ -13274,6 +13297,12 @@ if (k === 'eta') {
         });
         html += '</select>';
         html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
+        // Editable date for shift windows (which day the shift anchors to).
+        html += '<input id="hydra-flowgraph-shiftdate" type="date" value="' + _fgResolvedDate + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'none' : 'inline-block') + '" title="Date of the selected shift (editable)">';
+        html += '<span style="flex:1 1 auto"></span>';
+        html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
+        html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
+        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:70px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Rate:</label>';
         html += '<select id="hydra-flowgraph-ratemode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">' +
                 '<option value="5m"' + (flowGraphRateMode === '5m' ? ' selected' : '') + '>per 5 min</option>' +
@@ -13365,6 +13394,13 @@ if (k === 'eta') {
         var wmSel = document.getElementById('hydra-flowgraph-winmode');
         if (wmSel) wmSel.addEventListener('change', function() {
             flowGraphWindowMode = this.value || 'hours';
+            flowGraphShiftDate = ''; // reset to auto-anchor when switching windows
+            try { saveAllSettings(); } catch(e){}
+            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
+        });
+        var sdIn = document.getElementById('hydra-flowgraph-shiftdate');
+        if (sdIn) sdIn.addEventListener('change', function() {
+            flowGraphShiftDate = /^\d{4}-\d{2}-\d{2}$/.test(this.value) ? this.value : '';
             try { saveAllSettings(); } catch(e){}
             refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
         });
