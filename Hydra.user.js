@@ -12043,6 +12043,29 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // and can show a loading state on first entry to the tab.
     var _flowGraphLoading = false;
 
+    // Live headcount snapshot (from WATT getStaffingAssignments) for the
+    // current-TPH readout. This is a CURRENT count only (WATT has no history),
+    // so it powers a live numeric badge, not a per-bucket line.
+    var fgLiveHeadcount = null;   // number of associates currently on the clock, or null if unknown
+    var fgLiveHeadcountAt = 0;    // ms when it was fetched
+
+    // Fetch current headcount = distinct associates in getStaffingAssignments.
+    // Fire-and-forget; updates fgLiveHeadcount then optionally re-renders.
+    function refreshFlowGraphHeadcount(cb) {
+        try {
+            fetchStaffingAssignments().then(function(rows) {
+                var seen = {};
+                (rows || []).forEach(function(a) { if (a && a.associateId) seen[a.associateId] = 1; });
+                fgLiveHeadcount = Object.keys(seen).length;
+                fgLiveHeadcountAt = Date.now();
+                if (cb) cb();
+            }).catch(function(e) {
+                console.warn('[Hydra FlowGraph] headcount fetch failed:', e && e.message ? e.message : e);
+                if (cb) cb();
+            });
+        } catch (e) { if (cb) cb(); }
+    }
+
     // Compute the derived series from the 8 parsed metric arrays.
     // Returns { total, manual, d2c, tph, target } — each an array aligned to
     // flowGraphData.times. All computed client-side (no FunctionExpression).
@@ -12123,6 +12146,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var s = fgComputeSeries(d);
         var n = d.times.length;
 
+        // Refresh live headcount if we've never fetched it or it's >2 min stale,
+        // then re-render so the Live TPH badge fills in (fire-and-forget).
+        if (fgLiveHeadcount === null || (Date.now() - fgLiveHeadcountAt) > 120000) {
+            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') renderIBTable(); });
+        }
+
         // Series definitions (color per spec). "total" is bold; "target" dotted.
         var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
         var series = [
@@ -12166,6 +12195,20 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Hours:</label>';
         html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:50px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">';
         html += '<span style="font-size:11px;color:var(--h-muted,#aab4c0)">pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</span>';
+        // Live TPH readout (current 5-min Total x12 / live WATT headcount). Not a
+        // line — WATT headcount is a current snapshot only. Uses the last fully-
+        // ingested bucket (skips the provisional tail).
+        (function() {
+            var lastGood = n - Math.min(2, n) - 1; // last non-provisional bucket
+            if (lastGood < 0) lastGood = n - 1;
+            var curTotal = (lastGood >= 0 && s.total[lastGood] != null) ? s.total[lastGood] : 0;
+            var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
+            var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
+            html += '<span style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / live headcount (WATT). Snapshot, not historical.">'
+                + 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '—')
+                + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' HC</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
+                + '</span>';
+        })();
         html += '</div>';
         // Legend (click-to-toggle)
         html += '<div id="hydra-flowgraph-legend" style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap;justify-content:center">';
