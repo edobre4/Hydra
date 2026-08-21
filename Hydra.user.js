@@ -29,6 +29,7 @@
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
 // @connect      monitorportal.amazon.com
+// @connect      fclm-portal.amazon.com
 // @connect      track.relay.amazon.dev
 // @connect      axzile.corp.amazon.com
 // @connect      *
@@ -146,6 +147,8 @@
         flowGraphShowStats:  true,
         flowGraphRateMode:   '5m',
         flowGraphShiftDate:  '',
+        flowGraphNCEnabled:  false,
+        flowGraphNCTarget:   50,
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -1191,6 +1194,9 @@
     var flowGraphShowStats = true;   // show per-metric stat cards above the chart
     var flowGraphRateMode = '5m';    // '5m' = per-5-min flow, 'hr' = flow x12 (hourly rate)
     var flowGraphShiftDate = '';     // local YYYY-MM-DD anchor for shift windows ('' = auto)
+    // NC tracking (FCLM Container Build, NON-CONVEYABLE + NON-CONVEYABLE PLUS).
+    var flowGraphNCEnabled = false;  // show NC target line + NC card
+    var flowGraphNCTarget = 50;      // NC target per 5-min bucket
     // Sort Times: editable shift windows in LOCAL site time (HH:MM 24h).
     // Overnight shifts (end <= start) wrap to the next day automatically.
     var FG_SHIFTS = [
@@ -3617,6 +3623,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphShowStats: flowGraphShowStats,
             flowGraphRateMode: flowGraphRateMode,
             flowGraphShiftDate: flowGraphShiftDate,
+            flowGraphNCEnabled: flowGraphNCEnabled, flowGraphNCTarget: flowGraphNCTarget,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3774,6 +3781,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
         if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
         if (typeof s.flowGraphShiftDate === 'string') flowGraphShiftDate = s.flowGraphShiftDate;
+        if (typeof s.flowGraphNCEnabled === 'boolean') flowGraphNCEnabled = s.flowGraphNCEnabled;
+        if (+s.flowGraphNCTarget > 0) flowGraphNCTarget = +s.flowGraphNCTarget;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4527,6 +4536,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphShowStats: flowGraphShowStats,
                 flowGraphRateMode: flowGraphRateMode,
                 flowGraphShiftDate: flowGraphShiftDate,
+                flowGraphNCEnabled: flowGraphNCEnabled, flowGraphNCTarget: flowGraphNCTarget,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4717,6 +4727,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (typeof s.flowGraphShowStats === 'boolean') flowGraphShowStats = s.flowGraphShowStats;
             if (s.flowGraphRateMode === '5m' || s.flowGraphRateMode === 'hr') flowGraphRateMode = s.flowGraphRateMode;
             if (typeof s.flowGraphShiftDate === 'string') flowGraphShiftDate = s.flowGraphShiftDate;
+            if (typeof s.flowGraphNCEnabled === 'boolean') flowGraphNCEnabled = s.flowGraphNCEnabled;
+            if (+s.flowGraphNCTarget > 0) flowGraphNCTarget = +s.flowGraphNCTarget;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -5437,6 +5449,16 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">Show stat cards</span>' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Per-metric totals above the chart</span>' +
                             '</label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
+                                '<input type="checkbox" id="hydra-flowgraph-nc-enabled">' +
+                                '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">NC tracking</span>' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">NC target line + NC card (FCLM Container Build, NC + NC Plus)</span>' +
+                            '</label>' +
+                            '<div class="hydra-settings-row" style="align-items:center;gap:8px">' +
+                                '<label style="font-size:12px;color:#fb923c">NC Target / 5 min:</label>' +
+                                '<input type="number" id="hydra-flowgraph-nc-target" style="width:70px" min="1" step="1" value="50">' +
+                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Delta = NC processed \u2212 (NC target \u00d7 settled 5-min buckets)</span>' +
+                            '</div>' +
                             '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Define metrics as formulas over PMET metrics (use <b>+ metric</b> to insert one; supports + - \u00d7 \u00f7 and parentheses). Enabled metrics show on the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
@@ -9494,6 +9516,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // m[] is an array of 8 arrays (one per metric), each aligned to times[].
     // fetchedAt = ms when the data was last pulled.
     var flowGraphData = { times: [], m: FLOWGRAPH_METRICS.map(function() { return []; }), fetchedAt: 0, node: '' };
+    // NC tracking state: processed = FCLM Container Build NC+NC_PLUS units over
+    // the SETTLED window [winStart, settledEnd); settledEnd floors to the last
+    // completed 15-min FCLM boundary. targetBuckets = 5-min buckets in that same
+    // settled span (apples-to-apples target). fetchedAt = ms of last pull.
+    var flowGraphNC = { processed: null, settledEndMs: 0, targetBuckets: 0, fetchedAt: 0, node: '' };
+    var _flowGraphNCLoading = false;
 
     // Single source of truth for the chart's toggleable series (the "metrics"
     // the user sees). `dataKey` maps to fgComputeSeries() output. `defaultOn`
@@ -9658,20 +9686,22 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // in parallel, then merge into aligned per-bucket arrays. Resolves to the
     // parsed shape { times, m } and stores it in flowGraphData.
     // Window: a named shift (flowGraphWindowMode) or last flowGraphHours hours.
+    // The active window [startMs, endMs) for the current mode (shift or hours).
+    function fgCurrentWindow() {
+        var stepMs = 5 * 60 * 1000;
+        var shift = (flowGraphWindowMode && flowGraphWindowMode !== 'hours')
+            ? FG_SHIFTS.filter(function(s) { return s.id === flowGraphWindowMode; })[0] : null;
+        if (shift) return fgShiftWindow(shift);
+        var endMs = Math.floor(Date.now() / stepMs) * stepMs;
+        var hours = (typeof flowGraphHours === 'number' && flowGraphHours > 0) ? flowGraphHours : 5;
+        return { startMs: endMs - hours * 3600000, endMs: endMs };
+    }
+
     function pullFlowGraph(node) {
         node = (node || DEFAULT_NODE).toUpperCase();
         var stepMs = 5 * 60 * 1000;
-        var endMs, startMs;
-        var shift = (flowGraphWindowMode && flowGraphWindowMode !== 'hours')
-            ? FG_SHIFTS.filter(function(s) { return s.id === flowGraphWindowMode; })[0] : null;
-        if (shift) {
-            var w = fgShiftWindow(shift);
-            startMs = w.startMs; endMs = w.endMs;
-        } else {
-            endMs = Math.floor(Date.now() / stepMs) * stepMs;
-            var hours = (typeof flowGraphHours === 'number' && flowGraphHours > 0) ? flowGraphHours : 5;
-            startMs = endMs - hours * 3600000;
-        }
+        var w = fgCurrentWindow();
+        var startMs = w.startMs, endMs = w.endMs;
         // Expected bucket count from the window (StartTime + i*5min). The API
         // returns [Start, End) so bucketCount === (end-start)/5min.
         var bucketCount = Math.round((endMs - startMs) / stepMs);
@@ -9723,6 +9753,71 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 console.error('[Hydra FlowGraph] No <table> in any response — open monitorportal.amazon.com once to refresh Midway, then retry.');
             }
         });
+    };
+
+    // ---- NC tracking via FCLM Container Build (processId 100021) ----
+    // Local ORD9-time helpers for building the FCLM Intraday URL params.
+    function _fgLocalParts(ms) {
+        var tzOff = (typeof getEffectiveTzOffset === 'function') ? getEffectiveTzOffset() : (-new Date().getTimezoneOffset() / 60);
+        var d = new Date(ms + tzOff * 3600000);
+        return { y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, da: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes() };
+    }
+
+    // Fetch NC processed (NC + NC_PLUS units) from FCLM Container Build over the
+    // window [startMs, settledEnd). Resolves { processed, settledEndMs, targetBuckets }.
+    // settledEnd floors to the last completed 15-min FCLM boundary (data lags).
+    function pullFlowGraphNC(node) {
+        node = (node || DEFAULT_NODE).toUpperCase();
+        var stepMs = 5 * 60 * 1000, q15 = 15 * 60 * 1000;
+        var w = fgCurrentWindow();
+        var startMs = w.startMs;
+        // Settle: last completed 15-min boundary that is also <= window end.
+        var settledEnd = Math.min(Math.floor(Date.now() / q15) * q15, Math.floor(w.endMs / q15) * q15);
+        if (settledEnd <= startMs) settledEnd = startMs + q15;
+        var targetBuckets = Math.max(0, Math.round((settledEnd - startMs) / stepMs));
+        var a = _fgLocalParts(startMs), b = _fgLocalParts(settledEnd);
+        function enc(p) { return p.y + '%2F' + ('0'+p.mo).slice(-2) + '%2F' + ('0'+p.da).slice(-2); }
+        var url = 'https://fclm-portal.amazon.com/ppa/inspect/process'
+            + '?primaryAttribute=FUNCTION&nodeType=SC&warehouseId=' + node + '&processId=100021'
+            + '&maxIntradayDays=1&spanType=Intraday'
+            + '&startDateIntraday=' + enc(a) + '&startHourIntraday=' + a.h + '&startMinuteIntraday=' + a.mi
+            + '&endDateIntraday=' + enc(b) + '&endHourIntraday=' + b.h + '&endMinuteIntraday=' + b.mi;
+        return gmFetchRaw(url).then(function(html) {
+            var mk = 'processProductivityList = ';
+            var si = html.indexOf(mk);
+            if (si === -1) throw new Error('NC_NO_DATA'); // auth/session or no page
+            si += mk.length;
+            var ei = html.indexOf(';\n', si);
+            if (ei === -1) ei = html.indexOf(';', si);
+            var arr = JSON.parse(html.slice(si, ei));
+            var nc = 0;
+            arr.forEach(function(p) {
+                var at = (p.processAttributes && p.processAttributes.attributes) || {};
+                var bt = at.BOX_TYPE || '';
+                if (bt === 'NON-CONVEYABLE' || bt === 'NON-CONVEYABLE PLUS') {
+                    (p.associateProductivityList || []).forEach(function(av) { nc += (av.unitCount || 0); });
+                }
+            });
+            flowGraphNC = { processed: nc, settledEndMs: settledEnd, targetBuckets: targetBuckets, fetchedAt: Date.now(), node: node };
+            return flowGraphNC;
+        });
+    }
+
+    // Refresh NC (fire-and-forget) if enabled; cb() when done.
+    function refreshFlowGraphNC(cb) {
+        if (!flowGraphNCEnabled) { if (cb) cb(); return; }
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        _flowGraphNCLoading = true;
+        pullFlowGraphNC(node).then(function() { _flowGraphNCLoading = false; if (cb) cb(); })
+            .catch(function(e) { _flowGraphNCLoading = false; console.warn('[Hydra FlowGraph NC] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
+    }
+
+    unsafeWindow.hydraDebugFlowGraphNC = function() {
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        pullFlowGraphNC(node).then(function(r) {
+            console.log('[Hydra FlowGraph NC] processed=' + r.processed + ' over ' + r.targetBuckets + ' buckets (settled to ' + new Date(r.settledEndMs).toISOString() + ')');
+            console.log('  target-so-far=' + (flowGraphNCTarget * r.targetBuckets) + ' delta=' + (r.processed - flowGraphNCTarget * r.targetBuckets));
+        }).catch(function(e) { console.error('[Hydra FlowGraph NC] FAILED:', e && e.message ? e.message : e); });
     };
 
     // --- STEM GraphQL helpers ---
@@ -13131,6 +13226,31 @@ if (k === 'eta') {
         return out;
     }
 
+    // NC tracking card HTML: total NC processed (FCLM) + delta vs the apples-to-
+    // apples NC target over the same settled window.
+    function _fgNCCardHtml() {
+        var loading = (flowGraphNC.processed === null);
+        var proc = loading ? null : flowGraphNC.processed;
+        var tgt = flowGraphNCTarget * (flowGraphNC.targetBuckets || 0);
+        var delta = (proc == null) ? null : (proc - tgt);
+        var dColor = (delta == null) ? '#7a8a9a' : (delta >= 0 ? '#4ade80' : '#ef5350');
+        var valStr = loading ? '…' : (proc.toLocaleString());
+        var deltaStr = (delta == null) ? '' : (delta >= 0 ? '+' : '') + delta.toLocaleString();
+        return '<div id="hydra-flowgraph-nc-card" style="min-width:120px;border:1px solid #fb923c;border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center" title="NC processed (FCLM Container Build, NC + NC Plus, all MHE). Delta vs NC target x settled 5-min buckets. FCLM settles ~15 min.">' +
+            '<div style="font-size:10px;color:#fb923c;font-weight:600;white-space:nowrap">NC Processed</div>' +
+            '<div style="font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0)">' + valStr + '</div>' +
+            '<div style="font-size:9px;color:' + dColor + ';font-weight:600">' + (loading ? 'loading…' : ('\u0394 ' + deltaStr + ' vs tgt')) + '</div>' +
+            '</div>';
+    }
+    // Patch the NC card in place (avoids a full re-render on async FCLM resolve).
+    function _fgUpdateNCCard() {
+        var el = document.getElementById('hydra-flowgraph-nc-card');
+        if (!el) { if (ibActiveTab === 'flowgraph') renderIBTable(); return; } // card not built yet
+        var tmp = document.createElement('div'); tmp.innerHTML = _fgNCCardHtml();
+        var fresh = tmp.firstChild;
+        if (fresh) el.replaceWith(fresh);
+    }
+
     // Recompute + patch only the Live TPH badge text (no full re-render), so
     // async headcount/refresh updates don't destroy an open dropdown or input.
     function _fgUpdateTphBadge() {
@@ -13406,6 +13526,11 @@ if (k === 'eta') {
         if (fgLiveHeadcount === null || (Date.now() - fgLiveHeadcountAt) > 120000) {
             refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') _fgUpdateTphBadge(); });
         }
+        // NC tracking: refresh from FCLM when enabled + stale (>2 min), then
+        // patch the NC card in place (FCLM fetch is heavy; don't full re-render).
+        if (flowGraphNCEnabled && (flowGraphNC.processed === null || (Date.now() - flowGraphNC.fetchedAt) > 120000)) {
+            refreshFlowGraphNC(function() { if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
+        }
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
         var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
@@ -13414,6 +13539,10 @@ if (k === 'eta') {
             return { key: f.id, label: f.name, color: f.color, width: 2, data: s.byId[f.id] || [] };
         });
         series.push({ key: 'target', label: 'Target 5min', color: '#e879f9', width: 2, dotted: true, data: s.target });
+        if (flowGraphNCEnabled) {
+            var ncArr = []; for (var _ni = 0; _ni < n; _ni++) ncArr.push(flowGraphNCTarget);
+            series.push({ key: 'ncTarget', label: 'NC Target 5min', color: '#fb923c', width: 2, dotted: true, data: ncArr });
+        }
 
         // Rate display factor: lines/tooltip flow/Y-axis show per-5-min values,
         // or x12 for an hourly rate. Cumulative totals always use raw counts.
@@ -13424,7 +13553,7 @@ if (k === 'eta') {
         // so lines/provisional-tail must stop here, not at the window end.
         var lastDataIdx = -1;
         series.forEach(function(se) {
-            if (se.key === 'target') return;
+            if (se.key === 'target' || se.key === 'ncTarget') return;
             var a = se.data || [];
             for (var i = 0; i < a.length; i++) { if (a[i] > 0 && i > lastDataIdx) lastDataIdx = i; }
         });
@@ -13551,6 +13680,11 @@ if (k === 'eta') {
                 '<div style="font-size:9px;color:var(--h-muted2,#7a8a9a)">' + sub + '</div>' +
                 '</div>';
         });
+        // NC tracking card: total NC processed (FCLM) + delta to apples-to-apples
+        // NC target over the same settled window. id lets us patch it in place.
+        if (flowGraphNCEnabled) {
+            html += _fgNCCardHtml();
+        }
         html += '</div>';
         }
         html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
@@ -13649,7 +13783,7 @@ if (k === 'eta') {
             if (se.dotted) ctx.setLineDash([5, 4]);
             // Target (constant) spans the whole window; data series stop at the
             // last real-data bucket so the empty future tail isn't drawn to 0.
-            var endI = (se.key === 'target') ? (n - 1) : lastDataIdx;
+            var endI = (se.key === 'target' || se.key === 'ncTarget') ? (n - 1) : lastDataIdx;
             ctx.beginPath();
             for (var i = 0; i <= endI; i++) {
                 var x = xAt(i), y = yAt(se.data[i] * rateFactor);
@@ -19972,6 +20106,25 @@ if (k === 'eta') {
                 flowGraphShowStats = this.checked;
                 try { saveAllSettings(); } catch (ex) {}
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
+            });
+        }
+        // NC tracking toggle + NC target.
+        var _fgNCen = document.getElementById('hydra-flowgraph-nc-enabled');
+        if (_fgNCen) {
+            _fgNCen.checked = !!flowGraphNCEnabled;
+            _fgNCen.addEventListener('change', function() {
+                flowGraphNCEnabled = this.checked;
+                if (this.checked) { _fgHidden.ncTarget = false; flowGraphNC.processed = null; }
+                try { saveAllSettings(); } catch (ex) {}
+                if (ibActiveTab === 'flowgraph' && activeView === 'IB') { renderIBTable(); if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); }); }
+            });
+        }
+        var _fgNCtgt = document.getElementById('hydra-flowgraph-nc-target');
+        if (_fgNCtgt) {
+            _fgNCtgt.value = flowGraphNCTarget;
+            _fgNCtgt.addEventListener('change', function() {
+                var v = parseInt(this.value, 10);
+                if (!isNaN(v) && v > 0) { flowGraphNCTarget = v; try { saveAllSettings(); } catch (ex) {} if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); }
             });
         }
         // Sort Times: build one editable start/end row per shift in FG_SHIFTS.

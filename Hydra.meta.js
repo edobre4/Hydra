@@ -29,5 +29,6 @@
 // @connect      na.prod.command-center.robotics.amazon.dev
 // @connect      midway-auth.amazon.com
 // @connect      monitorportal.amazon.com
+// @connect      fclm-portal.amazon.com
 // @connect      *
 // ==/UserScript==
