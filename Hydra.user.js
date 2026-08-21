@@ -140,6 +140,7 @@
         flowGraphTarget:     927,
         flowGraphDivisor:    220,
         flowGraphHours:      5,
+        flowGraphHidden:     null,
         autoFitZoom:         false
     };
 
@@ -3589,6 +3590,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             sdtChaseTypeCap: sdtChaseTypeCap,
             sdtChaseMaxCtns: sdtChaseMaxCtns,
             flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
+            flowGraphHidden: _fgHidden,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3740,6 +3742,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (+s.flowGraphTarget > 0) flowGraphTarget = +s.flowGraphTarget;
         if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
         if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
+        if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
         if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
@@ -4486,6 +4489,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 sdtChaseTypeCap: sdtChaseTypeCap,
                 sdtChaseMaxCtns: sdtChaseMaxCtns,
                 flowGraphTarget: flowGraphTarget, flowGraphDivisor: flowGraphDivisor, flowGraphHours: flowGraphHours,
+                flowGraphHidden: _fgHidden,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4670,6 +4674,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (+s.flowGraphTarget > 0) flowGraphTarget = +s.flowGraphTarget;
             if (+s.flowGraphDivisor > 0) flowGraphDivisor = +s.flowGraphDivisor;
             if (+s.flowGraphHours > 0 && +s.flowGraphHours <= 24) flowGraphHours = +s.flowGraphHours;
+            if (s.flowGraphHidden && typeof s.flowGraphHidden === 'object') { Object.keys(_fgHidden).forEach(function(k){ if (k in s.flowGraphHidden) _fgHidden[k] = !!s.flowGraphHidden[k]; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
             if (typeof s.sdtChaseRecvFilter === 'string') sdtChaseRecvFilter = s.sdtChaseRecvFilter;
@@ -9363,14 +9368,27 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         { key: 'M5', label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success' },
         { key: 'M6', label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success' },
         { key: 'M7', label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success' },
-        { key: 'M8', label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success' }
+        { key: 'M8', label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success' },
+        // Induction (inbound). ORD9 exposes the Amtran induction path.
+        { key: 'M9', label: 'fg_inducted',    metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success' },
+        // Container lifecycle (per-5-min container events). PalletMoved.Sortation.WS
+        // is the WS close event — may cover all container types, hence the generic
+        // "Containers Closed" label. Pallet->staging-dock and Gaylord->stacking are
+        // the loaded/staged moves. (No separate Cart-close metric exists at ORD9.)
+        { key: 'M10', label: 'fg_wsclosed',   metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success' },
+        { key: 'M11', label: 'fg_palletdock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success' },
+        { key: 'M12', label: 'fg_gaylordstk', metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success' }
     ];
+
+    // Index of each metric key within FLOWGRAPH_METRICS / flowGraphData.m,
+    // so derived series reference metrics by name (not fragile positions).
+    var FG_IDX = (function() { var o = {}; FLOWGRAPH_METRICS.forEach(function(m, i) { o[m.key] = i; }); return o; })();
 
     // Parsed Flow Graph state. times[] holds the UTC ms at the START of each
     // 5-min bucket (computed from StartTime, NOT from the mashed header text).
     // m[] is an array of 8 arrays (one per metric), each aligned to times[].
     // fetchedAt = ms when the data was last pulled.
-    var flowGraphData = { times: [], m: [[], [], [], [], [], [], [], []], fetchedAt: 0, node: '' };
+    var flowGraphData = { times: [], m: FLOWGRAPH_METRICS.map(function() { return []; }), fetchedAt: 0, node: '' };
 
     // Format a Date as MonitorPortal's expected ISO instant, e.g.
     // 2026-08-19T18:30:00Z (UTC, no millis). Floors to the 5-min boundary.
@@ -12031,18 +12049,25 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     function fgComputeSeries(d) {
         var n = d.times.length;
         var total = [], manual = [], d2c = [], tph = [], target = [];
+        var inducted = [], closed = [], palletDock = [], gaylordStk = [];
         var divisor = (flowGraphDivisor > 0) ? flowGraphDivisor : 220;
+        function val(key, i) { var idx = FG_IDX[key]; return (idx != null && d.m[idx] && d.m[idx][i]) ? d.m[idx][i] : 0; }
         for (var i = 0; i < n; i++) {
-            var m1 = d.m[0][i] || 0, m2 = d.m[1][i] || 0, m3 = d.m[2][i] || 0, m4 = d.m[3][i] || 0,
-                m5 = d.m[4][i] || 0, m6 = d.m[5][i] || 0, m7 = d.m[6][i] || 0, m8 = d.m[7][i] || 0;
+            var m1 = val('M1', i), m2 = val('M2', i), m3 = val('M3', i), m4 = val('M4', i),
+                m5 = val('M5', i), m6 = val('M6', i), m7 = val('M7', i), m8 = val('M8', i);
             var t = m1 + m2 + m3 + m4 + m5 + m6 + m7 + m8;
             total.push(t);
             manual.push(m1 + m2 + m3 + m4 + m5 + m6);
             d2c.push(m7 + m8);
             tph.push(t * 12 / divisor);
             target.push(flowGraphTarget);
+            inducted.push(val('M9', i));
+            closed.push(val('M10', i));
+            palletDock.push(val('M11', i));
+            gaylordStk.push(val('M12', i));
         }
-        return { total: total, manual: manual, d2c: d2c, tph: tph, target: target };
+        return { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
+                 inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk };
     }
 
     // Kick a Flow Graph pull for the current node, then re-render the tab.
@@ -12061,7 +12086,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     }
 
     // Series visibility toggles (legend click-to-toggle). Persist in-session.
-    var _fgHidden = { total: false, manual: false, d2c: false, tph: false, target: false };
+    // Series visibility toggles (legend click-to-toggle), persisted via
+    // saveAllSettings as flowGraphHidden. New/extra container lines default
+    // hidden so the chart stays readable until the user opts in.
+    var _fgHidden = { total: false, manual: false, d2c: false, tph: false, target: false,
+                      inducted: true, closed: true, palletDock: true, gaylordStk: true };
 
     function renderFlowGraphChart(targetEl) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
@@ -12101,7 +12130,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             { key: 'manual', label: 'Manual',        color: '#22c55e',                    width: 2,   data: s.manual },
             { key: 'd2c',    label: 'D2C',           color: '#3b82f6',                    width: 2,   data: s.d2c },
             { key: 'tph',    label: 'TPH',           color: '#f59e0b',                    width: 2,   data: s.tph },
-            { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true }
+            { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true },
+            { key: 'inducted',   label: 'Inducted',        color: '#ef4444', width: 2, data: s.inducted },
+            { key: 'closed',     label: 'Containers Closed', color: '#a855f7', width: 2, data: s.closed },
+            { key: 'palletDock', label: 'Pallet→Dock',     color: '#14b8a6', width: 2, data: s.palletDock },
+            { key: 'gaylordStk', label: 'Gaylord→Stacking', color: '#eab308', width: 2, data: s.gaylordStk }
         ];
 
         // PMET ingestion lags — the last 2 buckets read artificially low.
@@ -12167,7 +12200,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             var it = e.target.closest('.hydra-fg-legitem');
             if (!it) return;
             var k = it.getAttribute('data-key');
-            if (k in _fgHidden) { _fgHidden[k] = !_fgHidden[k]; if (ibActiveTab === 'flowgraph') renderIBTable(); }
+            if (k in _fgHidden) { _fgHidden[k] = !_fgHidden[k]; try { saveAllSettings(); } catch(e){} if (ibActiveTab === 'flowgraph') renderIBTable(); }
         });
 
         // ---- Draw ----
