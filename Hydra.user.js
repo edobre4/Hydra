@@ -13303,9 +13303,8 @@ if (k === 'eta') {
         html += '<input id="hydra-flowgraph-hours" type="number" min="1" max="24" step="1" value="' + flowGraphHours + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'inline-block' : 'none') + '" title="Lookback hours">';
         html += '<input id="hydra-flowgraph-shiftdate" type="date" value="' + _fgResolvedDate + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'none' : 'inline-block') + '" title="Date of the selected shift (editable)">';
         html += '</div>';
-        // --- Right group: site + target + rate + status + live TPH ---
+        // --- Right group: target + rate + live TPH ---
         html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
-        html += '<span style="font-size:12px;color:var(--h-muted,#aab4c0);font-weight:600">' + d.node + '</span>';
         html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
         html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:64px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Rate:</label>';
@@ -13313,7 +13312,6 @@ if (k === 'eta') {
                 '<option value="5m"' + (flowGraphRateMode === '5m' ? ' selected' : '') + '>per 5 min</option>' +
                 '<option value="hr"' + (flowGraphRateMode === 'hr' ? ' selected' : '') + '>per hour</option>' +
                 '</select>';
-        html += '<span style="font-size:11px;color:var(--h-muted,#aab4c0)">pulled ' + new Date(d.fetchedAt).toLocaleTimeString() + '</span>';
         // Live TPH readout (current 5-min Total x12 / live WATT headcount). Not a
         // line — WATT headcount is a current snapshot only. Uses the last fully-
         // ingested bucket (skips the provisional tail).
@@ -13337,7 +13335,6 @@ if (k === 'eta') {
             var box = off ? '\u2610' : '\u2611'; // empty vs checked box
             html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + (off ? '0.45' : '1') + ';font-weight:600;user-select:none;text-decoration:' + (off ? 'line-through' : 'none') + '">' + box + ' ' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
         });
-        html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
         html += '</div>';
         // Stat cards: one per VISIBLE series (enabled + not hidden). Data series
         // show their window total; Target shows the CUMULATIVE target — i.e. what
