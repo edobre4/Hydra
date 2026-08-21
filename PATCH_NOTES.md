@@ -1,5 +1,16 @@
 # Hydra Patch Notes
 
+## v3.71 — 2026-08-21
+
+### Flow Graph
+- **Metrics/lines toggle list in Inbound Settings ▸ Flow Graph.** Every chart
+  series now has a checkbox; enabled ones are listed first and the default set
+  (Total, Manual, D2C, Target) is on by default. Toggling repaints the chart
+  and stays in sync with the on-chart legend both ways.
+- Series definitions consolidated into one source of truth (FG_SERIES_DEFS)
+  used by the chart, legend, and settings list. Removed the dead TPH-divisor
+  settings row (the TPH line was removed in 3.69).
+
 ## v3.70 — 2026-08-21
 
 ### Flow Graph (fix)

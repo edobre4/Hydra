@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.70
+// @version      3.71
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5415,15 +5415,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Flat target line on the throughput chart (magenta)</span>' +
                             '</div>' +
                             '<div class="hydra-settings-row">' +
-                                '<label>TPH divisor:</label>' +
-                                '<input type="number" id="hydra-flowgraph-divisor-set" style="width:70px" min="1" step="1" value="220">' +
-                                '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">TPH = Total \u00d7 12 \u00f7 divisor (headcount)</span>' +
-                            '</div>' +
-                            '<div class="hydra-settings-row">' +
                                 '<label>Lookback (hrs):</label>' +
                                 '<input type="number" id="hydra-flowgraph-hours-set" style="width:70px" min="1" max="24" step="1" value="5">' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">How many hours of 5-min buckets to chart</span>' +
                             '</div>' +
+                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:8px 0 4px">Metrics / lines \u2014 toggle which series appear on the chart. Enabled ones are listed first.</div>' +
+                            '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
                     '</div>' +
                     '<!-- Sort Times Section -->' +
@@ -5746,7 +5743,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.70') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.71') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -9418,6 +9415,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // fetchedAt = ms when the data was last pulled.
     var flowGraphData = { times: [], m: FLOWGRAPH_METRICS.map(function() { return []; }), fetchedAt: 0, node: '' };
 
+    // Single source of truth for the chart's toggleable series (the "metrics"
+    // the user sees). `dataKey` maps to fgComputeSeries() output. `defaultOn`
+    // series are enabled by default and listed first in the settings toggles.
+    // Order here = default draw + legend order; settings puts defaultOn on top.
+    var FG_SERIES_DEFS = [
+        { key: 'total',      label: 'Total Volume',      color: '#f5f7fa', lightColor: '#111', width: 3, dataKey: 'total',      defaultOn: true },
+        { key: 'manual',     label: 'Manual',            color: '#22c55e', width: 2, dataKey: 'manual',     defaultOn: true },
+        { key: 'd2c',        label: 'D2C',               color: '#3b82f6', width: 2, dataKey: 'd2c',        defaultOn: true },
+        { key: 'target',     label: 'Target 5min',       color: '#e879f9', width: 2, dataKey: 'target', dotted: true, defaultOn: true },
+        { key: 'inducted',   label: 'Inducted',          color: '#ef4444', width: 2, dataKey: 'inducted',   defaultOn: false },
+        { key: 'closed',     label: 'Containers Closed',  color: '#a855f7', width: 2, dataKey: 'closed',     defaultOn: false },
+        { key: 'palletDock', label: 'Pallet\u2192Dock',   color: '#14b8a6', width: 2, dataKey: 'palletDock', defaultOn: false },
+        { key: 'gaylordStk', label: 'Gaylord\u2192Stacking', color: '#eab308', width: 2, dataKey: 'gaylordStk', defaultOn: false }
+    ];
+
     // Format a Date as MonitorPortal's expected ISO instant, e.g.
     // 2026-08-19T18:30:00Z (UTC, no millis). Floors to the 5-min boundary.
     function _fgIso(ms) {
@@ -13017,6 +13029,41 @@ if (k === 'eta') {
             + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
     }
 
+    // Build the Flow Graph metric/line toggle list in Inbound Settings.
+    // Every series in FG_SERIES_DEFS gets a checkbox; ENABLED ones are listed
+    // first (default-on grouping). Toggling updates _fgHidden, persists, repaints
+    // the chart if it's showing, and re-orders the list so the enabled set
+    // floats to the top.
+    function _fgRenderMetricToggles() {
+        var host = document.getElementById('hydra-flowgraph-metrics');
+        if (!host) return;
+        // Stable partition: enabled (not hidden) first, then disabled; each
+        // group keeps FG_SERIES_DEFS order.
+        var enabled = FG_SERIES_DEFS.filter(function(d) { return !_fgHidden[d.key]; });
+        var disabled = FG_SERIES_DEFS.filter(function(d) { return _fgHidden[d.key]; });
+        var ordered = enabled.concat(disabled);
+        var h = '';
+        ordered.forEach(function(d) {
+            var on = !_fgHidden[d.key];
+            h += '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
+                 '<input type="checkbox" class="hydra-fg-metric-cb" data-key="' + d.key + '"' + (on ? ' checked' : '') + '>' +
+                 '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + d.color + '"></span>' +
+                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">' + d.label + '</span>' +
+                 '</label>';
+        });
+        host.innerHTML = h;
+        host.querySelectorAll('.hydra-fg-metric-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var k = this.getAttribute('data-key');
+                if (!(k in _fgHidden)) return;
+                _fgHidden[k] = !this.checked;
+                try { saveAllSettings(); } catch (ex) {}
+                if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
+                _fgRenderMetricToggles(); // re-order enabled-first
+            });
+        });
+    }
+
     // Compute the derived series from the 8 parsed metric arrays.
     // Returns { total, manual, d2c, tph, target } — each an array aligned to
     // flowGraphData.times. All computed client-side (no FunctionExpression).
@@ -13063,8 +13110,7 @@ if (k === 'eta') {
     // Series visibility toggles (legend click-to-toggle), persisted via
     // saveAllSettings as flowGraphHidden. New/extra container lines default
     // hidden so the chart stays readable until the user opts in.
-    var _fgHidden = { total: false, manual: false, d2c: false, target: false,
-                      inducted: true, closed: true, palletDock: true, gaylordStk: true };
+    var _fgHidden = (function() { var o = {}; FG_SERIES_DEFS.forEach(function(d) { o[d.key] = !d.defaultOn; }); return o; })();
 
     function renderFlowGraphChart(targetEl) {
         var wrap = targetEl || document.getElementById('hydra-table-wrap');
@@ -13117,16 +13163,11 @@ if (k === 'eta') {
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
         var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
-        var series = [
-            { key: 'total',  label: 'Total Volume',  color: isLight ? '#111' : '#f5f7fa', width: 3,   data: s.total },
-            { key: 'manual', label: 'Manual',        color: '#22c55e',                    width: 2,   data: s.manual },
-            { key: 'd2c',    label: 'D2C',           color: '#3b82f6',                    width: 2,   data: s.d2c },
-            { key: 'target', label: 'Target 5min',   color: '#e879f9',                    width: 2,   data: s.target, dotted: true },
-            { key: 'inducted',   label: 'Inducted',        color: '#ef4444', width: 2, data: s.inducted },
-            { key: 'closed',     label: 'Containers Closed', color: '#a855f7', width: 2, data: s.closed },
-            { key: 'palletDock', label: 'Pallet→Dock',     color: '#14b8a6', width: 2, data: s.palletDock },
-            { key: 'gaylordStk', label: 'Gaylord→Stacking', color: '#eab308', width: 2, data: s.gaylordStk }
-        ];
+        var series = FG_SERIES_DEFS.map(function(d) {
+            return { key: d.key, label: d.label, dotted: d.dotted,
+                     color: (isLight && d.lightColor) ? d.lightColor : d.color,
+                     width: d.width, data: s[d.dataKey] || [] };
+        });
 
         // PMET ingestion lags — the last 2 buckets read artificially low.
         var LAG_BUCKETS = Math.min(2, n);
@@ -13218,6 +13259,8 @@ if (k === 'eta') {
                 // toggle takes effect immediately (renderIBTable would first reset
                 // the wrap to an empty <table>, causing a flash/race).
                 renderFlowGraphChart(wrap);
+                // Keep the Settings metric toggles in sync if that panel exists.
+                try { if (typeof _fgRenderMetricToggles === 'function') _fgRenderMetricToggles(); } catch(e){}
             }
         });
 
@@ -18494,6 +18537,9 @@ if (k === 'eta') {
             updateTokenAgeDisplay();
             renderPresetUpdateNotice();
         });
+        // Reflect current series visibility in the Flow Graph metric toggles
+        // (in case the user toggled via the chart legend since last open).
+        _hydraTry('flowGraphMetricToggles', function() { if (typeof _fgRenderMetricToggles === 'function') _fgRenderMetricToggles(); });
         // Update zoom slider
         var slider = document.getElementById('hydra-zoom-slider');
         var zoomVal = document.getElementById('hydra-zoom-value');
@@ -19562,6 +19608,9 @@ if (k === 'eta') {
                 if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch (ex) {} if (ibActiveTab === 'flowgraph' && activeView === 'IB') refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); }); }
             });
         }
+        // Flow Graph metrics/lines: one checkbox per series, ENABLED ones on
+        // top. Toggling updates _fgHidden, persists, and repaints the chart.
+        _fgRenderMetricToggles();
         // Sort Times: build one editable start/end row per shift in FG_SHIFTS.
         (function() {
             var host = document.getElementById('hydra-sorttimes-rows');
