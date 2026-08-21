@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.71
+// @version      3.72
 // @description  NASC Ops Chase Tool
 // @author       eddobrev
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -5743,7 +5743,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             '<button id="hydra-ai-btn" title="Ask Hydra AI" style="border:none;border-radius:4px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6b21a8,#2563eb);color:#fff">&#129504; AI</button>' +
             '<span id="hydra-indicators" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px"><span id="hydra-ind-yms" class="hydra-indicator" title="YMS Dock Door">YMS</span><span id="hydra-ind-sesame" class="hydra-indicator" title="Sesame Gate PA">PA</span><span id="hydra-ind-refresh" class="hydra-indicator" style="cursor:pointer;color:var(--h-muted2, #7a8a9a)" title="Refresh YMS + PA connections">&#8635;</span></span>' +
             '<span id="hydra-status"></span>' +
-            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.71') + ' · eddobrev</span>' +
+            '<span id="hydra-version-badge" style="margin-left:auto;font-size:10px;color:var(--h-muted2, #7a8a9a);opacity:0.8;user-select:none;white-space:nowrap">v' + (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version || '3.72') + ' · eddobrev</span>' +
             '<button id="hydra-fs-btn" title="Fullscreen" style="border:none;border-radius:4px;padding:5px 8px;font-size:14px;cursor:pointer;background:none;color:var(--h-muted, #aab4c0)">&#x26F6;</button>' +
             '<button id="hydra-close-btn">✕</button>' +
             '</div>' +
@@ -9386,23 +9386,23 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // We give each a short unique "label" that MonitorPortal echoes back in
     // the table so we can match rows regardless of response ordering.
     var FLOWGRAPH_METRICS = [
-        { key: 'M1', label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success' },
-        { key: 'M2', label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success' },
-        { key: 'M3', label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success' },
-        { key: 'M4', label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success' },
-        { key: 'M5', label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success' },
-        { key: 'M6', label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success' },
-        { key: 'M7', label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success' },
-        { key: 'M8', label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success' },
+        { key: 'M1', label: 'fg_sortingdock', metric: 'postLabor.<NODE>.PackageLoaded.Amtran.sorting-dock.Success', displayLabel: 'Pkgs: Sorted→Dock', color: '#f97316' },
+        { key: 'M2', label: 'fg_loaddock',    metric: 'postLabor.<NODE>.PackageLoaded.Amtran.load-dock.Success', displayLabel: 'Pkgs: Fluid Load', color: '#fb923c' },
+        { key: 'M3', label: 'fg_pallet',      metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Pallet.Success', displayLabel: 'Pkgs: Pallet CB', color: '#84cc16' },
+        { key: 'M4', label: 'fg_bag',         metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Bag.Success', displayLabel: 'Pkgs: Bag CB', color: '#a3e635' },
+        { key: 'M5', label: 'fg_gaylord',     metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Gaylord.Success', displayLabel: 'Pkgs: Gaylord CB', color: '#4ade80' },
+        { key: 'M6', label: 'fg_cart',        metric: 'postLabor.<NODE>.PackagePalletized.Amtran.Cart.Success', displayLabel: 'Pkgs: Cart CB', color: '#22d3ee' },
+        { key: 'M7', label: 'fg_acart',       metric: 'postLabor.<NODE>.PackagePalletized.Amtran.ACart.Success', displayLabel: 'Pkgs: Cart D2C', color: '#38bdf8' },
+        { key: 'M8', label: 'fg_agaylord',    metric: 'postLabor.<NODE>.PackagePalletized.Amtran.AGaylord.Success', displayLabel: 'Pkgs: Gaylord D2C', color: '#818cf8' },
         // Induction (inbound). ORD9 exposes the Amtran induction path.
-        { key: 'M9', label: 'fg_inducted',    metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success' },
+        { key: 'M9', label: 'fg_inducted',    metric: 'postLabor.<NODE>.PackageInducted.Amtran.Success', displayLabel: 'Pkgs: Inducted', color: '#f43f5e' },
         // Container lifecycle (per-5-min container events). PalletMoved.Sortation.WS
         // is the WS close event — may cover all container types, hence the generic
         // "Containers Closed" label. Pallet->staging-dock and Gaylord->stacking are
         // the loaded/staged moves. (No separate Cart-close metric exists at ORD9.)
-        { key: 'M10', label: 'fg_wsclosed',   metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success' },
-        { key: 'M11', label: 'fg_palletdock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success' },
-        { key: 'M12', label: 'fg_gaylordstk', metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success' }
+        { key: 'M10', label: 'fg_wsclosed',   metric: 'postLabor.<NODE>.PalletMoved.Sortation.WS.Success', displayLabel: 'Ctn: Closed (WS)', color: '#c084fc' },
+        { key: 'M11', label: 'fg_palletdock', metric: 'postLabor.<NODE>.PalletLoaded.Amtran.Pallet.staging-dock.Success', displayLabel: 'Ctn: Pallet→Dock', color: '#2dd4bf' },
+        { key: 'M12', label: 'fg_gaylordstk', metric: 'postLabor.<NODE>.PalletMoved.Amtran.Gaylord.stacking-staging.Success', displayLabel: 'Ctn: Gaylord→Stacking', color: '#facc15' }
     ];
 
     // Index of each metric key within FLOWGRAPH_METRICS / flowGraphData.m,
@@ -9429,6 +9429,21 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         { key: 'palletDock', label: 'Pallet\u2192Dock',   color: '#14b8a6', width: 2, dataKey: 'palletDock', defaultOn: false },
         { key: 'gaylordStk', label: 'Gaylord\u2192Stacking', color: '#eab308', width: 2, dataKey: 'gaylordStk', defaultOn: false }
     ];
+    // Tag the derived series as group 'derived', then append one series per raw
+    // PMET metric (group 'raw', default off) so each site can enable exactly the
+    // metrics it emits. Raw series map to fgComputeSeries()'s raw_<key> arrays.
+    FG_SERIES_DEFS.forEach(function(d) { if (!d.group) d.group = 'derived'; });
+    FLOWGRAPH_METRICS.forEach(function(def) {
+        FG_SERIES_DEFS.push({
+            key: 'raw_' + def.key,
+            label: def.displayLabel || def.key,
+            color: def.color || '#94a3b8',
+            width: 1,
+            dataKey: 'raw_' + def.key,
+            defaultOn: false,
+            group: 'raw'
+        });
+    });
 
     // Format a Date as MonitorPortal's expected ISO instant, e.g.
     // 2026-08-19T18:30:00Z (UTC, no millis). Floors to the 5-min boundary.
@@ -13037,20 +13052,26 @@ if (k === 'eta') {
     function _fgRenderMetricToggles() {
         var host = document.getElementById('hydra-flowgraph-metrics');
         if (!host) return;
-        // Stable partition: enabled (not hidden) first, then disabled; each
-        // group keeps FG_SERIES_DEFS order.
-        var enabled = FG_SERIES_DEFS.filter(function(d) { return !_fgHidden[d.key]; });
-        var disabled = FG_SERIES_DEFS.filter(function(d) { return _fgHidden[d.key]; });
-        var ordered = enabled.concat(disabled);
-        var h = '';
-        ordered.forEach(function(d) {
+        function rowHtml(d) {
             var on = !_fgHidden[d.key];
-            h += '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
+            return '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px">' +
                  '<input type="checkbox" class="hydra-fg-metric-cb" data-key="' + d.key + '"' + (on ? ' checked' : '') + '>' +
                  '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + d.color + '"></span>' +
                  '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">' + d.label + '</span>' +
                  '</label>';
-        });
+        }
+        function header(txt) {
+            return '<div style="font-size:11px;font-weight:600;color:var(--h-muted,#aab4c0);margin:8px 0 2px;border-top:1px solid var(--h-border2,#3a4a5c);padding-top:6px">' + txt + '</div>';
+        }
+        var h = '';
+        // 1) Everything currently ENABLED, on top (any group), in defs order.
+        var enabled = FG_SERIES_DEFS.filter(function(d) { return !_fgHidden[d.key]; });
+        if (enabled.length) { h += header('Enabled'); enabled.forEach(function(d) { h += rowHtml(d); }); }
+        // 2) The rest, grouped: Derived first, then Raw PMET metrics.
+        var offDerived = FG_SERIES_DEFS.filter(function(d) { return _fgHidden[d.key] && d.group !== 'raw'; });
+        var offRaw     = FG_SERIES_DEFS.filter(function(d) { return _fgHidden[d.key] && d.group === 'raw'; });
+        if (offDerived.length) { h += header('Derived'); offDerived.forEach(function(d) { h += rowHtml(d); }); }
+        if (offRaw.length) { h += header('Raw PMET metrics (per-site)'); offRaw.forEach(function(d) { h += rowHtml(d); }); }
         host.innerHTML = h;
         host.querySelectorAll('.hydra-fg-metric-cb').forEach(function(cb) {
             cb.addEventListener('change', function() {
@@ -13087,8 +13108,17 @@ if (k === 'eta') {
             palletDock.push(val('M11', i));
             gaylordStk.push(val('M12', i));
         }
-        return { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
+        var out = { total: total, manual: manual, d2c: d2c, tph: tph, target: target,
                  inducted: inducted, closed: closed, palletDock: palletDock, gaylordStk: gaylordStk };
+        // Expose each raw PMET metric as its own series (raw_<key>) so sites can
+        // chart whichever individual metric they need. Copy the aligned array.
+        FLOWGRAPH_METRICS.forEach(function(def) {
+            var idx = FG_IDX[def.key];
+            var arr = (idx != null && d.m[idx]) ? d.m[idx].slice(0, n) : [];
+            while (arr.length < n) arr.push(0);
+            out['raw_' + def.key] = arr;
+        });
+        return out;
     }
 
     // Kick a Flow Graph pull for the current node, then re-render the tab.

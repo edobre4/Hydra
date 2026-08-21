@@ -1,5 +1,17 @@
 # Hydra Patch Notes
 
+## v3.72 — 2026-08-21
+
+### Flow Graph
+- **Every raw PMET metric is now its own toggleable line.** In addition to the
+  derived series (Total/Manual/D2C/Target/…), each individual metric (Sorted\u2192
+  Dock, Fluid Load, Pallet/Bag/Gaylord/Cart CB, Cart/Gaylord D2C, Inducted,
+  Containers Closed, Pallet\u2192Dock, Gaylord\u2192Stacking) can be enabled on its own.
+  Sites that emit different metrics can pick exactly what they need.
+- Settings ▸ Flow Graph metric list is now grouped: **Enabled** on top, then
+  **Derived**, then **Raw PMET metrics (per-site)**. All raw metrics are off by
+  default; enabling any is persisted per browser.
+
 ## v3.71 — 2026-08-21
 
 ### Flow Graph
