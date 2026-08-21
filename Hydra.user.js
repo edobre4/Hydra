@@ -13234,7 +13234,7 @@ if (k === 'eta') {
         maxVal = maxVal * 1.1; // headroom
 
         var cw = Math.max(wrap.clientWidth - 20, 400);
-        var ch = Math.max(wrap.clientHeight - 70, 250);
+        var ch = Math.max(wrap.clientHeight - 118, 220);
         var pad = { top: 20, right: 14, bottom: 40, left: cw < 500 ? 50 : 70 };
         var gw = cw - pad.left - pad.right;
         var gh = ch - pad.top - pad.bottom;
@@ -13277,6 +13277,25 @@ if (k === 'eta') {
             html += '<span class="hydra-fg-legitem" data-key="' + se.key + '" style="cursor:pointer;font-size:11px;color:' + se.color + ';opacity:' + (off ? '0.45' : '1') + ';font-weight:600;user-select:none;text-decoration:' + (off ? 'line-through' : 'none') + '">' + box + ' ' + (se.dotted ? '┈' : '■') + ' ' + se.label + '</span>';
         });
         html += '<span style="font-size:10px;color:var(--h-muted,#aab4c0);opacity:0.7">(last ' + LAG_BUCKETS + ' buckets provisional — PMET lag)</span>';
+        html += '</div>';
+        // Stat cards: one per VISIBLE series (enabled + not hidden) showing the
+        // window total (Target shows its flat value, not a sum).
+        html += '<div id="hydra-flowgraph-stats" style="display:flex;align-items:stretch;gap:8px;margin-bottom:8px;flex-wrap:wrap;justify-content:center">';
+        series.forEach(function(se) {
+            if (_fgHidden[se.key]) return;
+            var isTarget = (se.key === 'target');
+            var val;
+            if (isTarget) {
+                val = (se.data && se.data.length) ? se.data[0] : flowGraphTarget;
+            } else {
+                val = 0; for (var i = 0; i < se.data.length; i++) val += (se.data[i] || 0);
+            }
+            html += '<div style="min-width:96px;border:1px solid ' + se.color + ';border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center">' +
+                '<div style="font-size:10px;color:' + se.color + ';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">' + se.label + '</div>' +
+                '<div style="font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0)">' + Math.round(val).toLocaleString() + '</div>' +
+                '<div style="font-size:9px;color:var(--h-muted2,#7a8a9a)">' + (isTarget ? 'per 5 min' : 'total') + '</div>' +
+                '</div>';
+        });
         html += '</div>';
         html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
         html += '</div>';
