@@ -19687,6 +19687,13 @@ if (k === 'eta') {
                     }
                     // Narrow table: grow up to cap. Wide table: shrink to fit.
                     var _fit = (_fitVal > 1) ? Math.min(autoFitCap, _fitVal) : _fitVal;
+                    // Custom View (linearchutes): growing to the cap balloons the
+                    // wide table into huge stretched rows. When it would grow,
+                    // use the manual zoom slider value instead (still capped by
+                    // what actually fits); shrink-to-fit behavior unchanged.
+                    if (_fitVal > 1 && activeView === 'OB' && obActiveTab === 'linearchutes') {
+                        _fit = Math.min(_fitVal, tableZoom / 100);
+                    }
                     scale = Math.max(0.3, _fit);
                 }
             }
