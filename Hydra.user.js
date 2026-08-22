@@ -13768,26 +13768,14 @@ if (k === 'eta') {
                 return;
             }
         }
-        // No data yet: auto-pull once, show loading state.
+        // No data yet: wait for the user to press Refresh (no auto-pull -- a
+        // hard page reload landing on this tab must not fire requests on its
+        // own). While a manual pull is in flight, show the loading state.
         if (!d.times.length) {
             if (_flowGraphLoading) {
                 wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px;flex-direction:column;gap:8px"><div style="font-size:24px">⏳</div><div>Loading Flow Graph…</div></div>';
             } else {
-                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-muted,#aab4c0);font-size:13px">Loading…</div>';
-                refreshFlowGraph(function(err) {
-                    if (ibActiveTab !== 'flowgraph') return;
-                    if (err) {
-                        var w2 = targetEl || document.getElementById('hydra-table-wrap');
-                        if (w2) {
-                            var hint = (err.message === 'NO_TABLE')
-                                ? 'No data returned — open <strong>monitorportal.amazon.com</strong> once to refresh your Midway session, then Refresh.'
-                                : 'Flow Graph fetch failed: ' + (err.message || err);
-                            w2.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:#ef5350;font-size:13px;text-align:center;padding:0 40px">' + hint + '</div>';
-                        }
-                        return;
-                    }
-                    renderIBTable();
-                });
+                wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:var(--h-ib-accent,#4fc3f7);font-size:13px">Click <b>&nbsp;Refresh&nbsp;</b> to load the Flow Graph.</div>';
             }
             return;
         }
@@ -18727,7 +18715,20 @@ if (k === 'eta') {
                         flowGraphNC.processed = null; // force NC refetch on manual refresh
                         if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); });
                         if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateCtnCards(); });
-                        return refreshFlowGraph(function() {
+                        return refreshFlowGraph(function(err) {
+                            if (err) {
+                                var hint = (err.message === 'NO_TABLE')
+                                    ? 'No data returned \u2014 open monitorportal.amazon.com once to refresh your Midway session, then Refresh.'
+                                    : 'Flow Graph fetch failed: ' + (err.message || err);
+                                _paint(function(){
+                                    var w2 = document.getElementById('hydra-table-wrap');
+                                    if (w2 && ibActiveTab === 'flowgraph' && activeView === 'IB') {
+                                        w2.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;position:absolute;inset:0;color:#ef5350;font-size:13px;text-align:center;padding:0 40px">' + hint + '</div>';
+                                    }
+                                });
+                                setStatus('Flow Graph fetch failed');
+                                return;
+                            }
                             _paint(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
                             setStatus('\u2714 Flow Graph updated \u2014 ' + new Date().toLocaleTimeString());
                         });
