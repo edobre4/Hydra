@@ -20444,7 +20444,10 @@ if (k === 'eta') {
             var host = document.getElementById('hydra-sorttimes-rows');
             if (!host) return;
             function timeInput(id, val) {
-                return '<input type="time" id="' + id + '" value="' + (val || '') + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px">';
+                // lang="en-GB" forces the native time picker to render 24h
+                // (no AM/PM) regardless of the user's browser/OS locale. The
+                // underlying value stays 24h "HH:MM" either way.
+                return '<input type="time" lang="en-GB" id="' + id + '" value="' + (val || '') + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px">';
             }
             var h = '';
             FG_SHIFTS.forEach(function(sh) {
