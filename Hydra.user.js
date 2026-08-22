@@ -20444,10 +20444,35 @@ if (k === 'eta') {
             var host = document.getElementById('hydra-sorttimes-rows');
             if (!host) return;
             function timeInput(id, val) {
-                // lang="en-GB" forces the native time picker to render 24h
-                // (no AM/PM) regardless of the user's browser/OS locale. The
-                // underlying value stays 24h "HH:MM" either way.
-                return '<input type="time" lang="en-GB" id="' + id + '" value="' + (val || '') + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px">';
+                // Plain text input (not native type=time): the native picker
+                // renders 12h AM/PM based on OS locale, which we can't reliably
+                // override. A text field guarantees 24h "HH:MM" display/entry.
+                return '<input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" id="' + id + '" value="' + (val || '') + '" style="width:64px;text-align:center;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px">';
+            }
+            // Normalize free-form entry to 24h HH:MM. Accepts "9", "930",
+            // "9:30", "0930", "9 30", trailing am/pm; returns "" if unparseable.
+            function norm24(raw) {
+                if (raw == null) return '';
+                var s = String(raw).trim().toLowerCase();
+                if (!s) return '';
+                var ampm = null;
+                if (/p\.?m?\.?$/.test(s)) ampm = 'pm';
+                else if (/a\.?m?\.?$/.test(s)) ampm = 'am';
+                s = s.replace(/[ap]\.?m?\.?$/,'').trim();
+                var digits = s.replace(/[^0-9]/g, '');
+                var hh, mm;
+                if (s.indexOf(':') !== -1) {
+                    var parts = s.split(':');
+                    hh = parseInt(parts[0], 10); mm = parseInt(parts[1], 10);
+                } else if (digits.length <= 2) { hh = parseInt(digits, 10); mm = 0; }
+                else if (digits.length === 3) { hh = parseInt(digits.slice(0,1),10); mm = parseInt(digits.slice(1),10); }
+                else { hh = parseInt(digits.slice(0,2),10); mm = parseInt(digits.slice(2,4),10); }
+                if (isNaN(hh)) return '';
+                if (isNaN(mm)) mm = 0;
+                if (ampm === 'pm' && hh < 12) hh += 12;
+                if (ampm === 'am' && hh === 12) hh = 0;
+                if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return '';
+                return ('0' + hh).slice(-2) + ':' + ('0' + mm).slice(-2);
             }
             var h = '';
             FG_SHIFTS.forEach(function(sh) {
@@ -20463,8 +20488,8 @@ if (k === 'eta') {
                 var sIn = document.getElementById('hydra-shift-' + sh.id + '-start');
                 var eIn = document.getElementById('hydra-shift-' + sh.id + '-end');
                 function commit() {
-                    if (sIn && sIn.value) sh.start = sIn.value;
-                    if (eIn && eIn.value) sh.end = eIn.value;
+                    if (sIn) { var ns = norm24(sIn.value); if (ns) { sh.start = ns; sIn.value = ns; } else if (sh.start) { sIn.value = sh.start; } }
+                    if (eIn) { var ne = norm24(eIn.value); if (ne) { sh.end = ne; eIn.value = ne; } else if (sh.end) { eIn.value = sh.end; } }
                     try { saveAllSettings(); } catch (ex) {}
                     if (ibActiveTab === 'flowgraph' && activeView === 'IB' && flowGraphWindowMode === sh.id) {
                         refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); });
