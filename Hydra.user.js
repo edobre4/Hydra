@@ -13444,6 +13444,21 @@ if (k === 'eta') {
                 fgLiveHeadcount = Object.keys(seen).length;
                 fgLiveHeadcountAt = Date.now();
                 console.log('[Hydra FlowGraph HC] clockedInAssociates rows=' + rows.length + ' distinct=' + fgLiveHeadcount);
+                try {
+                    var now = Date.now();
+                    var buckets = { '<4h': 0, '4-8h': 0, '8-12h': 0, '12-24h': 0, '>24h': 0, 'noTs': 0 };
+                    rows.forEach(function(a) {
+                        var ts = a && a.lastInPunchTimestamp;
+                        var ms = ts ? new Date(ts).getTime() : NaN;
+                        if (!ts || isNaN(ms)) { buckets.noTs++; return; }
+                        var h = (now - ms) / 3600000;
+                        if (h < 4) buckets['<4h']++; else if (h < 8) buckets['4-8h']++;
+                        else if (h < 12) buckets['8-12h']++; else if (h < 24) buckets['12-24h']++;
+                        else buckets['>24h']++;
+                    });
+                    console.log('[Hydra FlowGraph HC] punch-age buckets', JSON.stringify(buckets),
+                                'sampleRow', JSON.stringify(rows[0]));
+                } catch (ex) {}
                 if (cb) cb();
             }).catch(function(e) {
                 console.warn('[Hydra FlowGraph] headcount fetch failed:', e && e.message ? e.message : e);
