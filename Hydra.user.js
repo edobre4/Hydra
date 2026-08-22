@@ -9965,13 +9965,32 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     return s.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
                 }
 
+                // Count DISTINCT physical containers in linearchutes. A container
+                // that holds future packages can appear under more than one CPT
+                // load (e.g. today's 01:30 and tomorrow's 01:30 for the same
+                // route) when the search window spans multiple CPTs -- counting
+                // rows would tally it twice. Dedupe by containerId so each
+                // physical container is counted once. (Card-only; OB tabs keep
+                // their per-row behavior.)
+                function _distinctCtn() {
+                    var arr = obTableData.linearchutes;
+                    if (!Array.isArray(arr)) return null;
+                    var seen = {}, n = 0;
+                    arr.forEach(function(r) {
+                        var id = r && r.containerId;
+                        if (!id) { n++; return; } // no id -> count as-is
+                        if (!seen[id]) { seen[id] = true; n++; }
+                    });
+                    return n;
+                }
+
                 var seq = Promise.resolve();
                 if (needWS) {
                     seq = seq.then(function() {
                         oneDFilterSource = 'stacked';
                         CUSTOM_STACKED_FILTER = _filterArr(fgCardWSFilter);
                         return pullCustomStacked(node).then(function() {
-                            _wsCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
+                            _wsCount = _distinctCtn();
                         });
                     });
                 }
@@ -9980,7 +9999,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         oneDFilterSource = 'inFacilityReceived';
                         CUSTOM_STACKED_FILTER = _filterArr(fgCardReceivedFilter);
                         return pullCustomStacked(node).then(function() {
-                            _receivedCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
+                            _receivedCount = _distinctCtn();
                         });
                     });
                 }
@@ -9989,7 +10008,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         oneDFilterSource = 'staged';
                         CUSTOM_STACKED_FILTER = _filterArr(fgCardStagedFilter);
                         return pullCustomStacked(node).then(function() {
-                            _stagedCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
+                            _stagedCount = _distinctCtn();
                         });
                     });
                 }
