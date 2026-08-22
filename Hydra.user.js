@@ -18679,6 +18679,12 @@ if (k === 'eta') {
         // Event accidentally passed as a callback) so we never misroute the pull.
         var _fview = (fetchView === 'IB' || fetchView === 'OB' || fetchView === 'PS') ? fetchView : activeView;
         var _fobtab = (typeof fetchObTab === 'string' && fetchObTab) ? fetchObTab : obActiveTab;
+        // IB tab being FETCHED: auto-refresh passes the locked tab (2nd arg);
+        // manual refresh uses the tab the user is on. The flow graph branch
+        // must route on THIS, not the currently-viewed tab -- otherwise an
+        // auto-refresh locked on an inbound tab hijacks into a flow graph
+        // refetch whenever the user happens to be viewing the Flow Graph.
+        var _fibtab = (_fview === 'IB' && typeof fetchObTab === 'string' && fetchObTab) ? fetchObTab : ibActiveTab;
         // Whether we should paint is evaluated AT CALL TIME, not frozen here:
         // the user may navigate during the async pull. Only paint if the user is
         // STILL viewing exactly the view/tab we fetched. Otherwise update data silently.
@@ -18714,7 +18720,9 @@ if (k === 'eta') {
                 } else if (_fview === 'IB') {
                     // Flow Graph tab: refresh ONLY the PMET series — do not pull
                     // inbound loads. (And other IB tabs never pull Flow Graph.)
-                    if (ibActiveTab === 'flowgraph') {
+                    // Routes on the FETCH tab (_fibtab): auto-refresh locked on an
+                    // inbound tab never triggers a flow graph refetch.
+                    if (_fibtab === 'flowgraph') {
                         setStatus('Refreshing Flow Graph...');
                         flowGraphNC.processed = null; // force NC refetch on manual refresh
                         if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); });
