@@ -138,23 +138,23 @@
         cptSlaHours:         4,
         cptSlaEnabled:       true,
         sesameEnabled:       false,
-        flowGraphTarget:     927,
+        flowGraphTarget:     527,
         flowGraphDivisor:    220,
         flowGraphHours:      5,
         flowGraphHidden:     null,
         flowGraphFormulas:   null,
-        flowGraphWindowMode: 'hours',
+        flowGraphWindowMode: 'day',
         flowGraphShowStats:  true,
         flowGraphRateMode:   '5m',
         flowGraphShiftDate:  '',
-        flowGraphNCEnabled:  false,
-        flowGraphNCTarget:   50,
-        flowGraphCtnEnabled: false,
-        flowGraphCtnTarget:  60,
-        fgCardWSBuffer:      false,
-        fgCardReceived:      false,
-        fgCardStaged:        false,
-        fgCardWIP:           false,
+        flowGraphNCEnabled:  true,
+        flowGraphNCTarget:   31,
+        flowGraphCtnEnabled: true,
+        flowGraphCtnTarget:  10,
+        fgCardWSBuffer:      true,
+        fgCardReceived:      true,
+        fgCardStaged:        true,
+        fgCardWIP:           true,
         fgCardWSFilter:      'WS',
         fgCardReceivedFilter:'DD1',
         fgCardStagedFilter:  '',
@@ -1195,20 +1195,20 @@
         return sdtChaseTypeCap[t] > 0 ? sdtChaseTypeCap[t] : null;
     }
     // --- Flow Graph tab settings (persisted via saveAllSettings) ---
-    var flowGraphTarget  = 927;   // per-5-min target line (magenta dotted)
+    var flowGraphTarget  = 527;   // per-5-min target line (magenta dotted)
     var flowGraphDivisor = 220;   // TPH headcount divisor (Total*12/divisor)
     var flowGraphHours   = 5;     // lookback window in hours
     // Window mode: 'hours' = last flowGraphHours; else a shift id from FG_SHIFTS.
-    var flowGraphWindowMode = 'hours';
+    var flowGraphWindowMode = 'day';
     var flowGraphShowStats = true;   // show per-metric stat cards above the chart
     var flowGraphRateMode = '5m';    // '5m' = per-5-min flow, 'hr' = flow x12 (hourly rate)
     var flowGraphShiftDate = '';     // local YYYY-MM-DD anchor for shift windows ('' = auto)
     // NC tracking (FCLM Container Build, NON-CONVEYABLE + NON-CONVEYABLE PLUS).
-    var flowGraphNCEnabled = false;  // show NC target line + NC card
-    var flowGraphNCTarget = 50;      // NC target per 5-min bucket
+    var flowGraphNCEnabled = true;   // show NC target line + NC card
+    var flowGraphNCTarget = 31;      // NC target per 5-min bucket
     // Containers Loaded target (delta on the Containers Loaded card).
-    var flowGraphCtnEnabled = false;
-    var flowGraphCtnTarget = 60;     // containers-loaded target per 5-min bucket
+    var flowGraphCtnEnabled = true;
+    var flowGraphCtnTarget = 10;     // containers-loaded target per 5-min bucket
     // Sort Times: editable shift windows in LOCAL site time (HH:MM 24h).
     // Overnight shifts (end <= start) wrap to the next day automatically.
     var FG_SHIFTS = [
@@ -9581,7 +9581,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // requests at once (no batch throttle) — used by the card refresh so it's
     // fully parallel. OB tabs leave it false (batched to avoid 429s).
     // Per-card enable flags (Settings).
-    var fgCardWSBuffer = false, fgCardReceived = false, fgCardStaged = false, fgCardWIP = false;
+    var fgCardWSBuffer = true, fgCardReceived = true, fgCardStaged = true, fgCardWIP = true;
     // Per-card location filters (substring match on container location/chute).
     // WS Buffer -> "WS", Received -> "DD1", Staged -> "" (match anything).
     var fgCardWSFilter = 'WS', fgCardReceivedFilter = 'DD1', fgCardStagedFilter = '';
