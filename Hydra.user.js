@@ -9895,26 +9895,57 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             });
             return vridsReady.then(function() {
                 _fgUnthrottled = true; // fire all loadgroup requests at once for the cards
-                var jobs = [];
-                if (needWS) jobs.push(pullWSBuffer(node));
-                if (needRc) jobs.push(pullReceived(node));
-                // Staged card must match the Custom View "Staged" tab, which is
-                // pullCustomStacked() with oneDFilterSource='staged' (populates
-                // obTableData.linearchutes). Temporarily force the source to
-                // 'staged' for this pull, then restore the user's selection.
-                if (needSt) {
-                    var _savedSrc = oneDFilterSource;
-                    oneDFilterSource = 'staged';
-                    jobs.push(pullCustomStacked(node).then(function(r){ oneDFilterSource = _savedSrc; return r; },
-                                                          function(e){ oneDFilterSource = _savedSrc; throw e; }));
+                // WS Buffer uses its own array (obTableData.wsbuffer) so it can
+                // run in parallel. Received and Staged BOTH use pullCustomStacked,
+                // which writes obTableData.linearchutes -- so they must run
+                // sequentially, capturing each count before the next overwrites.
+                var _stagedCount = null, _receivedCount = null;
+                var _savedSrc = oneDFilterSource;
+                var _savedFilter = CUSTOM_STACKED_FILTER;
+                var parallel = [];
+                if (needWS) parallel.push(pullWSBuffer(node));
+
+                // Sequential chain for the two Custom View sources.
+                var seq = Promise.resolve();
+                if (needRc) {
+                    // Received card matches Custom View "Received" tab:
+                    // oneDFilterSource='inFacilityReceived' + received chute filter.
+                    seq = seq.then(function() {
+                        oneDFilterSource = 'inFacilityReceived';
+                        CUSTOM_STACKED_FILTER = ['IB_RECEIVE_CONTAINER_DD1'];
+                        return pullCustomStacked(node).then(function() {
+                            _receivedCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
+                        });
+                    });
                 }
-                return Promise.all(jobs).then(function(r){ _fgUnthrottled = false; return r; }, function(e){ _fgUnthrottled = false; throw e; });
-            }).then(function() {
+                if (needSt) {
+                    // Staged card matches Custom View "Staged" tab:
+                    // oneDFilterSource='staged' (all chutes).
+                    seq = seq.then(function() {
+                        oneDFilterSource = 'staged';
+                        CUSTOM_STACKED_FILTER = _savedFilter;
+                        return pullCustomStacked(node).then(function() {
+                            _stagedCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
+                        });
+                    });
+                }
+                seq = seq.then(function() {
+                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter;
+                }, function(e) {
+                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter; throw e;
+                });
+                parallel.push(seq);
+
+                return Promise.all(parallel).then(function(){
+                    _fgUnthrottled = false;
+                    return { staged: _stagedCount, received: _receivedCount };
+                }, function(e){ _fgUnthrottled = false; throw e; });
+            }).then(function(counts) {
                 _flowGraphCtnLoading = false;
                 flowGraphCtn = {
                     wsbuffer: needWS ? _fgCountWSBuffer() : flowGraphCtn.wsbuffer,
-                    received: needRc ? _fgCountReceived() : flowGraphCtn.received,
-                    staged:   needSt ? _fgCountStaged()   : flowGraphCtn.staged,
+                    received: needRc ? counts.received : flowGraphCtn.received,
+                    staged:   needSt ? counts.staged   : flowGraphCtn.staged,
                     fetchedAt: Date.now(), node: node
                 };
                 if (cb) cb();
