@@ -9851,10 +9851,26 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Are any OB container-count cards enabled? (WS Buffer / Received / Staged / WIP)
     function _fgCtnCardsOn() { return fgCardWSBuffer || fgCardReceived || fgCardStaged || fgCardWIP; }
 
-    // Refresh OB container-state counts via Vista getContainersDetailByCriteria.
-    // WS Buffer = Stacked (closed, not staged); Received = InFacilityReceived
-    // filtered to locations containing "RECEIVE"; Staged = Staged. WIP = sum.
-    // Only fetches the states needed by enabled cards.
+    // Count containers in the OB tab data (populated by the real per-loadgroup pulls).
+    function _fgCountWSBuffer() {
+        var rows = obTableData.wsbuffer; if (!Array.isArray(rows)) return null;
+        var cols = (typeof WS_BUFFER_COLUMNS !== 'undefined' && WS_BUFFER_COLUMNS) ? WS_BUFFER_COLUMNS : [];
+        var t = 0; rows.forEach(function(r) { cols.forEach(function(c) { t += (r[c.key] || 0); }); });
+        return t;
+    }
+    function _fgCountReceived() {
+        var rv = obTableData.received; if (!rv || !rv.grid) return null;
+        var t = 0; Object.keys(rv.grid).forEach(function(buf) { t += (rv.grid[buf] || []).length; });
+        return t;
+    }
+    function _fgCountStaged() {
+        var arr = obTableData.customstaged; if (!Array.isArray(arr)) return null;
+        return arr.length;
+    }
+
+    // Refresh OB container-count cards by running the SAME per-loadgroup pulls
+    // the OB tabs use (WS Buffer / Received / Staged), then counting the result.
+    // Heavy (needs OB VRIDs + many requests) — only runs when a card is enabled.
     function refreshFlowGraphCtn(cb) {
         if (!_fgCtnCardsOn()) { if (cb) cb(); return; }
         var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
@@ -9862,25 +9878,30 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var needWS = fgCardWSBuffer || fgCardWIP;
         var needRc = fgCardReceived || fgCardWIP;
         var needSt = fgCardStaged  || fgCardWIP;
-        function locOf(c) { return String(c.locationName || c.location || c.label || c.scannableId || ''); }
         var tokenReady = (typeof csrfToken !== 'undefined' && csrfToken) ? Promise.resolve() : (typeof fetchToken === 'function' ? fetchToken() : Promise.resolve());
         return tokenReady.then(function() {
-        var jobs = [
-            needWS ? _sdtCriteria(node, 'Stacked') : Promise.resolve(null),
-            needRc ? _sdtCriteria(node, 'InFacilityReceived') : Promise.resolve(null),
-            needSt ? _sdtCriteria(node, 'Staged') : Promise.resolve(null)
-        ];
-        return Promise.all(jobs).then(function(res) {
-            _flowGraphCtnLoading = false;
-            var ws = res[0], rc = res[1], st = res[2];
-            flowGraphCtn = {
-                wsbuffer: ws ? ws.length : (flowGraphCtn.wsbuffer),
-                received: rc ? rc.filter(function(c){ return /RECEIVE/i.test(locOf(c)); }).length : (flowGraphCtn.received),
-                staged:   st ? st.length : (flowGraphCtn.staged),
-                fetchedAt: Date.now(), node: node
-            };
-            if (cb) cb();
-        });
+            // Ensure OB VRIDs are loaded (all pulls iterate obTableData.obvrids).
+            var haveVrids = obTableData && Array.isArray(obTableData.obvrids) && obTableData.obvrids.length;
+            var vridsReady = haveVrids ? Promise.resolve() : pullOBDock(node).then(function(obData) {
+                if (!obTableData) obTableData = {};
+                obTableData.obvrids = obData;
+            });
+            return vridsReady.then(function() {
+                var jobs = [];
+                if (needWS) jobs.push(pullWSBuffer(node));
+                if (needRc) jobs.push(pullReceived(node));
+                if (needSt) jobs.push(pullCustomStaged(node));
+                return Promise.all(jobs);
+            }).then(function() {
+                _flowGraphCtnLoading = false;
+                flowGraphCtn = {
+                    wsbuffer: needWS ? _fgCountWSBuffer() : flowGraphCtn.wsbuffer,
+                    received: needRc ? _fgCountReceived() : flowGraphCtn.received,
+                    staged:   needSt ? _fgCountStaged()   : flowGraphCtn.staged,
+                    fetchedAt: Date.now(), node: node
+                };
+                if (cb) cb();
+            });
         }).catch(function(e) { _flowGraphCtnLoading = false; console.warn('[Hydra FlowGraph Ctn] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
     }
 
@@ -13640,8 +13661,9 @@ if (k === 'eta') {
         if (flowGraphNCEnabled && (flowGraphNC.processed === null || (Date.now() - flowGraphNC.fetchedAt) > 120000)) {
             refreshFlowGraphNC(function() { if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
         }
-        // OB container cards: refresh when enabled + stale (>90s), patch in place.
-        if (_fgCtnCardsOn() && ((flowGraphCtn.wsbuffer === null && flowGraphCtn.received === null && flowGraphCtn.staged === null) || (Date.now() - flowGraphCtn.fetchedAt) > 90000)) {
+        // OB container cards: refresh when enabled + stale (>5 min), patch in place.
+        // These run the real per-loadgroup OB pulls (heavy), so keep the cadence slow.
+        if (_fgCtnCardsOn() && ((flowGraphCtn.wsbuffer === null && flowGraphCtn.received === null && flowGraphCtn.staged === null) || (Date.now() - flowGraphCtn.fetchedAt) > 300000)) {
             refreshFlowGraphCtn(function() { if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
         }
 
@@ -18371,6 +18393,8 @@ if (k === 'eta') {
                         setStatus('Refreshing Flow Graph...');
                         flowGraphNC.processed = null; // force NC refetch on manual refresh
                         if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
+                        flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' };
+                        if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
                         return refreshFlowGraph(function() {
                             _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
                             setStatus('\u2714 Flow Graph updated \u2014 ' + new Date().toLocaleTimeString());
