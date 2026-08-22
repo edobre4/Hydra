@@ -9913,17 +9913,44 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             });
             return vridsReady.then(function() {
                 _fgUnthrottled = true; // fire all loadgroup requests at once for the cards
-                // WS Buffer uses its own array (obTableData.wsbuffer) so it can
-                // run in parallel. Received and Staged BOTH use pullCustomStacked,
-                // which writes obTableData.linearchutes -- so they must run
-                // sequentially, capturing each count before the next overwrites.
-                var _stagedCount = null, _receivedCount = null;
+
+                // FULL DECOUPLING FROM OB PULLS/DATA:
+                // The card pulls reuse pullWSBuffer / pullCustomStacked, which
+                // write obTableData.wsbuffer / .linearchutes / .received (the
+                // arrays the OB tabs render from). To guarantee the card refresh
+                // NEVER mutates OB tab data, we snapshot those three slots up
+                // front, let the pulls scribble into them, capture the counts,
+                // then restore the snapshots byte-for-byte. Globals the pulls
+                // read (oneDFilterSource / CUSTOM_STACKED_FILTER / oneDFilterUtil)
+                // are likewise saved and restored.
+                var _snapWs  = obTableData.wsbuffer;
+                var _snapLc  = obTableData.linearchutes;
+                var _snapRc  = obTableData.received;
+                var _wsCount = null, _stagedCount = null, _receivedCount = null;
                 var _savedSrc = oneDFilterSource;
                 var _savedFilter = CUSTOM_STACKED_FILTER;
                 var _savedUtil = oneDFilterUtil;
                 oneDFilterUtil = false; // cards only need row counts, skip per-load utilization enrichment
+
+                function _restoreObState() {
+                    obTableData.wsbuffer     = _snapWs;
+                    obTableData.linearchutes = _snapLc;
+                    obTableData.received     = _snapRc;
+                    oneDFilterSource   = _savedSrc;
+                    CUSTOM_STACKED_FILTER = _savedFilter;
+                    oneDFilterUtil     = _savedUtil;
+                }
+
+                // WS Buffer writes obTableData.wsbuffer (own slot); can run in
+                // parallel. Received and Staged BOTH use pullCustomStacked, which
+                // writes obTableData.linearchutes -- so they run sequentially,
+                // each count captured before the next overwrites.
                 var parallel = [];
-                if (needWS) parallel.push(pullWSBuffer(node));
+                if (needWS) {
+                    parallel.push(pullWSBuffer(node).then(function() {
+                        _wsCount = _fgCountWSBuffer();
+                    }));
+                }
 
                 // Sequential chain for the two Custom View sources.
                 var seq = Promise.resolve();
@@ -9949,22 +9976,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         });
                     });
                 }
-                seq = seq.then(function() {
-                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter; oneDFilterUtil = _savedUtil;
-                }, function(e) {
-                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter; oneDFilterUtil = _savedUtil; throw e;
-                });
                 parallel.push(seq);
 
                 return Promise.all(parallel).then(function(){
                     _fgUnthrottled = false;
-                    return { staged: _stagedCount, received: _receivedCount };
-                }, function(e){ _fgUnthrottled = false; throw e; });
+                    _restoreObState(); // put OB tab data + globals back exactly as they were
+                    return { wsbuffer: _wsCount, staged: _stagedCount, received: _receivedCount };
+                }, function(e){ _fgUnthrottled = false; _restoreObState(); throw e; });
             }).then(function(counts) {
                 _flowGraphCtnLoading = false;
                 clearTimeout(_ctnWatchdog);
                 flowGraphCtn = {
-                    wsbuffer: needWS ? _fgCountWSBuffer() : flowGraphCtn.wsbuffer,
+                    wsbuffer: needWS ? counts.wsbuffer : flowGraphCtn.wsbuffer,
                     received: needRc ? counts.received : flowGraphCtn.received,
                     staged:   needSt ? counts.staged   : flowGraphCtn.staged,
                     fetchedAt: Date.now(), node: node
