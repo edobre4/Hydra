@@ -13430,13 +13430,20 @@ if (k === 'eta') {
     function refreshFlowGraphHeadcount(cb) {
         try {
             fetchClockedInAssociates().then(function(rows) {
+                rows = rows || [];
                 var seen = {};
-                (rows || []).forEach(function(a) {
-                    var id = a && (a.associateId || a.employeeId);
-                    if (id) seen[id] = 1;
+                rows.forEach(function(a) {
+                    if (!a) return;
+                    var ass = a.associate || {};
+                    // Prefer a stable identity: employeeId, then associateId,
+                    // then the nested associate's ids. Dedupe on it so multiple
+                    // punch rows for one person count once.
+                    var id = a.employeeId || a.associateId || ass.employeeId || ass.associateId;
+                    if (id) seen[String(id)] = 1;
                 });
                 fgLiveHeadcount = Object.keys(seen).length;
                 fgLiveHeadcountAt = Date.now();
+                console.log('[Hydra FlowGraph HC] clockedInAssociates rows=' + rows.length + ' distinct=' + fgLiveHeadcount);
                 if (cb) cb();
             }).catch(function(e) {
                 console.warn('[Hydra FlowGraph] headcount fetch failed:', e && e.message ? e.message : e);
