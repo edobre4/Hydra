@@ -9556,6 +9556,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Each is a live count; wip = wsbuffer + received + staged. null = not yet loaded.
     var flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' };
     var _flowGraphCtnLoading = false;
+    // When true, the WS Buffer / Received / Staged pulls fire ALL loadgroup
+    // requests at once (no batch throttle) — used by the card refresh so it's
+    // fully parallel. OB tabs leave it false (batched to avoid 429s).
+    var _fgUnthrottled = false;
     // Per-card enable flags (Settings).
     var fgCardWSBuffer = false, fgCardReceived = false, fgCardStaged = false, fgCardWIP = false;
 
@@ -9887,11 +9891,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 obTableData.obvrids = obData;
             });
             return vridsReady.then(function() {
+                _fgUnthrottled = true; // fire all loadgroup requests at once for the cards
                 var jobs = [];
                 if (needWS) jobs.push(pullWSBuffer(node));
                 if (needRc) jobs.push(pullReceived(node));
                 if (needSt) jobs.push(pullCustomStaged(node));
-                return Promise.all(jobs);
+                return Promise.all(jobs).then(function(r){ _fgUnthrottled = false; return r; }, function(e){ _fgUnthrottled = false; throw e; });
             }).then(function() {
                 _flowGraphCtnLoading = false;
                 flowGraphCtn = {
@@ -11273,7 +11278,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] WS Buffer SSP error:', c.vrid, e); });
             });
         });
-                var _CONC = 10;
+                var _CONC = _fgUnthrottled ? 100000 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch, _bIdx) {
@@ -11697,7 +11702,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Received err', e); });
             });
         });
-                var _CONC = 10;
+                var _CONC = _fgUnthrottled ? 100000 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -11938,7 +11943,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Custom Staged error:', e); });
             });
         });
-                var _CONC = 10;
+                var _CONC = _fgUnthrottled ? 100000 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
