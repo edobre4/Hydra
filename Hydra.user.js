@@ -9518,9 +9518,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         { id: 'total',  name: 'Total Volume', color: '#f5f7fa', formula: 'SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB + CartD2C + GaylordD2C', enabled: true },
         { id: 'manual', name: 'Manual',       color: '#22c55e', formula: 'SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB', enabled: true },
         { id: 'd2c',    name: 'D2C',          color: '#3b82f6', formula: 'CartD2C + GaylordD2C', enabled: true },
-        { id: 'tph',    name: 'TPH',          color: '#f59e0b', formula: '(SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB + CartD2C + GaylordD2C) * 12 / 220', enabled: false },
+        { id: 'tph',    name: 'TPH',          color: '#f59e0b', formula: '(SortingDock + FluidLoad + PalletCB + BagCB + GaylordCB + CartCB + CartD2C + GaylordD2C) * 12', enabled: false },
         { id: 'inducted', name: 'Inducted',   color: '#ef4444', formula: 'InductedAmtran', enabled: false },
-        { id: 'ctnLoaded', name: 'Containers Loaded (all)', color: '#34d399', formula: 'PalletDock + GaylordDock + BagDock', enabled: false },
+        { id: 'ctnLoaded', name: 'Containers Loaded (all)', color: '#34d399', formula: 'GaylordDock', enabled: true },
         { id: 'ctnClosed', name: 'Containers Closed (WS)',  color: '#c084fc', formula: 'ClosedWS', enabled: false }
     ];
     // Deep-copy defaults so persisted edits don't mutate the template.
