@@ -13419,7 +13419,7 @@ if (k === 'eta') {
     var _fgBackgroundRender = false;
     var _fgResizeObs = null; // ResizeObserver on the table wrap; repaints chart when it settles/resizes
 
-    // Live headcount snapshot (from WATT getStaffingAssignments) for the
+    // Live headcount snapshot (from WATT clockedInAssociates) for the
     // current-TPH readout. This is a CURRENT count only (WATT has no history),
     // so it powers a live numeric badge, not a per-bucket line.
     var fgLiveHeadcount = null;   // number of associates currently on the clock, or null if unknown
@@ -13429,9 +13429,12 @@ if (k === 'eta') {
     // Fire-and-forget; updates fgLiveHeadcount then optionally re-renders.
     function refreshFlowGraphHeadcount(cb) {
         try {
-            fetchStaffingAssignments().then(function(rows) {
+            fetchClockedInAssociates().then(function(rows) {
                 var seen = {};
-                (rows || []).forEach(function(a) { if (a && a.associateId) seen[a.associateId] = 1; });
+                (rows || []).forEach(function(a) {
+                    var id = a && (a.associateId || a.employeeId);
+                    if (id) seen[id] = 1;
+                });
                 fgLiveHeadcount = Object.keys(seen).length;
                 fgLiveHeadcountAt = Date.now();
                 if (cb) cb();
@@ -13525,7 +13528,7 @@ if (k === 'eta') {
         var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
         var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
         el.innerHTML = 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '\u2014')
-            + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
+            + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' clocked in</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>');
     }
 
     // Cache of discovered site metrics for the picker: [{alias, code, label}].
@@ -13890,9 +13893,9 @@ if (k === 'eta') {
             var curTotal = (lastGood >= 0 && totArr[lastGood] != null) ? totArr[lastGood] : 0;
             var hc = (typeof fgLiveHeadcount === 'number' && fgLiveHeadcount > 0) ? fgLiveHeadcount : null;
             var liveTph = hc ? Math.round(curTotal * 12 / hc) : null;
-            html += '<span id="hydra-flowgraph-tph" style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / assigned associates (WATT getStaffingAssignments). Assigned, not clocked-in. Snapshot, not historical.">'
+            html += '<span id="hydra-flowgraph-tph" style="font-size:12px;color:#38bdf8;font-weight:700;border:1px solid #38bdf8;border-radius:4px;padding:3px 8px" title="Current 5-min Total x 12 / clocked-in associates (WATT clockedInAssociates). Live punched-in count, snapshot (not historical).">'
                 + 'Live TPH: ' + (liveTph != null ? liveTph.toLocaleString() : '—')
-                + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' assigned</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
+                + (hc ? ' <span style="opacity:0.7;font-weight:500">@ ' + hc + ' clocked in</span>' : ' <span style="opacity:0.7;font-weight:500">(no HC)</span>')
                 + '</span>';
         })();
         html += '</div>'; // right group
@@ -15002,6 +15005,39 @@ if (k === 'eta') {
                             } catch (e) { reject(new Error('parse: ' + e.message)); }
                         },
                         onerror: function() { reject(new Error('mutation failed')); }
+                    });
+                },
+                onerror: function() { reject(new Error('CSRF failed')); }
+            });
+        });
+    }
+
+    // Current clocked-in associates from WATT (people actually punched in),
+    // used for the live TPH headcount. Same CSRF-then-GraphQL flow as
+    // getStaffingAssignments but a simpler query (no segment map needed).
+    function fetchClockedInAssociates() {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var query = 'query GetClockedInAssociates($nodeId: String!) {\n  clockedInAssociates(nodeId: $nodeId) {\n    associateId\n    employeeId\n    lastInPunchTimestamp\n    associate {\n      associateId\n      employeeId\n      fullName\n      __typename\n    }\n    __typename\n  }\n}';
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+                onload: function(r1) {
+                    var csrf = (r1.responseText || '').trim();
+                    if (!csrf || r1.status !== 200) { reject(new Error('CSRF failed')); return; }
+                    GM_xmlhttpRequest({
+                        method: 'POST', url: wattBase + '/graphql',
+                        headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                        data: JSON.stringify({ query: query, operationName: 'GetClockedInAssociates', variables: { nodeId: node } }),
+                        withCredentials: true,
+                        onload: function(r2) {
+                            try {
+                                var j = JSON.parse(r2.responseText);
+                                resolve((j && j.data && j.data.clockedInAssociates) || []);
+                            } catch(e) { reject(new Error('ClockedIn parse: ' + e.message)); }
+                        },
+                        onerror: function() { reject(new Error('ClockedIn fetch failed')); }
                     });
                 },
                 onerror: function() { reject(new Error('CSRF failed')); }
