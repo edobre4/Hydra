@@ -13429,41 +13429,44 @@ if (k === 'eta') {
     // Fire-and-forget; updates fgLiveHeadcount then optionally re-renders.
     function refreshFlowGraphHeadcount(cb) {
         try {
-            fetchClockedInAssociates().then(function(rows) {
-                rows = rows || [];
+            // Headcount = clocked-in AND scheduled-now. Matches the WATT
+            // dashboard's "Clocked in" figure (verified vs dashboard: raw
+            // clockedInAssociates includes ~12 unscheduled support/PA/HR who
+            // badge in but aren't on the sort schedule). Includes scheduled
+            // associates who are clocked in but NOT assigned to a workstation
+            // (no assignment-gap undercount). Falls back to raw clocked-in
+            // distinct count if the schedule fetch fails.
+            Promise.all([
+                fetchClockedInAssociates(),
+                fetchScheduledAssociates().catch(function() { return null; })
+            ]).then(function(res) {
+                var rows = res[0] || [];
+                var sch = res[1]; // null => schedule unavailable, fall back
+                var schedNow = null;
+                if (Array.isArray(sch)) {
+                    schedNow = {};
+                    var now = Date.now();
+                    sch.forEach(function(s) {
+                        var id = String(s.associateId || (s.associate && s.associate.associateId) || '');
+                        if (!id) return;
+                        (s.shifts || []).forEach(function(shf) {
+                            var st = shf.startTime ? new Date(shf.startTime).getTime() : NaN;
+                            var en = shf.endTime ? new Date(shf.endTime).getTime() : NaN;
+                            if (!isNaN(st) && !isNaN(en) && st <= now && now <= en) schedNow[id] = 1;
+                        });
+                    });
+                }
                 var seen = {};
                 rows.forEach(function(a) {
                     if (!a) return;
                     var ass = a.associate || {};
-                    // Prefer a stable identity: employeeId, then associateId,
-                    // then the nested associate's ids. Dedupe on it so multiple
-                    // punch rows for one person count once.
+                    var aid = String(a.associateId || ass.associateId || '');
+                    if (schedNow && !schedNow[aid]) return; // clocked in but not scheduled now -> support/PA, skip
                     var id = a.employeeId || a.associateId || ass.employeeId || ass.associateId;
                     if (id) seen[String(id)] = 1;
                 });
                 fgLiveHeadcount = Object.keys(seen).length;
                 fgLiveHeadcountAt = Date.now();
-                console.log('[Hydra FlowGraph HC] clockedInAssociates rows=' + rows.length + ' distinct=' + fgLiveHeadcount);
-                try {
-                    var now = Date.now();
-                    var buckets = { '<4h': 0, '4-8h': 0, '8-12h': 0, '12-24h': 0, '>24h': 0, 'noTs': 0 };
-                    rows.forEach(function(a) {
-                        var ts = a && a.lastInPunchTimestamp;
-                        var ms = ts ? new Date(ts).getTime() : NaN;
-                        if (!ts || isNaN(ms)) { buckets.noTs++; return; }
-                        var h = (now - ms) / 3600000;
-                        if (h < 4) buckets['<4h']++; else if (h < 8) buckets['4-8h']++;
-                        else if (h < 12) buckets['8-12h']++; else if (h < 24) buckets['12-24h']++;
-                        else buckets['>24h']++;
-                    });
-                    console.log('[Hydra FlowGraph HC] punch-age buckets', JSON.stringify(buckets),
-                                'sampleRow', JSON.stringify(rows[0]));
-                    var names = rows.map(function(a){
-                        var ass = a.associate || {};
-                        return (ass.fullName || '?') + '  [' + (a.employeeId || ass.employeeId || a.associateId || '') + ']';
-                    }).sort();
-                    console.log('[Hydra FlowGraph HC] clocked-in list (' + names.length + '):\n' + names.join('\n'));
-                } catch (ex) {}
                 if (cb) cb();
             }).catch(function(e) {
                 console.warn('[Hydra FlowGraph] headcount fetch failed:', e && e.message ? e.message : e);
@@ -15071,89 +15074,6 @@ if (k === 'eta') {
             });
         });
     }
-
-    // DEBUG: introspect the ClockedInAssociate GraphQL type so we can see what
-    // fields exist (direct/indirect/tracked/status) to match the WATT
-    // dashboard's "Clocked in" figure. Run hydraDebugClockedInSchema() in the
-    // console. Remove once we know the field to filter on.
-    unsafeWindow.hydraDebugClockedInSchema = function() {
-        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
-        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
-        var q = '{ __type(name: "ClockedInAssociate") { name fields { name type { name kind ofType { name kind } } } } }';
-        GM_xmlhttpRequest({
-            method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
-            onload: function(r1) {
-                var csrf = (r1.responseText || '').trim();
-                GM_xmlhttpRequest({
-                    method: 'POST', url: wattBase + '/graphql',
-                    headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
-                    data: JSON.stringify({ query: q }),
-                    withCredentials: true,
-                    onload: function(r2) {
-                        try {
-                            var j = JSON.parse(r2.responseText);
-                            var t = j && j.data && j.data.__type;
-                            console.log('[Hydra ClockedIn schema] fields:', t && t.fields ? t.fields.map(function(f){ return f.name + ':' + ((f.type && (f.type.name || (f.type.ofType && f.type.ofType.name))) || f.type.kind); }).join(', ') : JSON.stringify(j));
-                        } catch (e) { console.warn('schema parse', e, r2.responseText); }
-                    }
-                });
-            }
-        });
-    };
-
-    // DEBUG: fetch tldAssociates (labor-tracked roster the WATT dashboard uses)
-    // and compare it against clockedInAssociates to see if the intersection
-    // equals the dashboard "Clocked in" figure. Run hydraDebugTld() in console.
-    unsafeWindow.hydraDebugTld = function() {
-        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
-        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
-        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
-        function gql(body, label, done) {
-            GM_xmlhttpRequest({ method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true, onload: function(r1) {
-                var csrf = (r1.responseText || '').trim();
-                GM_xmlhttpRequest({ method: 'POST', url: wattBase + '/graphql',
-                    headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
-                    data: JSON.stringify(body), withCredentials: true,
-                    onload: function(r2) { try { done(JSON.parse(r2.responseText)); } catch (e) { console.warn(label + ' parse', e, r2.responseText); } },
-                    onerror: function(){ console.warn(label + ' fetch err'); } });
-            }, onerror: function(){ console.warn(label + ' csrf err'); } });
-        }
-        gql({ query: 'query T($nodeId: String!){ tldAssociates(nodeId: $nodeId) }', operationName: 'T', variables: { nodeId: node } }, 'tld', function(j) {
-            var tld = j && j.data && j.data.tldAssociates;
-            console.log('[Hydra TLD] type=' + (typeof tld) + ' isArray=' + Array.isArray(tld));
-            console.log('[Hydra TLD] raw:', JSON.stringify(tld).slice(0, 2000));
-            // Normalize tld to a set of ids/strings
-            var tldArr = Array.isArray(tld) ? tld : (typeof tld === 'string' ? (function(){ try { return JSON.parse(tld); } catch(e){ return tld.split(/[,\s]+/); } })() : []);
-            var tldSet = {}; (tldArr || []).forEach(function(x){ var id = (x && (x.employeeId || x.associateId || x.id)) || x; if (id != null) tldSet[String(id)] = 1; });
-            console.log('[Hydra TLD] count=' + Object.keys(tldSet).length);
-            fetchClockedInAssociates().then(function(rows){
-                var ci = (rows||[]).map(function(a){ var ass=a.associate||{}; return { id: String(a.employeeId||a.associateId||ass.employeeId||ass.associateId||''), name: ass.fullName||'?' }; });
-                var inTld = ci.filter(function(c){ return tldSet[c.id]; });
-                var notInTld = ci.filter(function(c){ return !tldSet[c.id]; });
-                console.log('[Hydra TLD] clockedIn=' + ci.length + ' inTLD=' + inTld.length + ' NOTinTLD=' + notInTld.length);
-                console.log('[Hydra TLD] clocked-in NOT in TLD (' + notInTld.length + '):\n' + notInTld.map(function(c){ return c.name + ' [' + c.id + ']'; }).sort().join('\n'));
-            });
-        });
-    };
-
-    // DEBUG: list all root Query fields on the WATT schema so we can find the
-    // one that backs the dashboard's Clocked in / Untracked Indirects counts.
-    unsafeWindow.hydraDebugWattQueries = function() {
-        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
-        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
-        var q = '{ __schema { queryType { fields { name args { name } type { name kind ofType { name kind } } } } } }';
-        GM_xmlhttpRequest({ method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true, onload: function(r1) {
-            var csrf = (r1.responseText || '').trim();
-            GM_xmlhttpRequest({ method: 'POST', url: wattBase + '/graphql',
-                headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
-                data: JSON.stringify({ query: q }), withCredentials: true,
-                onload: function(r2) { try {
-                    var j = JSON.parse(r2.responseText);
-                    var fs = j && j.data && j.data.__schema && j.data.__schema.queryType && j.data.__schema.queryType.fields || [];
-                    console.log('[Hydra WATT queries] (' + fs.length + '):\n' + fs.map(function(f){ return f.name + '(' + (f.args||[]).map(function(a){return a.name;}).join(',') + ')'; }).sort().join('\n'));
-                } catch (e) { console.warn('watt schema parse', e, (r2.responseText||'').slice(0,500)); } } });
-        } });
-    };
 
     // DEBUG: join clockedInAssociates with getStaffingAssignments and print,
     // per clocked-in associate, their assignment segment(s) -- so we can see
