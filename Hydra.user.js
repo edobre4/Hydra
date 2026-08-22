@@ -13382,7 +13382,7 @@ if (k === 'eta') {
     // Set true only around background/auto re-renders so renderFlowGraphChart
     // can avoid destroying an open control; user actions leave it false.
     var _fgBackgroundRender = false;
-    var _fgSizeRetry = false; // one-shot guard for the first-open chart re-size repaint
+    var _fgResizeObs = null; // ResizeObserver on the table wrap; repaints chart when it settles/resizes
 
     // Live headcount snapshot (from WATT getStaffingAssignments) for the
     // current-TPH readout. This is a CURRENT count only (WATT has no history),
@@ -13939,23 +13939,35 @@ if (k === 'eta') {
         wrap.innerHTML = html;
 
         // First-open sizing race: this can run before the tab's layout has
-        // settled, so wrap.clientWidth/Height were stale/too small and the
-        // canvas rendered tiny (previously only fixed by a manual refresh).
-        // Re-measure next frame; if the container is now meaningfully bigger
-        // than what we sized against, repaint once (_fgSizeRetry guards loops).
-        (function() {
-            if (_fgSizeRetry) { _fgSizeRetry = false; return; }
-            requestAnimationFrame(function() {
+        // settled, so wrap.clientWidth/Height were stale/small and the canvas
+        // rendered tiny (previously only a manual refresh fixed it). Attach a
+        // ResizeObserver to the wrap that repaints the chart when its box
+        // actually changes size. This reliably fires once layout settles on
+        // first open, and also handles window resize / panel drag. We keep a
+        // single observer per wrap element and debounce via rAF.
+        if (typeof ResizeObserver === 'function' && wrap === document.getElementById('hydra-table-wrap')) {
+            if (_fgResizeObs) { try { _fgResizeObs.disconnect(); } catch (e) {} _fgResizeObs = null; }
+            var _lastW = wrap.clientWidth, _lastH = wrap.clientHeight, _roScheduled = false;
+            _fgResizeObs = new ResizeObserver(function() {
                 if (ibActiveTab !== 'flowgraph') return;
-                if (wrap !== document.getElementById('hydra-table-wrap')) return;
-                if (Math.abs(wrap.clientWidth - wrapClientWAtRender) > 8 ||
-                    Math.abs(wrap.clientHeight - wrapClientHAtRender) > 8) {
-                    _fgSizeRetry = true;
+                var w = document.getElementById('hydra-table-wrap');
+                if (!w) return;
+                if (Math.abs(w.clientWidth - _lastW) < 4 && Math.abs(w.clientHeight - _lastH) < 4) return;
+                _lastW = w.clientWidth; _lastH = w.clientHeight;
+                if (_roScheduled) return;
+                _roScheduled = true;
+                requestAnimationFrame(function() {
+                    _roScheduled = false;
+                    if (ibActiveTab !== 'flowgraph') return;
+                    // Don't fight an open <select>/focused input mid-interaction.
+                    var ae = document.activeElement;
+                    if (ae && w.contains(ae) && /^(SELECT|INPUT)$/.test(ae.tagName)) return;
                     var prevBg = _fgBackgroundRender; _fgBackgroundRender = true;
-                    try { renderFlowGraphChart(wrap); } finally { _fgBackgroundRender = prevBg; }
-                }
+                    try { renderFlowGraphChart(w); } finally { _fgBackgroundRender = prevBg; }
+                });
             });
-        })();
+            _fgResizeObs.observe(wrap);
+        }
 
         // Wire inline controls
         var tIn = document.getElementById('hydra-flowgraph-target');
@@ -20693,6 +20705,7 @@ if (k === 'eta') {
                 return;
             } else if (activeView === 'IB') {
                 ibActiveTab = tab.dataset.tab;
+                if (ibActiveTab !== 'flowgraph' && _fgResizeObs) { try { _fgResizeObs.disconnect(); } catch (e) {} _fgResizeObs = null; }
                 renderIBTabs();
                 renderIBTable();
             } else {
