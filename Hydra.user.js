@@ -13458,6 +13458,11 @@ if (k === 'eta') {
                     });
                     console.log('[Hydra FlowGraph HC] punch-age buckets', JSON.stringify(buckets),
                                 'sampleRow', JSON.stringify(rows[0]));
+                    var names = rows.map(function(a){
+                        var ass = a.associate || {};
+                        return (ass.fullName || '?') + '  [' + (a.employeeId || ass.employeeId || a.associateId || '') + ']';
+                    }).sort();
+                    console.log('[Hydra FlowGraph HC] clocked-in list (' + names.length + '):\n' + names.join('\n'));
                 } catch (ex) {}
                 if (cb) cb();
             }).catch(function(e) {
