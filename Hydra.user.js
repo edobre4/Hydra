@@ -9430,15 +9430,24 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
     function gmFetchRaw(url) {
         return new Promise(function(resolve, reject) {
+            var _settled = false;
+            var _watchdog = setTimeout(function() {
+                if (_settled) return;
+                _settled = true;
+                reject(new Error('client-timeout-60s: ' + url));
+            }, 60000);
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
                 withCredentials: true,
+                timeout: 60000,
                 onload: function(r) {
+                    if (_settled) return; _settled = true; clearTimeout(_watchdog);
                     if (r.status >= 200 && r.status < 300) { resolve(r.responseText); }
                     else { reject(new Error('HTTP ' + r.status + ' ' + url)); }
                 },
-                onerror: function(e) { reject(new Error('Network error: ' + url)); }
+                onerror: function(e) { if (_settled) return; _settled = true; clearTimeout(_watchdog); reject(new Error('Network error: ' + url)); },
+                ontimeout: function() { if (_settled) return; _settled = true; clearTimeout(_watchdog); reject(new Error('timeout: ' + url)); }
             });
         });
     }
@@ -9882,6 +9891,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (!_fgCtnCardsOn()) { if (cb) cb(); return; }
         var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
         _flowGraphCtnLoading = true;
+        // Watchdog: never let a stalled pull wedge the loading guard (which
+        // would block all future auto-refreshes). Clears the flag after 90s.
+        var _ctnWatchdog = setTimeout(function() {
+            if (_flowGraphCtnLoading) {
+                _flowGraphCtnLoading = false;
+                _fgUnthrottled = false;
+                console.warn('[Hydra FlowGraph Ctn] watchdog cleared stuck loading flag after 90s');
+            }
+        }, 90000);
         var needWS = fgCardWSBuffer || fgCardWIP;
         var needRc = fgCardReceived || fgCardWIP;
         var needSt = fgCardStaged  || fgCardWIP;
@@ -9944,6 +9962,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }, function(e){ _fgUnthrottled = false; throw e; });
             }).then(function(counts) {
                 _flowGraphCtnLoading = false;
+                clearTimeout(_ctnWatchdog);
                 flowGraphCtn = {
                     wsbuffer: needWS ? _fgCountWSBuffer() : flowGraphCtn.wsbuffer,
                     received: needRc ? counts.received : flowGraphCtn.received,
@@ -9952,7 +9971,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 };
                 if (cb) cb();
             });
-        }).catch(function(e) { _flowGraphCtnLoading = false; console.warn('[Hydra FlowGraph Ctn] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
+        }).catch(function(e) { _flowGraphCtnLoading = false; clearTimeout(_ctnWatchdog); console.warn('[Hydra FlowGraph Ctn] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
     }
 
     unsafeWindow.hydraDebugFlowGraphCtn = function() {
