@@ -9869,7 +9869,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return t;
     }
     function _fgCountStaged() {
-        var arr = obTableData.customstaged; if (!Array.isArray(arr)) return null;
+        // Matches the Custom View "Staged" tab: pullCustomStacked(staged)
+        // populates obTableData.linearchutes; the tab's TOTALS(N) = row count.
+        var arr = obTableData.linearchutes; if (!Array.isArray(arr)) return null;
         return arr.length;
     }
 
@@ -9896,7 +9898,16 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var jobs = [];
                 if (needWS) jobs.push(pullWSBuffer(node));
                 if (needRc) jobs.push(pullReceived(node));
-                if (needSt) jobs.push(pullCustomStaged(node));
+                // Staged card must match the Custom View "Staged" tab, which is
+                // pullCustomStacked() with oneDFilterSource='staged' (populates
+                // obTableData.linearchutes). Temporarily force the source to
+                // 'staged' for this pull, then restore the user's selection.
+                if (needSt) {
+                    var _savedSrc = oneDFilterSource;
+                    oneDFilterSource = 'staged';
+                    jobs.push(pullCustomStacked(node).then(function(r){ oneDFilterSource = _savedSrc; return r; },
+                                                          function(e){ oneDFilterSource = _savedSrc; throw e; }));
+                }
                 return Promise.all(jobs).then(function(r){ _fgUnthrottled = false; return r; }, function(e){ _fgUnthrottled = false; throw e; });
             }).then(function() {
                 _flowGraphCtnLoading = false;
