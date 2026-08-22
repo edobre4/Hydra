@@ -9902,6 +9902,8 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 var _stagedCount = null, _receivedCount = null;
                 var _savedSrc = oneDFilterSource;
                 var _savedFilter = CUSTOM_STACKED_FILTER;
+                var _savedUtil = oneDFilterUtil;
+                oneDFilterUtil = false; // cards only need row counts, skip per-load utilization enrichment
                 var parallel = [];
                 if (needWS) parallel.push(pullWSBuffer(node));
 
@@ -9930,9 +9932,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     });
                 }
                 seq = seq.then(function() {
-                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter;
+                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter; oneDFilterUtil = _savedUtil;
                 }, function(e) {
-                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter; throw e;
+                    oneDFilterSource = _savedSrc; CUSTOM_STACKED_FILTER = _savedFilter; oneDFilterUtil = _savedUtil; throw e;
                 });
                 parallel.push(seq);
 
