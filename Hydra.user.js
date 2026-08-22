@@ -13705,20 +13705,24 @@ if (k === 'eta') {
         var hIn = document.getElementById('hydra-flowgraph-hours');
         if (hIn) hIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); }); }
+            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; flowGraphNC.processed = null; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); }); if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); }); }
         });
         var wmSel = document.getElementById('hydra-flowgraph-winmode');
         if (wmSel) wmSel.addEventListener('change', function() {
             flowGraphWindowMode = this.value || 'hours';
             flowGraphShiftDate = ''; // reset to auto-anchor when switching windows
+            flowGraphNC.processed = null; // NC window changed -> refetch
             try { saveAllSettings(); } catch(e){}
             refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
+            if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
         });
         var sdIn = document.getElementById('hydra-flowgraph-shiftdate');
         if (sdIn) sdIn.addEventListener('change', function() {
             flowGraphShiftDate = /^\d{4}-\d{2}-\d{2}$/.test(this.value) ? this.value : '';
+            flowGraphNC.processed = null; // NC window changed -> refetch
             try { saveAllSettings(); } catch(e){}
             refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
+            if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
         });
         var rmSel = document.getElementById('hydra-flowgraph-ratemode');
         if (rmSel) rmSel.addEventListener('change', function() {
@@ -18231,6 +18235,8 @@ if (k === 'eta') {
                     // inbound loads. (And other IB tabs never pull Flow Graph.)
                     if (ibActiveTab === 'flowgraph') {
                         setStatus('Refreshing Flow Graph...');
+                        flowGraphNC.processed = null; // force NC refetch on manual refresh
+                        if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
                         return refreshFlowGraph(function() {
                             _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
                             setStatus('\u2714 Flow Graph updated \u2014 ' + new Date().toLocaleTimeString());
