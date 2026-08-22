@@ -13507,7 +13507,7 @@ if (k === 'eta') {
     // Patch the NC card in place (avoids a full re-render on async FCLM resolve).
     function _fgUpdateNCCard() {
         var el = document.getElementById('hydra-flowgraph-nc-card');
-        if (!el) { if (ibActiveTab === 'flowgraph') renderIBTable(); return; } // card not built yet
+        if (!el) { if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); return; } // card not built yet
         var tmp = document.createElement('div'); tmp.innerHTML = _fgNCCardHtml();
         var fresh = tmp.firstChild;
         if (fresh) el.replaceWith(fresh);
@@ -13537,7 +13537,7 @@ if (k === 'eta') {
     // Patch the container cards in place after an async pull resolves.
     function _fgUpdateCtnCards() {
         var el = document.getElementById('hydra-flowgraph-ctn-cards');
-        if (!el) { if (ibActiveTab === 'flowgraph') renderIBTable(); return; }
+        if (!el) { if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); return; }
         var tmp = document.createElement('div'); tmp.innerHTML = _fgCtnCardsHtml();
         var fresh = tmp.firstChild; if (fresh) el.replaceWith(fresh);
     }
@@ -13815,12 +13815,12 @@ if (k === 'eta') {
         // then patch ONLY the Live TPH badge in place (a full re-render here
         // would destroy an open <select>/focused input mid-interaction).
         if (fgLiveHeadcount === null || (Date.now() - fgLiveHeadcountAt) > 120000) {
-            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph') _fgUpdateTphBadge(); });
+            refreshFlowGraphHeadcount(function() { if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateTphBadge(); });
         }
         // NC tracking: refresh from FCLM when enabled + stale (>2 min), then
         // patch the NC card in place (FCLM fetch is heavy; don't full re-render).
         if (flowGraphNCEnabled && (flowGraphNC.processed === null || (Date.now() - flowGraphNC.fetchedAt) > 120000)) {
-            refreshFlowGraphNC(function() { if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
+            refreshFlowGraphNC(function() { if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); });
         }
         // OB container cards: refresh when enabled + stale (>5 min), patch in place.
         // These run the real per-loadgroup OB pulls (heavy), so keep the cadence slow.
@@ -13828,7 +13828,7 @@ if (k === 'eta') {
         var _fgCtnNever = (flowGraphCtn.wsbuffer === null && flowGraphCtn.received === null && flowGraphCtn.staged === null);
         if (_fgCtnCardsOn() && !_flowGraphCtnLoading && (_fgCtnNever || _fgCtnStale || (Date.now() - flowGraphCtn.fetchedAt) > 300000)) {
             _fgCtnStale = false;
-            refreshFlowGraphCtn(function() { if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
+            refreshFlowGraphCtn(function() { if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateCtnCards(); });
         }
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
@@ -14017,7 +14017,7 @@ if (k === 'eta') {
             if (_fgResizeObs) { try { _fgResizeObs.disconnect(); } catch (e) {} _fgResizeObs = null; }
             var _lastW = wrap.clientWidth, _lastH = wrap.clientHeight, _roScheduled = false;
             _fgResizeObs = new ResizeObserver(function() {
-                if (ibActiveTab !== 'flowgraph') return;
+                if (ibActiveTab !== 'flowgraph' || activeView !== 'IB') return;
                 var w = document.getElementById('hydra-table-wrap');
                 if (!w) return;
                 if (Math.abs(w.clientWidth - _lastW) < 4 && Math.abs(w.clientHeight - _lastH) < 4) return;
@@ -14026,7 +14026,7 @@ if (k === 'eta') {
                 _roScheduled = true;
                 requestAnimationFrame(function() {
                     _roScheduled = false;
-                    if (ibActiveTab !== 'flowgraph') return;
+                    if (ibActiveTab !== 'flowgraph' || activeView !== 'IB') return;
                     // Don't fight an open <select>/focused input mid-interaction.
                     var ae = document.activeElement;
                     if (ae && w.contains(ae) && /^(SELECT|INPUT)$/.test(ae.tagName)) return;
@@ -14056,7 +14056,7 @@ if (k === 'eta') {
         var hIn = document.getElementById('hydra-flowgraph-hours');
         if (hIn) hIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; flowGraphNC.processed = null; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); }); if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); }); }
+            if (!isNaN(v) && v > 0 && v <= 24) { flowGraphHours = v; flowGraphNC.processed = null; try { saveAllSettings(); } catch(e){} refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderFlowGraphChart(wrap); }); if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); }); }
         });
         var wmSel = document.getElementById('hydra-flowgraph-winmode');
         if (wmSel) wmSel.addEventListener('change', function() {
@@ -14064,16 +14064,16 @@ if (k === 'eta') {
             flowGraphShiftDate = ''; // reset to auto-anchor when switching windows
             flowGraphNC.processed = null; // NC window changed -> refetch
             try { saveAllSettings(); } catch(e){}
-            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
-            if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
+            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderFlowGraphChart(wrap); });
+            if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); });
         });
         var sdIn = document.getElementById('hydra-flowgraph-shiftdate');
         if (sdIn) sdIn.addEventListener('change', function() {
             flowGraphShiftDate = /^\d{4}-\d{2}-\d{2}$/.test(this.value) ? this.value : '';
             flowGraphNC.processed = null; // NC window changed -> refetch
             try { saveAllSettings(); } catch(e){}
-            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderFlowGraphChart(wrap); });
-            if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
+            refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderFlowGraphChart(wrap); });
+            if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); });
         });
         var rmSel = document.getElementById('hydra-flowgraph-ratemode');
         if (rmSel) rmSel.addEventListener('change', function() {
@@ -18733,10 +18733,10 @@ if (k === 'eta') {
                     if (ibActiveTab === 'flowgraph') {
                         setStatus('Refreshing Flow Graph...');
                         flowGraphNC.processed = null; // force NC refetch on manual refresh
-                        if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
-                        if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
+                        if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateNCCard(); });
+                        if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateCtnCards(); });
                         return refreshFlowGraph(function() {
-                            _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
+                            _paint(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
                             setStatus('\u2714 Flow Graph updated \u2014 ' + new Date().toLocaleTimeString());
                         });
                     }
@@ -18989,6 +18989,10 @@ if (k === 'eta') {
         if (activeView === 'IB') ibTableZoom = tableZoom;
         else if (activeView === 'OB') obTableZoom = tableZoom;
         activeView = view;
+        // Kill the flow-graph resize observer on any view switch: the wrap is
+        // shared across views, and a repaint from the observer would paint the
+        // flow graph over the OB/PS table.
+        if (_fgResizeObs) { try { _fgResizeObs.disconnect(); } catch (e) {} _fgResizeObs = null; }
         // Phase 1f re-entry fix: any return to a classic view cleanly exits
         // Hydra Vision so the ignite guard (!puActive) can fire again.
         if (typeof puActive !== 'undefined' && puActive) { puActive = false; puActivePane = null; }
@@ -20673,7 +20677,7 @@ if (k === 'eta') {
                 _fgCtnStale = true; // refetch with the new filter, keep old values meanwhile
                 try { saveAllSettings(); } catch (ex) {}
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB' && _fgCtnCardsOn()) {
-                    refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
+                    refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') _fgUpdateCtnCards(); });
                 }
             });
         });
@@ -20730,7 +20734,7 @@ if (k === 'eta') {
                     if (eIn) { var ne = norm24(eIn.value); if (ne) { sh.end = ne; eIn.value = ne; } else if (sh.end) { eIn.value = sh.end; } }
                     try { saveAllSettings(); } catch (ex) {}
                     if (ibActiveTab === 'flowgraph' && activeView === 'IB' && flowGraphWindowMode === sh.id) {
-                        refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph') renderIBTable(); });
+                        refreshFlowGraph(function(){ if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable(); });
                     } else if (ibActiveTab === 'flowgraph' && activeView === 'IB') {
                         renderIBTable(); // refresh the picker labels
                     }
