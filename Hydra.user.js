@@ -9556,6 +9556,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Each is a live count; wip = wsbuffer + received + staged. null = not yet loaded.
     var flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' };
     var _flowGraphCtnLoading = false;
+    var _fgCtnStale = false;  // force a card refetch without clearing old values
     // When true, the WS Buffer / Received / Staged pulls fire ALL loadgroup
     // requests at once (no batch throttle) — used by the card refresh so it's
     // fully parallel. OB tabs leave it false (batched to avoid 429s).
@@ -11278,7 +11279,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] WS Buffer SSP error:', c.vrid, e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 100000 : 10;
+                var _CONC = _fgUnthrottled ? 50 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch, _bIdx) {
@@ -11702,7 +11703,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Received err', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 100000 : 10;
+                var _CONC = _fgUnthrottled ? 50 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -11943,7 +11944,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Custom Staged error:', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 100000 : 10;
+                var _CONC = _fgUnthrottled ? 50 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -13668,7 +13669,10 @@ if (k === 'eta') {
         }
         // OB container cards: refresh when enabled + stale (>5 min), patch in place.
         // These run the real per-loadgroup OB pulls (heavy), so keep the cadence slow.
-        if (_fgCtnCardsOn() && ((flowGraphCtn.wsbuffer === null && flowGraphCtn.received === null && flowGraphCtn.staged === null) || (Date.now() - flowGraphCtn.fetchedAt) > 300000)) {
+        // Old card values stay visible while a refetch runs (never cleared).
+        var _fgCtnNever = (flowGraphCtn.wsbuffer === null && flowGraphCtn.received === null && flowGraphCtn.staged === null);
+        if (_fgCtnCardsOn() && !_flowGraphCtnLoading && (_fgCtnNever || _fgCtnStale || (Date.now() - flowGraphCtn.fetchedAt) > 300000)) {
+            _fgCtnStale = false;
             refreshFlowGraphCtn(function() { if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
         }
 
@@ -18398,7 +18402,6 @@ if (k === 'eta') {
                         setStatus('Refreshing Flow Graph...');
                         flowGraphNC.processed = null; // force NC refetch on manual refresh
                         if (flowGraphNCEnabled) refreshFlowGraphNC(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
-                        flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' };
                         if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
                         return refreshFlowGraph(function() {
                             _paint(function(){ if (ibActiveTab === 'flowgraph') { _fgBackgroundRender = true; try { renderFlowGraphChart(document.getElementById('hydra-table-wrap')); } finally { _fgBackgroundRender = false; } } });
@@ -20313,7 +20316,7 @@ if (k === 'eta') {
             el.checked = !!getset();
             el.addEventListener('change', function(){
                 getset(this.checked);
-                flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' }; // force refetch
+                _fgCtnStale = true; // refetch but keep showing old values until new arrive
                 try { saveAllSettings(); } catch (ex) {}
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB') { renderIBTable(); if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); }); }
             });
