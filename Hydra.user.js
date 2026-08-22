@@ -11405,7 +11405,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] WS Buffer SSP error:', c.vrid, e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 50 : 10;
+                var _CONC = _fgUnthrottled ? 10 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch, _bIdx) {
@@ -11829,7 +11829,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Received err', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 50 : 10;
+                var _CONC = _fgUnthrottled ? 10 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -11935,7 +11935,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Custom View SSP error:', e); });
             });
         });
-                var _CONC = 20;
+                var _CONC = _fgUnthrottled ? 10 : 20; // cards: 10 (SSP throttles above); OB tab: 20
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -12070,7 +12070,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Custom Staged error:', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 50 : 10;
+                var _CONC = _fgUnthrottled ? 10 : 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
