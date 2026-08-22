@@ -1,5 +1,15 @@
 # Hydra Patch Notes
 
+## v3.75 — 2026-08-22
+
+### Flow Graph
+- **New-install defaults now match the ORD9 reference setup:** Day shift
+  window, Target 527/5min, NC tracking on (31/5min), Containers Loaded
+  target on (10/5min), all four container cards enabled (WS Buffer `WS`,
+  Received `DD1`, Staged any, Container WIP). Formula seeds aligned: TPH
+  drops the /220 divisor; Containers Loaded (all) = `GaylordDock`, enabled.
+  Existing users' saved settings are unaffected.
+
 ## v3.74 — 2026-08-22
 
 ### Flow Graph
