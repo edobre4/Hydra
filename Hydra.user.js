@@ -15195,6 +15195,79 @@ if (k === 'eta') {
         }).catch(function(e){ console.warn('[Hydra ClockedIn+Seg] failed', e); });
     };
 
+    // Fetch scheduledAssociates (WATT schedule roster with shift windows +
+    // departments). Used to reproduce the dashboard's "Clocked in" =
+    // clocked-in AND scheduled-now.
+    function fetchScheduledAssociates() {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var query = 'query GetScheduledAssociates($nodeId: String!) {\n  scheduledAssociates(nodeId: $nodeId) {\n    associateId\n    shifts {\n      startTime\n      endTime\n      department\n      __typename\n    }\n    associate {\n      associateId\n      employeeId\n      fullName\n      __typename\n    }\n    __typename\n  }\n}';
+        return new Promise(function(resolve, reject) {
+            GM_xmlhttpRequest({
+                method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+                onload: function(r1) {
+                    var csrf = (r1.responseText || '').trim();
+                    if (!csrf || r1.status !== 200) { reject(new Error('CSRF failed')); return; }
+                    GM_xmlhttpRequest({
+                        method: 'POST', url: wattBase + '/graphql',
+                        headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                        data: JSON.stringify({ query: query, operationName: 'GetScheduledAssociates', variables: { nodeId: node } }),
+                        withCredentials: true,
+                        onload: function(r2) {
+                            try {
+                                var j = JSON.parse(r2.responseText);
+                                resolve((j && j.data && j.data.scheduledAssociates) || []);
+                            } catch(e) { reject(new Error('Scheduled parse: ' + e.message)); }
+                        },
+                        onerror: function() { reject(new Error('Scheduled fetch failed')); }
+                    });
+                },
+                onerror: function() { reject(new Error('CSRF failed')); }
+            });
+        });
+    }
+
+    // DEBUG: join clocked-in with scheduledAssociates and report how many
+    // clocked-in people have a shift covering NOW (the dashboard's Clocked in).
+    unsafeWindow.hydraDebugScheduled = function() {
+        Promise.all([fetchClockedInAssociates(), fetchScheduledAssociates()]).then(function(res) {
+            var ci = res[0] || [], sch = res[1] || [];
+            var now = Date.now();
+            var schedNow = {}, schedAny = {}, deptById = {};
+            sch.forEach(function(s) {
+                var id = String(s.associateId || (s.associate && s.associate.associateId) || '');
+                if (!id) return;
+                schedAny[id] = 1;
+                (s.shifts || []).forEach(function(sh) {
+                    var st = sh.startTime ? new Date(sh.startTime).getTime() : NaN;
+                    var en = sh.endTime ? new Date(sh.endTime).getTime() : NaN;
+                    if (!isNaN(st) && !isNaN(en) && st <= now && now <= en) {
+                        schedNow[id] = 1;
+                        deptById[id] = sh.department || '?';
+                    }
+                });
+            });
+            var inNow = [], notSched = [], schedNotNow = [];
+            ci.forEach(function(a) {
+                var ass = a.associate || {};
+                var id = String(a.associateId || ass.associateId || '');
+                var label = (ass.fullName || '?') + ' [' + (a.employeeId || ass.employeeId || '') + ']';
+                if (schedNow[id]) inNow.push(label + ' dept=' + deptById[id]);
+                else if (schedAny[id]) schedNotNow.push(label);
+                else notSched.push(label);
+            });
+            console.log('[Hydra Sched] scheduledRoster=' + sch.length + ' clockedIn=' + ci.length +
+                        ' clockedIn&scheduledNOW=' + inNow.length + ' clockedIn&scheduledOtherTime=' + schedNotNow.length +
+                        ' clockedIn&NOTscheduled=' + notSched.length);
+            console.log('[Hydra Sched] clocked-in NOT scheduled (' + notSched.length + '):\n' + notSched.sort().join('\n'));
+            console.log('[Hydra Sched] clocked-in scheduled other-time (' + schedNotNow.length + '):\n' + schedNotNow.sort().join('\n'));
+            var deptTally = {};
+            inNow.forEach(function(l){ var d = l.split(' dept=')[1]; deptTally[d] = (deptTally[d]||0)+1; });
+            console.log('[Hydra Sched] scheduled-now dept tally: ' + JSON.stringify(deptTally));
+        }).catch(function(e){ console.warn('[Hydra Sched] failed', e); });
+    };
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
