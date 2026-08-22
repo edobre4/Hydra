@@ -151,6 +151,10 @@
         flowGraphNCTarget:   50,
         flowGraphCtnEnabled: false,
         flowGraphCtnTarget:  60,
+        fgCardWSBuffer:      false,
+        fgCardReceived:      false,
+        fgCardStaged:        false,
+        fgCardWIP:           false,
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -3630,6 +3634,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphShiftDate: flowGraphShiftDate,
             flowGraphNCEnabled: flowGraphNCEnabled, flowGraphNCTarget: flowGraphNCTarget,
             flowGraphCtnEnabled: flowGraphCtnEnabled, flowGraphCtnTarget: flowGraphCtnTarget,
+            fgCardWSBuffer: fgCardWSBuffer, fgCardReceived: fgCardReceived, fgCardStaged: fgCardStaged, fgCardWIP: fgCardWIP,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3791,6 +3796,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (+s.flowGraphNCTarget > 0) flowGraphNCTarget = +s.flowGraphNCTarget;
         if (typeof s.flowGraphCtnEnabled === 'boolean') flowGraphCtnEnabled = s.flowGraphCtnEnabled;
         if (+s.flowGraphCtnTarget > 0) flowGraphCtnTarget = +s.flowGraphCtnTarget;
+        if (typeof s.fgCardWSBuffer === 'boolean') fgCardWSBuffer = s.fgCardWSBuffer;
+        if (typeof s.fgCardReceived === 'boolean') fgCardReceived = s.fgCardReceived;
+        if (typeof s.fgCardStaged === 'boolean') fgCardStaged = s.fgCardStaged;
+        if (typeof s.fgCardWIP === 'boolean') fgCardWIP = s.fgCardWIP;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4546,6 +4555,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphShiftDate: flowGraphShiftDate,
                 flowGraphNCEnabled: flowGraphNCEnabled, flowGraphNCTarget: flowGraphNCTarget,
                 flowGraphCtnEnabled: flowGraphCtnEnabled, flowGraphCtnTarget: flowGraphCtnTarget,
+                fgCardWSBuffer: fgCardWSBuffer, fgCardReceived: fgCardReceived, fgCardStaged: fgCardStaged, fgCardWIP: fgCardWIP,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4740,6 +4750,10 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (+s.flowGraphNCTarget > 0) flowGraphNCTarget = +s.flowGraphNCTarget;
             if (typeof s.flowGraphCtnEnabled === 'boolean') flowGraphCtnEnabled = s.flowGraphCtnEnabled;
             if (+s.flowGraphCtnTarget > 0) flowGraphCtnTarget = +s.flowGraphCtnTarget;
+            if (typeof s.fgCardWSBuffer === 'boolean') fgCardWSBuffer = s.fgCardWSBuffer;
+            if (typeof s.fgCardReceived === 'boolean') fgCardReceived = s.fgCardReceived;
+            if (typeof s.fgCardStaged === 'boolean') fgCardStaged = s.fgCardStaged;
+            if (typeof s.fgCardWIP === 'boolean') fgCardWIP = s.fgCardWIP;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -5470,6 +5484,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<span style="font-size:12px;color:var(--h-text,#e8eaf0)">Containers Loaded target</span>' +
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Delta vs target on the Containers Loaded (all) card. Set target on the tab.</span>' +
                             '</label>' +
+                            '<div style="font-size:11px;font-weight:600;color:var(--h-muted,#aab4c0);margin:8px 0 2px;border-top:1px solid var(--h-border2,#3a4a5c);padding-top:6px">Container cards (live counts)</div>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-wsbuffer"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">WS Buffer</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">closed, not staged (stacked)</span></label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-received"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Received</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">received, location contains RECEIVE</span></label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-staged"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Staged</span></label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-wip"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Container WIP</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">WS Buffer + Received + Staged</span></label>' +
                             '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Define metrics as formulas over PMET metrics (use <b>+ metric</b> to insert one; supports + - \u00d7 \u00f7 and parentheses). Enabled metrics show on the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
                         '</div>' +
@@ -9533,6 +9552,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // settled span (apples-to-apples target). fetchedAt = ms of last pull.
     var flowGraphNC = { processed: null, settledEndMs: 0, targetBuckets: 0, fetchedAt: 0, node: '' };
     var _flowGraphNCLoading = false;
+    // OB container-count cards (current snapshot via Vista getContainersDetailByCriteria).
+    // Each is a live count; wip = wsbuffer + received + staged. null = not yet loaded.
+    var flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' };
+    var _flowGraphCtnLoading = false;
+    // Per-card enable flags (Settings).
+    var fgCardWSBuffer = false, fgCardReceived = false, fgCardStaged = false, fgCardWIP = false;
 
     // Single source of truth for the chart's toggleable series (the "metrics"
     // the user sees). `dataKey` maps to fgComputeSeries() output. `defaultOn`
@@ -9822,6 +9847,50 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         pullFlowGraphNC(node).then(function() { _flowGraphNCLoading = false; if (cb) cb(); })
             .catch(function(e) { _flowGraphNCLoading = false; console.warn('[Hydra FlowGraph NC] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
     }
+
+    // Are any OB container-count cards enabled? (WS Buffer / Received / Staged / WIP)
+    function _fgCtnCardsOn() { return fgCardWSBuffer || fgCardReceived || fgCardStaged || fgCardWIP; }
+
+    // Refresh OB container-state counts via Vista getContainersDetailByCriteria.
+    // WS Buffer = Stacked (closed, not staged); Received = InFacilityReceived
+    // filtered to locations containing "RECEIVE"; Staged = Staged. WIP = sum.
+    // Only fetches the states needed by enabled cards.
+    function refreshFlowGraphCtn(cb) {
+        if (!_fgCtnCardsOn()) { if (cb) cb(); return; }
+        var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
+        _flowGraphCtnLoading = true;
+        var needWS = fgCardWSBuffer || fgCardWIP;
+        var needRc = fgCardReceived || fgCardWIP;
+        var needSt = fgCardStaged  || fgCardWIP;
+        function locOf(c) { return String(c.locationName || c.location || c.label || c.scannableId || ''); }
+        var tokenReady = (typeof csrfToken !== 'undefined' && csrfToken) ? Promise.resolve() : (typeof fetchToken === 'function' ? fetchToken() : Promise.resolve());
+        return tokenReady.then(function() {
+        var jobs = [
+            needWS ? _sdtCriteria(node, 'Stacked') : Promise.resolve(null),
+            needRc ? _sdtCriteria(node, 'InFacilityReceived') : Promise.resolve(null),
+            needSt ? _sdtCriteria(node, 'Staged') : Promise.resolve(null)
+        ];
+        return Promise.all(jobs).then(function(res) {
+            _flowGraphCtnLoading = false;
+            var ws = res[0], rc = res[1], st = res[2];
+            flowGraphCtn = {
+                wsbuffer: ws ? ws.length : (flowGraphCtn.wsbuffer),
+                received: rc ? rc.filter(function(c){ return /RECEIVE/i.test(locOf(c)); }).length : (flowGraphCtn.received),
+                staged:   st ? st.length : (flowGraphCtn.staged),
+                fetchedAt: Date.now(), node: node
+            };
+            if (cb) cb();
+        });
+        }).catch(function(e) { _flowGraphCtnLoading = false; console.warn('[Hydra FlowGraph Ctn] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
+    }
+
+    unsafeWindow.hydraDebugFlowGraphCtn = function() {
+        fgCardWSBuffer = fgCardReceived = fgCardStaged = true;
+        refreshFlowGraphCtn(function() {
+            console.log('[Hydra FlowGraph Ctn] WS=' + flowGraphCtn.wsbuffer + ' Received=' + flowGraphCtn.received + ' Staged=' + flowGraphCtn.staged +
+                ' WIP=' + ((flowGraphCtn.wsbuffer||0)+(flowGraphCtn.received||0)+(flowGraphCtn.staged||0)));
+        });
+    };
 
     unsafeWindow.hydraDebugFlowGraphNC = function() {
         var node = (document.getElementById('hydra-node-input') ? (document.getElementById('hydra-node-input').value || DEFAULT_NODE) : DEFAULT_NODE).toUpperCase();
@@ -13262,6 +13331,35 @@ if (k === 'eta') {
         if (fresh) el.replaceWith(fresh);
     }
 
+    // OB container-count cards (WS Buffer / Received / Staged / Container WIP).
+    function _fgCtnCardsHtml() {
+        function card(label, val, color) {
+            var v = (val == null) ? '\u2026' : Math.round(val).toLocaleString();
+            return '<div style="min-width:96px;border:1px solid ' + color + ';border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center">' +
+                '<div style="font-size:10px;color:' + color + ';font-weight:600;white-space:nowrap">' + label + '</div>' +
+                '<div style="font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0)">' + v + '</div>' +
+                '<div style="font-size:9px;color:var(--h-muted2,#7a8a9a)">containers</div>' +
+                '</div>';
+        }
+        var h = '<span id="hydra-flowgraph-ctn-cards" style="display:contents">';
+        if (fgCardWSBuffer) h += card('WS Buffer', flowGraphCtn.wsbuffer, '#c084fc');
+        if (fgCardReceived) h += card('Received', flowGraphCtn.received, '#38bdf8');
+        if (fgCardStaged)   h += card('Staged', flowGraphCtn.staged, '#fbbf24');
+        if (fgCardWIP) {
+            var wip = (flowGraphCtn.wsbuffer == null && flowGraphCtn.received == null && flowGraphCtn.staged == null) ? null
+                : ((flowGraphCtn.wsbuffer || 0) + (flowGraphCtn.received || 0) + (flowGraphCtn.staged || 0));
+            h += card('Container WIP', wip, '#34d399');
+        }
+        return h + '</span>';
+    }
+    // Patch the container cards in place after an async pull resolves.
+    function _fgUpdateCtnCards() {
+        var el = document.getElementById('hydra-flowgraph-ctn-cards');
+        if (!el) { if (ibActiveTab === 'flowgraph') renderIBTable(); return; }
+        var tmp = document.createElement('div'); tmp.innerHTML = _fgCtnCardsHtml();
+        var fresh = tmp.firstChild; if (fresh) el.replaceWith(fresh);
+    }
+
     // Recompute + patch only the Live TPH badge text (no full re-render), so
     // async headcount/refresh updates don't destroy an open dropdown or input.
     function _fgUpdateTphBadge() {
@@ -13542,6 +13640,10 @@ if (k === 'eta') {
         if (flowGraphNCEnabled && (flowGraphNC.processed === null || (Date.now() - flowGraphNC.fetchedAt) > 120000)) {
             refreshFlowGraphNC(function() { if (ibActiveTab === 'flowgraph') _fgUpdateNCCard(); });
         }
+        // OB container cards: refresh when enabled + stale (>90s), patch in place.
+        if (_fgCtnCardsOn() && ((flowGraphCtn.wsbuffer === null && flowGraphCtn.received === null && flowGraphCtn.staged === null) || (Date.now() - flowGraphCtn.fetchedAt) > 90000)) {
+            refreshFlowGraphCtn(function() { if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
+        }
 
         // Series definitions (color per spec). "total" is bold; "target" dotted.
         var isLight = (typeof document !== 'undefined' && document.body && document.body.classList.contains('hydra-light'));
@@ -13707,6 +13809,10 @@ if (k === 'eta') {
         // NC target over the same settled window. id lets us patch it in place.
         if (flowGraphNCEnabled) {
             html += _fgNCCardHtml();
+        }
+        // OB container-count cards (WS Buffer / Received / Staged / Container WIP).
+        if (_fgCtnCardsOn()) {
+            html += _fgCtnCardsHtml();
         }
         html += '</div>';
         }
@@ -20168,6 +20274,21 @@ if (k === 'eta') {
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB') renderIBTable();
             });
         }
+        // OB container-count card toggles.
+        [['hydra-fg-card-wsbuffer','fgCardWSBuffer'],['hydra-fg-card-received','fgCardReceived'],['hydra-fg-card-staged','fgCardStaged'],['hydra-fg-card-wip','fgCardWIP']].forEach(function(pair){
+            var el = document.getElementById(pair[0]); if (!el) return;
+            var getset = { fgCardWSBuffer: function(v){ if(v===undefined) return fgCardWSBuffer; fgCardWSBuffer=v; },
+                           fgCardReceived: function(v){ if(v===undefined) return fgCardReceived; fgCardReceived=v; },
+                           fgCardStaged: function(v){ if(v===undefined) return fgCardStaged; fgCardStaged=v; },
+                           fgCardWIP: function(v){ if(v===undefined) return fgCardWIP; fgCardWIP=v; } }[pair[1]];
+            el.checked = !!getset();
+            el.addEventListener('change', function(){
+                getset(this.checked);
+                flowGraphCtn = { wsbuffer: null, received: null, staged: null, fetchedAt: 0, node: '' }; // force refetch
+                try { saveAllSettings(); } catch (ex) {}
+                if (ibActiveTab === 'flowgraph' && activeView === 'IB') { renderIBTable(); if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); }); }
+            });
+        });
         // Sort Times: build one editable start/end row per shift in FG_SHIFTS.
         (function() {
             var host = document.getElementById('hydra-sorttimes-rows');
