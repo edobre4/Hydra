@@ -13874,13 +13874,18 @@ if (k === 'eta') {
         html += '<input id="hydra-flowgraph-shiftdate" type="date" value="' + _fgResolvedDate + '" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px;display:' + (flowGraphWindowMode === 'hours' ? 'none' : 'inline-block') + '" title="Date of the selected shift (editable)">';
         html += '</div>';
         // --- Right group: target + rate + live TPH ---
+        // Targets are STORED per-5-min; in hourly rate mode the labels read /hr
+        // and the inputs display x12 (edits are converted back to per-5-min).
+        var _rateHr = (flowGraphRateMode === 'hr');
+        var _rateSuffix = _rateHr ? '/hr' : '/5min';
+        var _rateDisp = function(v) { return _rateHr ? v * 12 : v; };
         html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
-        html += '<label style="font-size:12px;color:#e879f9">Target/5min:</label>';
-        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + flowGraphTarget + '" style="width:64px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
-        html += '<label style="font-size:12px;color:#fb923c;display:' + (flowGraphNCEnabled ? 'inline' : 'none') + '" id="hydra-flowgraph-nc-target-lbl">NC/5min:</label>';
-        html += '<input id="hydra-flowgraph-nc-target-in" type="number" min="1" step="1" value="' + flowGraphNCTarget + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid #fb923c;border-radius:4px;color:#fb923c;padding:4px 8px;font-size:12px;display:' + (flowGraphNCEnabled ? 'inline-block' : 'none') + '">';
-        html += '<label style="font-size:12px;color:#34d399;display:' + (flowGraphCtnEnabled ? 'inline' : 'none') + '" id="hydra-flowgraph-ctn-target-lbl">Ctn/5min:</label>';
-        html += '<input id="hydra-flowgraph-ctn-target-in" type="number" min="1" step="1" value="' + flowGraphCtnTarget + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid #34d399;border-radius:4px;color:#34d399;padding:4px 8px;font-size:12px;display:' + (flowGraphCtnEnabled ? 'inline-block' : 'none') + '">';
+        html += '<label style="font-size:12px;color:#e879f9">Target' + _rateSuffix + ':</label>';
+        html += '<input id="hydra-flowgraph-target" type="number" min="1" step="1" value="' + _rateDisp(flowGraphTarget) + '" style="width:64px;background:var(--h-bg2,#16202c);border:1px solid #e879f9;border-radius:4px;color:#e879f9;padding:4px 8px;font-size:12px">';
+        html += '<label style="font-size:12px;color:#fb923c;display:' + (flowGraphNCEnabled ? 'inline' : 'none') + '" id="hydra-flowgraph-nc-target-lbl">NC' + _rateSuffix + ':</label>';
+        html += '<input id="hydra-flowgraph-nc-target-in" type="number" min="1" step="1" value="' + _rateDisp(flowGraphNCTarget) + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid #fb923c;border-radius:4px;color:#fb923c;padding:4px 8px;font-size:12px;display:' + (flowGraphNCEnabled ? 'inline-block' : 'none') + '">';
+        html += '<label style="font-size:12px;color:#34d399;display:' + (flowGraphCtnEnabled ? 'inline' : 'none') + '" id="hydra-flowgraph-ctn-target-lbl">Ctn' + _rateSuffix + ':</label>';
+        html += '<input id="hydra-flowgraph-ctn-target-in" type="number" min="1" step="1" value="' + _rateDisp(flowGraphCtnTarget) + '" style="width:56px;background:var(--h-bg2,#16202c);border:1px solid #34d399;border-radius:4px;color:#34d399;padding:4px 8px;font-size:12px;display:' + (flowGraphCtnEnabled ? 'inline-block' : 'none') + '">';
         html += '<label style="font-size:12px;color:var(--h-muted,#aab4c0)">Rate:</label>';
         html += '<select id="hydra-flowgraph-ratemode" style="background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 6px;font-size:12px">' +
                 '<option value="5m"' + (flowGraphRateMode === '5m' ? ' selected' : '') + '>per 5 min</option>' +
@@ -13933,42 +13938,40 @@ if (k === 'eta') {
             if (last < 0) { var tot = _fgTotalArr(s, n); for (var j = 0; j < tot.length; j++) { if (tot[j] > 0) last = j; } }
             return (last >= 0) ? (last + 1) : n;
         })();
-        series.forEach(function(se) {
-            if (_fgHidden[se.key]) return;
-            var isTarget = (se.key === 'target');
-            var val, sub, subColor = 'var(--h-muted2,#7a8a9a)';
-            if (isTarget) {
-                var perBucket = (se.data && se.data.length) ? se.data[0] : flowGraphTarget;
-                val = perBucket * _fgDataBuckets;
-                sub = 'target \u00d7 ' + _fgDataBuckets + ' buckets';
-            } else {
-                val = 0; for (var i = 0; i < se.data.length; i++) val += (se.data[i] || 0);
-                sub = 'total';
-                // Total Volume card also shows delta vs the cumulative target
-                // (same apples-to-apples basis as the Target card).
-                if (se.key === 'total') {
-                    var tgtSoFar = flowGraphTarget * _fgDataBuckets;
-                    var dv = Math.round(val) - tgtSoFar;
-                    subColor = dv >= 0 ? '#4ade80' : '#ef5350';
-                    sub = '\u0394 ' + (dv >= 0 ? '+' : '') + dv.toLocaleString() + ' vs tgt';
-                } else if (se.key === 'ctnLoaded' && flowGraphCtnEnabled) {
-                    var ctnTgt = flowGraphCtnTarget * _fgDataBuckets;
-                    var cdv = Math.round(val) - ctnTgt;
-                    subColor = cdv >= 0 ? '#4ade80' : '#ef5350';
-                    sub = '\u0394 ' + (cdv >= 0 ? '+' : '') + cdv.toLocaleString() + ' vs tgt';
-                }
+        // Card builder for one series (Target has no card -- line only).
+        function _fgStatCard(se) {
+            var val = 0, sub = 'total', subColor = 'var(--h-muted2,#7a8a9a)';
+            for (var i = 0; i < se.data.length; i++) val += (se.data[i] || 0);
+            if (se.key === 'total') {
+                var tgtSoFar = flowGraphTarget * _fgDataBuckets;
+                var dv = Math.round(val) - tgtSoFar;
+                subColor = dv >= 0 ? '#4ade80' : '#ef5350';
+                sub = '\u0394 ' + (dv >= 0 ? '+' : '') + dv.toLocaleString() + ' vs tgt';
+            } else if (se.key === 'ctnLoaded' && flowGraphCtnEnabled) {
+                var ctnTgt = flowGraphCtnTarget * _fgDataBuckets;
+                var cdv = Math.round(val) - ctnTgt;
+                subColor = cdv >= 0 ? '#4ade80' : '#ef5350';
+                sub = '\u0394 ' + (cdv >= 0 ? '+' : '') + cdv.toLocaleString() + ' vs tgt';
             }
-            html += '<div style="min-width:96px;border:1px solid ' + se.color + ';border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center">' +
+            return '<div style="min-width:96px;border:1px solid ' + se.color + ';border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center">' +
                 '<div style="font-size:10px;color:' + se.color + ';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">' + se.label + '</div>' +
                 '<div style="font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0)">' + Math.round(val).toLocaleString() + '</div>' +
                 '<div style="font-size:9px;color:' + subColor + ';font-weight:' + ((se.key === 'total' || (se.key === 'ctnLoaded' && flowGraphCtnEnabled)) ? '600' : '400') + '">' + sub + '</div>' +
                 '</div>';
-        });
-        // NC tracking card: total NC processed (FCLM) + delta to apples-to-apples
-        // NC target over the same settled window. id lets us patch it in place.
-        if (flowGraphNCEnabled) {
-            html += _fgNCCardHtml();
         }
+        // Fixed lead order: Total Volume, NC Processed, Containers Loaded; then
+        // the remaining series in their usual order; container cards last. The
+        // Target card is gone (the dotted target LINE stays on the chart).
+        var _bySeriesKey = {};
+        series.forEach(function(se) { _bySeriesKey[se.key] = se; });
+        if (_bySeriesKey.total && !_fgHidden.total) html += _fgStatCard(_bySeriesKey.total);
+        if (flowGraphNCEnabled) html += _fgNCCardHtml();
+        if (_bySeriesKey.ctnLoaded && !_fgHidden.ctnLoaded) html += _fgStatCard(_bySeriesKey.ctnLoaded);
+        series.forEach(function(se) {
+            if (se.key === 'target' || se.key === 'total' || se.key === 'ctnLoaded') return;
+            if (_fgHidden[se.key]) return;
+            html += _fgStatCard(se);
+        });
         // OB container-count cards (WS Buffer / Received / Staged / Container WIP).
         if (_fgCtnCardsOn()) {
             html += _fgCtnCardsHtml();
@@ -14013,17 +14016,17 @@ if (k === 'eta') {
         var tIn = document.getElementById('hydra-flowgraph-target');
         if (tIn) tIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0) { flowGraphTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
+            if (!isNaN(v) && v > 0) { flowGraphTarget = (flowGraphRateMode === 'hr') ? Math.max(1, Math.round(v / 12)) : v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
         });
         var ncIn = document.getElementById('hydra-flowgraph-nc-target-in');
         if (ncIn) ncIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0) { flowGraphNCTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
+            if (!isNaN(v) && v > 0) { flowGraphNCTarget = (flowGraphRateMode === 'hr') ? Math.max(1, Math.round(v / 12)) : v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
         });
         var ctnIn = document.getElementById('hydra-flowgraph-ctn-target-in');
         if (ctnIn) ctnIn.addEventListener('change', function() {
             var v = parseInt(this.value, 10);
-            if (!isNaN(v) && v > 0) { flowGraphCtnTarget = v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
+            if (!isNaN(v) && v > 0) { flowGraphCtnTarget = (flowGraphRateMode === 'hr') ? Math.max(1, Math.round(v / 12)) : v; try { saveAllSettings(); } catch(e){} renderFlowGraphChart(wrap); }
         });
         var hIn = document.getElementById('hydra-flowgraph-hours');
         if (hIn) hIn.addEventListener('change', function() {
