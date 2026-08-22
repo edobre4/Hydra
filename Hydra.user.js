@@ -155,6 +155,9 @@
         fgCardReceived:      false,
         fgCardStaged:        false,
         fgCardWIP:           false,
+        fgCardWSFilter:      'WS',
+        fgCardReceivedFilter:'DD1',
+        fgCardStagedFilter:  '',
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -3635,6 +3638,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphNCEnabled: flowGraphNCEnabled, flowGraphNCTarget: flowGraphNCTarget,
             flowGraphCtnEnabled: flowGraphCtnEnabled, flowGraphCtnTarget: flowGraphCtnTarget,
             fgCardWSBuffer: fgCardWSBuffer, fgCardReceived: fgCardReceived, fgCardStaged: fgCardStaged, fgCardWIP: fgCardWIP,
+                fgCardWSFilter: fgCardWSFilter, fgCardReceivedFilter: fgCardReceivedFilter, fgCardStagedFilter: fgCardStagedFilter,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3800,6 +3804,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof s.fgCardReceived === 'boolean') fgCardReceived = s.fgCardReceived;
         if (typeof s.fgCardStaged === 'boolean') fgCardStaged = s.fgCardStaged;
         if (typeof s.fgCardWIP === 'boolean') fgCardWIP = s.fgCardWIP;
+        if (typeof s.fgCardWSFilter === 'string') fgCardWSFilter = s.fgCardWSFilter;
+        if (typeof s.fgCardReceivedFilter === 'string') fgCardReceivedFilter = s.fgCardReceivedFilter;
+        if (typeof s.fgCardStagedFilter === 'string') fgCardStagedFilter = s.fgCardStagedFilter;
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4556,6 +4563,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphNCEnabled: flowGraphNCEnabled, flowGraphNCTarget: flowGraphNCTarget,
                 flowGraphCtnEnabled: flowGraphCtnEnabled, flowGraphCtnTarget: flowGraphCtnTarget,
                 fgCardWSBuffer: fgCardWSBuffer, fgCardReceived: fgCardReceived, fgCardStaged: fgCardStaged, fgCardWIP: fgCardWIP,
+                fgCardWSFilter: fgCardWSFilter, fgCardReceivedFilter: fgCardReceivedFilter, fgCardStagedFilter: fgCardStagedFilter,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4754,6 +4762,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (typeof s.fgCardReceived === 'boolean') fgCardReceived = s.fgCardReceived;
             if (typeof s.fgCardStaged === 'boolean') fgCardStaged = s.fgCardStaged;
             if (typeof s.fgCardWIP === 'boolean') fgCardWIP = s.fgCardWIP;
+            if (typeof s.fgCardWSFilter === 'string') fgCardWSFilter = s.fgCardWSFilter;
+            if (typeof s.fgCardReceivedFilter === 'string') fgCardReceivedFilter = s.fgCardReceivedFilter;
+            if (typeof s.fgCardStagedFilter === 'string') fgCardStagedFilter = s.fgCardStagedFilter;
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -5485,9 +5496,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                                 '<span style="color:var(--h-muted2, #7a8a9a);font-size:11px">Delta vs target on the Containers Loaded (all) card. Set target on the tab.</span>' +
                             '</label>' +
                             '<div style="font-size:11px;font-weight:600;color:var(--h-muted,#aab4c0);margin:8px 0 2px;border-top:1px solid var(--h-border2,#3a4a5c);padding-top:6px">Container cards (live counts)</div>' +
-                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-wsbuffer"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">WS Buffer</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">closed, not staged (stacked)</span></label>' +
-                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-received"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Received</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">received, location contains RECEIVE</span></label>' +
-                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-staged"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Staged</span></label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-wsbuffer"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">WS Buffer</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">location filter</span><input type="text" id="hydra-fg-card-wsbuffer-filter" placeholder="WS" style="width:90px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px"></label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-received"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Received</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">location filter</span><input type="text" id="hydra-fg-card-received-filter" placeholder="DD1" style="width:90px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px"></label>' +
+                            '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-staged"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Staged</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">location filter (empty = any)</span><input type="text" id="hydra-fg-card-staged-filter" placeholder="(any)" style="width:90px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:3px 6px;font-size:12px"></label>' +
                             '<label class="hydra-settings-row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" id="hydra-fg-card-wip"><span style="font-size:12px;color:var(--h-text,#e8eaf0)">Container WIP</span><span style="color:var(--h-muted2,#7a8a9a);font-size:11px">WS Buffer + Received + Staged</span></label>' +
                             '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin:2px 0 4px">Define metrics as formulas over PMET metrics (use <b>+ metric</b> to insert one; supports + - \u00d7 \u00f7 and parentheses). Enabled metrics show on the tab; toggle each line\'s visibility from the chart legend.</div>' +
                             '<div id="hydra-flowgraph-metrics"></div>' +
@@ -9572,6 +9583,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     var _fgUnthrottled = false;
     // Per-card enable flags (Settings).
     var fgCardWSBuffer = false, fgCardReceived = false, fgCardStaged = false, fgCardWIP = false;
+    // Per-card location filters (substring match on container location/chute).
+    // WS Buffer -> "WS", Received -> "DD1", Staged -> "" (match anything).
+    var fgCardWSFilter = 'WS', fgCardReceivedFilter = 'DD1', fgCardStagedFilter = '';
 
     // Single source of truth for the chart's toggleable series (the "metrics"
     // the user sees). `dataKey` maps to fgComputeSeries() output. `defaultOn`
@@ -9915,14 +9929,16 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 _fgUnthrottled = true; // fire all loadgroup requests at once for the cards
 
                 // FULL DECOUPLING FROM OB PULLS/DATA:
-                // The card pulls reuse pullWSBuffer / pullCustomStacked, which
-                // write obTableData.wsbuffer / .linearchutes / .received (the
-                // arrays the OB tabs render from). To guarantee the card refresh
-                // NEVER mutates OB tab data, we snapshot those three slots up
-                // front, let the pulls scribble into them, capture the counts,
-                // then restore the snapshots byte-for-byte. Globals the pulls
-                // read (oneDFilterSource / CUSTOM_STACKED_FILTER / oneDFilterUtil)
-                // are likewise saved and restored.
+                // All three cards use pullCustomStacked (which writes
+                // obTableData.linearchutes and counts container rows), each with
+                // its own 1D source + user-configurable location filter:
+                //   WS Buffer -> stacked            + fgCardWSFilter       ("WS")
+                //   Received  -> inFacilityReceived + fgCardReceivedFilter ("DD1")
+                //   Staged    -> staged             + fgCardStagedFilter   ("")
+                // Because they share obTableData.linearchutes they run
+                // sequentially, capturing each count before the next overwrites.
+                // Snapshot the OB arrays + globals up front and restore them
+                // byte-for-byte so a card refresh never mutates OB tab data.
                 var _snapWs  = obTableData.wsbuffer;
                 var _snapLc  = obTableData.linearchutes;
                 var _snapRc  = obTableData.received;
@@ -9941,44 +9957,44 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     oneDFilterUtil     = _savedUtil;
                 }
 
-                // WS Buffer writes obTableData.wsbuffer (own slot); can run in
-                // parallel. Received and Staged BOTH use pullCustomStacked, which
-                // writes obTableData.linearchutes -- so they run sequentially,
-                // each count captured before the next overwrites.
-                var parallel = [];
-                if (needWS) {
-                    parallel.push(pullWSBuffer(node).then(function() {
-                        _wsCount = _fgCountWSBuffer();
-                    }));
+                // Turn a user filter string into the CUSTOM_STACKED_FILTER array
+                // form pullCustomStacked expects. Empty -> [''] (match anything).
+                function _filterArr(str) {
+                    var s = (str == null ? '' : String(str)).trim();
+                    if (!s) return [''];
+                    return s.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
                 }
 
-                // Sequential chain for the two Custom View sources.
                 var seq = Promise.resolve();
+                if (needWS) {
+                    seq = seq.then(function() {
+                        oneDFilterSource = 'stacked';
+                        CUSTOM_STACKED_FILTER = _filterArr(fgCardWSFilter);
+                        return pullCustomStacked(node).then(function() {
+                            _wsCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
+                        });
+                    });
+                }
                 if (needRc) {
-                    // Received card matches Custom View "Received" tab:
-                    // oneDFilterSource='inFacilityReceived' + received chute filter.
                     seq = seq.then(function() {
                         oneDFilterSource = 'inFacilityReceived';
-                        CUSTOM_STACKED_FILTER = ['IB_RECEIVE_CONTAINER_DD1'];
+                        CUSTOM_STACKED_FILTER = _filterArr(fgCardReceivedFilter);
                         return pullCustomStacked(node).then(function() {
                             _receivedCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
                         });
                     });
                 }
                 if (needSt) {
-                    // Staged card matches Custom View "Staged" tab:
-                    // oneDFilterSource='staged' (all chutes).
                     seq = seq.then(function() {
                         oneDFilterSource = 'staged';
-                        CUSTOM_STACKED_FILTER = _savedFilter;
+                        CUSTOM_STACKED_FILTER = _filterArr(fgCardStagedFilter);
                         return pullCustomStacked(node).then(function() {
                             _stagedCount = Array.isArray(obTableData.linearchutes) ? obTableData.linearchutes.length : null;
                         });
                     });
                 }
-                parallel.push(seq);
 
-                return Promise.all(parallel).then(function(){
+                return seq.then(function(){
                     _fgUnthrottled = false;
                     _restoreObState(); // put OB tab data + globals back exactly as they were
                     return { wsbuffer: _wsCount, staged: _stagedCount, received: _receivedCount };
@@ -20437,6 +20453,30 @@ if (k === 'eta') {
                 _fgCtnStale = true; // refetch but keep showing old values until new arrive
                 try { saveAllSettings(); } catch (ex) {}
                 if (ibActiveTab === 'flowgraph' && activeView === 'IB') { renderIBTable(); if (_fgCtnCardsOn()) refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); }); }
+            });
+        });
+        // Per-card location filter text inputs.
+        [['hydra-fg-card-wsbuffer-filter','fgCardWSFilter'],
+         ['hydra-fg-card-received-filter','fgCardReceivedFilter'],
+         ['hydra-fg-card-staged-filter','fgCardStagedFilter']].forEach(function(pair){
+            var el = document.getElementById(pair[0]); if (!el) return;
+            var getset = {
+                fgCardWSFilter:       function(v){ if(v===undefined) return fgCardWSFilter;       fgCardWSFilter=v; },
+                fgCardReceivedFilter: function(v){ if(v===undefined) return fgCardReceivedFilter; fgCardReceivedFilter=v; },
+                fgCardStagedFilter:   function(v){ if(v===undefined) return fgCardStagedFilter;   fgCardStagedFilter=v; }
+            }[pair[1]];
+            el.value = getset() || '';
+            // Prevent the wrapping <label> from toggling the card checkbox when
+            // the user clicks into the text field.
+            el.addEventListener('click', function(e){ e.stopPropagation(); });
+            el.addEventListener('mousedown', function(e){ e.stopPropagation(); });
+            el.addEventListener('change', function(){
+                getset(this.value.trim());
+                _fgCtnStale = true; // refetch with the new filter, keep old values meanwhile
+                try { saveAllSettings(); } catch (ex) {}
+                if (ibActiveTab === 'flowgraph' && activeView === 'IB' && _fgCtnCardsOn()) {
+                    refreshFlowGraphCtn(function(){ if (ibActiveTab === 'flowgraph') _fgUpdateCtnCards(); });
+                }
             });
         });
         // Sort Times: build one editable start/end row per shift in FG_SHIFTS.
