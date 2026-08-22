@@ -13382,6 +13382,7 @@ if (k === 'eta') {
     // Set true only around background/auto re-renders so renderFlowGraphChart
     // can avoid destroying an open control; user actions leave it false.
     var _fgBackgroundRender = false;
+    var _fgSizeRetry = false; // one-shot guard for the first-open chart re-size repaint
 
     // Live headcount snapshot (from WATT getStaffingAssignments) for the
     // current-TPH readout. This is a CURRENT count only (WATT has no history),
@@ -13799,6 +13800,7 @@ if (k === 'eta') {
 
         var cw = Math.max(wrap.clientWidth - 20, 400);
         var ch = Math.max(wrap.clientHeight - (flowGraphShowStats ? 118 : 70), 220);
+        var wrapClientWAtRender = wrap.clientWidth, wrapClientHAtRender = wrap.clientHeight;
         var pad = { top: 20, right: 14, bottom: 40, left: cw < 500 ? 50 : 70 };
         var gw = cw - pad.left - pad.right;
         var gh = ch - pad.top - pad.bottom;
@@ -13933,9 +13935,27 @@ if (k === 'eta') {
         }
         html += '</div>';
         }
-        html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';
-        html += '</div>';
+        html += '<canvas id="hydra-flowgraph-canvas" width="' + cw + '" height="' + ch + '" style="border-radius:8px;background:#0a0f18;max-width:100%;display:block"></canvas>';        html += '</div>';
         wrap.innerHTML = html;
+
+        // First-open sizing race: this can run before the tab's layout has
+        // settled, so wrap.clientWidth/Height were stale/too small and the
+        // canvas rendered tiny (previously only fixed by a manual refresh).
+        // Re-measure next frame; if the container is now meaningfully bigger
+        // than what we sized against, repaint once (_fgSizeRetry guards loops).
+        (function() {
+            if (_fgSizeRetry) { _fgSizeRetry = false; return; }
+            requestAnimationFrame(function() {
+                if (ibActiveTab !== 'flowgraph') return;
+                if (wrap !== document.getElementById('hydra-table-wrap')) return;
+                if (Math.abs(wrap.clientWidth - wrapClientWAtRender) > 8 ||
+                    Math.abs(wrap.clientHeight - wrapClientHAtRender) > 8) {
+                    _fgSizeRetry = true;
+                    var prevBg = _fgBackgroundRender; _fgBackgroundRender = true;
+                    try { renderFlowGraphChart(wrap); } finally { _fgBackgroundRender = prevBg; }
+                }
+            });
+        })();
 
         // Wire inline controls
         var tIn = document.getElementById('hydra-flowgraph-target');
