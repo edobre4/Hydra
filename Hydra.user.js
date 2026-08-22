@@ -10030,9 +10030,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 // The per-load pulls above spam setStatus('Custom View i/n...');
                 // clear it with a final message so the bar doesn't stick.
                 try { setStatus('\u2714 Container cards updated \u2014 ' + new Date().toLocaleTimeString()); } catch (e) {}
-                if (cb) cb();
+                // cb errors must NOT fall through to the .catch below (that
+                // would mislabel a successful pull as failed).
+                if (cb) { try { cb(); } catch (e) { console.warn('[Hydra FlowGraph Ctn] card update cb error:', e); } }
             });
-        }).catch(function(e) { _flowGraphCtnLoading = false; clearTimeout(_ctnWatchdog); try { setStatus('Container cards pull failed'); } catch (ex) {} console.warn('[Hydra FlowGraph Ctn] pull failed:', e && e.message ? e.message : e); if (cb) cb(); });
+        }).catch(function(e) { _flowGraphCtnLoading = false; clearTimeout(_ctnWatchdog); try { setStatus('Container cards pull failed'); } catch (ex) {} console.error('[Hydra FlowGraph Ctn] pull failed:', e); if (cb) { try { cb(); } catch (e2) {} } });
     }
 
     unsafeWindow.hydraDebugFlowGraphCtn = function() {
