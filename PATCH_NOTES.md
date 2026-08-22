@@ -1,5 +1,44 @@
 # Hydra Patch Notes
 
+## v3.74 — 2026-08-22
+
+### Flow Graph
+- **Live TPH now divides by clocked-in associates** (WATT `clockedInAssociates`
+  ∩ `scheduledAssociates` with a shift covering now) instead of assigned
+  headcount — matches the WATT dashboard's "Clocked in" figure exactly:
+  counts scheduled associates who are clocked in but unassigned, excludes
+  badge-in support/PA/HR who aren't on the sort schedule.
+- **Container cards (WS Buffer / Received / Staged / WIP) reworked:**
+  - Per-card **location filter** text boxes in Settings (defaults:
+    WS Buffer = `WS`, Received = `DD1`, Staged = empty/any).
+  - Counts match the OB Custom View tabs (same 1D sources) and dedupe by
+    containerId so a container spanning multiple CPTs in the search window
+    is counted once.
+  - Pulls are **fully isolated** from the OB tabs — private buffer, own
+    source/filter, never touch OB data or the Custom View dropdown.
+  - Old card values stay visible during a refetch; concurrency capped at 10
+    (SSP throttling); 60s request timeouts + watchdog so a stalled pull can
+    never wedge the tab; status bar clears with "Container cards updated".
+- **Refresh discipline:** the Flow Graph never loads on its own — first tab
+  open shows "Click Refresh to load"; auto-refresh locked on an inbound tab
+  no longer hijacks into a Flow Graph refetch; async card updates can no
+  longer paint the Flow Graph over the OB view.
+- **Stat cards reordered:** Total Volume, NC Processed, Containers Loaded
+  first, container cards last. Target card removed (target line stays).
+- **Rate-aware targets:** Target/NC/Ctn labels + inputs switch between
+  /5min and /hr with the rate selector (hourly shows ×12, edits convert
+  back to per-5-min storage).
+- Chart sizes correctly on first open (ResizeObserver repaint on layout
+  settle; also handles window resize).
+
+### Outbound
+- Custom View no longer ballooned by Auto Zoom (grows only to the manual
+  zoom value; shrink-to-fit unchanged).
+
+### Settings
+- Sort Times inputs are locale-proof 24h text fields (accepts 9, 930,
+  9:30, 7pm — canonicalizes to HH:MM).
+
 ## v3.73 — 2026-08-21
 
 ### Flow Graph
