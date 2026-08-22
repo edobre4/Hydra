@@ -15136,6 +15136,25 @@ if (k === 'eta') {
         });
     };
 
+    // DEBUG: list all root Query fields on the WATT schema so we can find the
+    // one that backs the dashboard's Clocked in / Untracked Indirects counts.
+    unsafeWindow.hydraDebugWattQueries = function() {
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var q = '{ __schema { queryType { fields { name args { name } type { name kind ofType { name kind } } } } } }';
+        GM_xmlhttpRequest({ method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true, onload: function(r1) {
+            var csrf = (r1.responseText || '').trim();
+            GM_xmlhttpRequest({ method: 'POST', url: wattBase + '/graphql',
+                headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                data: JSON.stringify({ query: q }), withCredentials: true,
+                onload: function(r2) { try {
+                    var j = JSON.parse(r2.responseText);
+                    var fs = j && j.data && j.data.__schema && j.data.__schema.queryType && j.data.__schema.queryType.fields || [];
+                    console.log('[Hydra WATT queries] (' + fs.length + '):\n' + fs.map(function(f){ return f.name + '(' + (f.args||[]).map(function(a){return a.name;}).join(',') + ')'; }).sort().join('\n'));
+                } catch (e) { console.warn('watt schema parse', e, (r2.responseText||'').slice(0,500)); } } });
+        } });
+    };
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
