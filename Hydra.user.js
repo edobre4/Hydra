@@ -15072,6 +15072,35 @@ if (k === 'eta') {
         });
     }
 
+    // DEBUG: introspect the ClockedInAssociate GraphQL type so we can see what
+    // fields exist (direct/indirect/tracked/status) to match the WATT
+    // dashboard's "Clocked in" figure. Run hydraDebugClockedInSchema() in the
+    // console. Remove once we know the field to filter on.
+    unsafeWindow.hydraDebugClockedInSchema = function() {
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        var q = '{ __type(name: "ClockedInAssociate") { name fields { name type { name kind ofType { name kind } } } } }';
+        GM_xmlhttpRequest({
+            method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true,
+            onload: function(r1) {
+                var csrf = (r1.responseText || '').trim();
+                GM_xmlhttpRequest({
+                    method: 'POST', url: wattBase + '/graphql',
+                    headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                    data: JSON.stringify({ query: q }),
+                    withCredentials: true,
+                    onload: function(r2) {
+                        try {
+                            var j = JSON.parse(r2.responseText);
+                            var t = j && j.data && j.data.__type;
+                            console.log('[Hydra ClockedIn schema] fields:', t && t.fields ? t.fields.map(function(f){ return f.name + ':' + ((f.type && (f.type.name || (f.type.ofType && f.type.ofType.name))) || f.type.kind); }).join(', ') : JSON.stringify(j));
+                        } catch (e) { console.warn('schema parse', e, r2.responseText); }
+                    }
+                });
+            }
+        });
+    };
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
