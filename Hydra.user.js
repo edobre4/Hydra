@@ -13657,7 +13657,7 @@ if (k === 'eta') {
         series.forEach(function(se) {
             if (_fgHidden[se.key]) return;
             var isTarget = (se.key === 'target');
-            var val, sub;
+            var val, sub, subColor = 'var(--h-muted2,#7a8a9a)';
             if (isTarget) {
                 var perBucket = (se.data && se.data.length) ? se.data[0] : flowGraphTarget;
                 val = perBucket * _fgDataBuckets;
@@ -13665,11 +13665,19 @@ if (k === 'eta') {
             } else {
                 val = 0; for (var i = 0; i < se.data.length; i++) val += (se.data[i] || 0);
                 sub = 'total';
+                // Total Volume card also shows delta vs the cumulative target
+                // (same apples-to-apples basis as the Target card).
+                if (se.key === 'total') {
+                    var tgtSoFar = flowGraphTarget * _fgDataBuckets;
+                    var dv = Math.round(val) - tgtSoFar;
+                    subColor = dv >= 0 ? '#4ade80' : '#ef5350';
+                    sub = '\u0394 ' + (dv >= 0 ? '+' : '') + dv.toLocaleString() + ' vs tgt';
+                }
             }
             html += '<div style="min-width:96px;border:1px solid ' + se.color + ';border-radius:6px;padding:4px 10px;background:var(--h-bg2,#16202c);text-align:center">' +
                 '<div style="font-size:10px;color:' + se.color + ';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">' + se.label + '</div>' +
                 '<div style="font-size:16px;font-weight:700;color:var(--h-text,#e8eaf0)">' + Math.round(val).toLocaleString() + '</div>' +
-                '<div style="font-size:9px;color:var(--h-muted2,#7a8a9a)">' + sub + '</div>' +
+                '<div style="font-size:9px;color:' + subColor + ';font-weight:' + (se.key === 'total' ? '600' : '400') + '">' + sub + '</div>' +
                 '</div>';
         });
         // NC tracking card: total NC processed (FCLM) + delta to apples-to-apples
