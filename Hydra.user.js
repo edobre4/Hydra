@@ -9580,7 +9580,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // When true, the WS Buffer / Received / Staged pulls fire ALL loadgroup
     // requests at once (no batch throttle) — used by the card refresh so it's
     // fully parallel. OB tabs leave it false (batched to avoid 429s).
-    var _fgUnthrottled = false;
     // Per-card enable flags (Settings).
     var fgCardWSBuffer = false, fgCardReceived = false, fgCardStaged = false, fgCardWIP = false;
     // Per-card location filters (substring match on container location/chute).
@@ -9910,7 +9909,6 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         var _ctnWatchdog = setTimeout(function() {
             if (_flowGraphCtnLoading) {
                 _flowGraphCtnLoading = false;
-                _fgUnthrottled = false;
                 console.warn('[Hydra FlowGraph Ctn] watchdog cleared stuck loading flag after 90s');
             }
         }, 90000);
@@ -9926,57 +9924,34 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 obTableData.obvrids = obData;
             });
             return vridsReady.then(function() {
-                _fgUnthrottled = true; // fire all loadgroup requests at once for the cards
-
-                // FULL DECOUPLING FROM OB PULLS/DATA:
-                // All three cards use pullCustomStacked (which writes
-                // obTableData.linearchutes and counts container rows), each with
-                // its own 1D source + user-configurable location filter:
+                // FULLY ISOLATED CARD PULLS:
+                // All three cards use pullCustomStacked with an _opts override --
+                // their own source + user-configurable location filter, writing
+                // into a private buffer (never obTableData.linearchutes) and
+                // never touching the oneDFilterSource / CUSTOM_STACKED_FILTER
+                // globals. A concurrent OB Custom View refresh is completely
+                // unaffected (no snapshot/restore races).
                 //   WS Buffer -> stacked            + fgCardWSFilter       ("WS")
                 //   Received  -> inFacilityReceived + fgCardReceivedFilter ("DD1")
                 //   Staged    -> staged             + fgCardStagedFilter   ("")
-                // Because they share obTableData.linearchutes they run
-                // sequentially, capturing each count before the next overwrites.
-                // Snapshot the OB arrays + globals up front and restore them
-                // byte-for-byte so a card refresh never mutates OB tab data.
-                var _snapWs  = obTableData.wsbuffer;
-                var _snapLc  = obTableData.linearchutes;
-                var _snapRc  = obTableData.received;
+                var _buf = [];
                 var _wsCount = null, _stagedCount = null, _receivedCount = null;
-                var _savedSrc = oneDFilterSource;
-                var _savedFilter = CUSTOM_STACKED_FILTER;
-                var _savedUtil = oneDFilterUtil;
-                oneDFilterUtil = false; // cards only need row counts, skip per-load utilization enrichment
 
-                function _restoreObState() {
-                    obTableData.wsbuffer     = _snapWs;
-                    obTableData.linearchutes = _snapLc;
-                    obTableData.received     = _snapRc;
-                    oneDFilterSource   = _savedSrc;
-                    CUSTOM_STACKED_FILTER = _savedFilter;
-                    oneDFilterUtil     = _savedUtil;
-                }
-
-                // Turn a user filter string into the CUSTOM_STACKED_FILTER array
-                // form pullCustomStacked expects. Empty -> [''] (match anything).
+                // Turn a user filter string into the filter-array form. Empty ->
+                // [''] (match anything).
                 function _filterArr(str) {
                     var s = (str == null ? '' : String(str)).trim();
                     if (!s) return [''];
                     return s.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
                 }
 
-                // Count DISTINCT physical containers in linearchutes. A container
-                // that holds future packages can appear under more than one CPT
-                // load (e.g. today's 01:30 and tomorrow's 01:30 for the same
-                // route) when the search window spans multiple CPTs -- counting
-                // rows would tally it twice. Dedupe by containerId so each
-                // physical container is counted once. (Card-only; OB tabs keep
-                // their per-row behavior.)
+                // Count DISTINCT physical containers in the card buffer. A
+                // container holding future packages can appear under multiple
+                // CPT loads when the search window spans CPTs -- rows would
+                // tally it twice. Dedupe by containerId. (Card-only.)
                 function _distinctCtn() {
-                    var arr = obTableData.linearchutes;
-                    if (!Array.isArray(arr)) return null;
                     var seen = {}, n = 0;
-                    arr.forEach(function(r) {
+                    _buf.forEach(function(r) {
                         var id = r && r.containerId;
                         if (!id) { n++; return; } // no id -> count as-is
                         if (!seen[id]) { seen[id] = true; n++; }
@@ -9984,40 +9959,33 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     return n;
                 }
 
+                // Sequential (shared _buf + gentle on SSP; conc 10 within each).
                 var seq = Promise.resolve();
                 if (needWS) {
                     seq = seq.then(function() {
-                        oneDFilterSource = 'stacked';
-                        CUSTOM_STACKED_FILTER = _filterArr(fgCardWSFilter);
-                        return pullCustomStacked(node).then(function() {
+                        return pullCustomStacked(node, false, { source: 'stacked', filters: _filterArr(fgCardWSFilter), dest: _buf, conc: 10 }).then(function() {
                             _wsCount = _distinctCtn();
                         });
                     });
                 }
                 if (needRc) {
                     seq = seq.then(function() {
-                        oneDFilterSource = 'inFacilityReceived';
-                        CUSTOM_STACKED_FILTER = _filterArr(fgCardReceivedFilter);
-                        return pullCustomStacked(node).then(function() {
+                        return pullCustomStacked(node, false, { source: 'inFacilityReceived', filters: _filterArr(fgCardReceivedFilter), dest: _buf, conc: 10 }).then(function() {
                             _receivedCount = _distinctCtn();
                         });
                     });
                 }
                 if (needSt) {
                     seq = seq.then(function() {
-                        oneDFilterSource = 'staged';
-                        CUSTOM_STACKED_FILTER = _filterArr(fgCardStagedFilter);
-                        return pullCustomStacked(node).then(function() {
+                        return pullCustomStacked(node, false, { source: 'staged', filters: _filterArr(fgCardStagedFilter), dest: _buf, conc: 10 }).then(function() {
                             _stagedCount = _distinctCtn();
                         });
                     });
                 }
 
                 return seq.then(function(){
-                    _fgUnthrottled = false;
-                    _restoreObState(); // put OB tab data + globals back exactly as they were
                     return { wsbuffer: _wsCount, staged: _stagedCount, received: _receivedCount };
-                }, function(e){ _fgUnthrottled = false; _restoreObState(); throw e; });
+                });
             }).then(function(counts) {
                 _flowGraphCtnLoading = false;
                 clearTimeout(_ctnWatchdog);
@@ -11405,7 +11373,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] WS Buffer SSP error:', c.vrid, e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 10 : 10;
+                var _CONC = 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch, _bIdx) {
@@ -11829,7 +11797,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Received err', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 10 : 10;
+                var _CONC = 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -11856,8 +11824,17 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         });
     }
 
-    function pullCustomStacked(nodeId, skipDynSel) {
-        obTableData.linearchutes = [];
+    // _opts (optional): fully-isolated invocation for the Flow Graph container
+    // cards -- { source, filters, dest, conc, noUtil }. When provided, the pull
+    // reads source/filters from _opts (NOT the oneDFilterSource /
+    // CUSTOM_STACKED_FILTER globals) and writes rows into _opts.dest (NOT
+    // obTableData.linearchutes), so it can never race or clobber the OB
+    // Custom View tab's data.
+    function pullCustomStacked(nodeId, skipDynSel, _opts) {
+        var _dest = (_opts && _opts.dest) || null;
+        var _src = (_opts && _opts.source) || oneDFilterSource;
+        if (_dest) { _dest.length = 0; } else { obTableData.linearchutes = []; }
+        var _out = _dest || obTableData.linearchutes;
         var selRoutes = getSelectedObRoutes();
         var combos = [], seen = {};
         (obTableData.obvrids || []).forEach(function(r) {
@@ -11877,14 +11854,15 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     + '&loadGroupId=' + c.loadId
                     + '&planId=' + (c.planId || '')
                     + '&vrId=' + c.vrid
-                    + '&status=' + oneDFilterSource + '&trailerId=&trailerNumber=';
+                    + '&status=' + _src + '&trailerId=&trailerNumber=';
                 return gmFetchRaw(url).then(function(text) {
                     var data = JSON.parse(text);
                     var rootNode = data && data.ret && data.ret.aaData && data.ret.aaData.ROOT_NODE;
                     if (!rootNode || !Array.isArray(rootNode)) return;
                     var route = c.route;
                     if (route.indexOf('->') !== -1) route = route.split('->')[1].trim();
-                    var _filters = Array.isArray(CUSTOM_STACKED_FILTER) ? CUSTOM_STACKED_FILTER : [CUSTOM_STACKED_FILTER];
+                    var _filters = (_opts && _opts.filters) ? _opts.filters
+                                 : (Array.isArray(CUSTOM_STACKED_FILTER) ? CUSTOM_STACKED_FILTER : [CUSTOM_STACKED_FILTER]);
                     var _noFilter = !_filters.length || (_filters.length === 1 && !_filters[0]);
                     function nodeLabel(n) { return n && n.container && n.container.label ? n.container.label : ''; }
                     function nodeCid(n) { return n && n.container && n.container.containerId ? n.container.containerId : nodeLabel(n); }
@@ -11925,7 +11903,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         var _assTime = (n.container && n.container.parentChildAssTime) || null;
                         var _assMs = _assTime ? new Date(_assTime).getTime() : null;
                         var _dwellMin = (_assMs && !isNaN(_assMs)) ? Math.round((Date.now() - _assMs) / 60000) : null;
-                        obTableData.linearchutes.push({
+                        _out.push({
                             route: route, cpt: c.cpt, chute: chute,
                             count: pkgs, containerId: cLabel || cid,
                             newPkgs: pkgs - prev, filter: mf, dwellMin: _dwellMin
@@ -11935,7 +11913,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Custom View SSP error:', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 10 : 20; // cards: 10 (SSP throttles above); OB tab: 20
+                var _CONC = (_opts && _opts.conc) || 20; // cards pass 10 (SSP throttles above); OB tab: 20
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
@@ -11945,8 +11923,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             })(_thunks.slice(_bi, _bi + _CONC));
         }
         return _bchain.then(function() {
-            console.log('[Hydra] Custom Stacked (SSP):', obTableData.linearchutes.length, 'rows');
+            console.log('[Hydra] Custom Stacked (SSP):', _out.length, 'rows' + (_dest ? ' (card buffer)' : ''));
         }).then(function() {
+            if (_opts && (_opts.noUtil || _dest)) return; // card pulls: counts only, never touch tab data
             return enrich1DFilterUtil(nodeId, combos);
         });
     }
@@ -12070,7 +12049,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 }).catch(function(e) { console.error('[Hydra] Custom Staged error:', e); });
             });
         });
-                var _CONC = _fgUnthrottled ? 10 : 10;
+                var _CONC = 10;
         var _bchain = Promise.resolve();
         for (var _bi = 0; _bi < _thunks.length; _bi += _CONC) {
             (function(_batch) {
