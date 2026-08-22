@@ -15101,6 +15101,41 @@ if (k === 'eta') {
         });
     };
 
+    // DEBUG: fetch tldAssociates (labor-tracked roster the WATT dashboard uses)
+    // and compare it against clockedInAssociates to see if the intersection
+    // equals the dashboard "Clocked in" figure. Run hydraDebugTld() in console.
+    unsafeWindow.hydraDebugTld = function() {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var wattBase = 'https://na.prod.wattwebsite.sorttech.amazon.dev';
+        var hdrs = { 'Origin': 'https://stem-na.corp.amazon.com', 'Referer': 'https://stem-na.corp.amazon.com/' };
+        function gql(body, label, done) {
+            GM_xmlhttpRequest({ method: 'GET', url: wattBase + '/csrfToken', headers: hdrs, withCredentials: true, onload: function(r1) {
+                var csrf = (r1.responseText || '').trim();
+                GM_xmlhttpRequest({ method: 'POST', url: wattBase + '/graphql',
+                    headers: Object.assign({ 'Content-Type': 'application/json', 'Accept': 'application/json', 'anti-csrftoken-a2z': csrf }, hdrs),
+                    data: JSON.stringify(body), withCredentials: true,
+                    onload: function(r2) { try { done(JSON.parse(r2.responseText)); } catch (e) { console.warn(label + ' parse', e, r2.responseText); } },
+                    onerror: function(){ console.warn(label + ' fetch err'); } });
+            }, onerror: function(){ console.warn(label + ' csrf err'); } });
+        }
+        gql({ query: 'query T($nodeId: String!){ tldAssociates(nodeId: $nodeId) }', operationName: 'T', variables: { nodeId: node } }, 'tld', function(j) {
+            var tld = j && j.data && j.data.tldAssociates;
+            console.log('[Hydra TLD] type=' + (typeof tld) + ' isArray=' + Array.isArray(tld));
+            console.log('[Hydra TLD] raw:', JSON.stringify(tld).slice(0, 2000));
+            // Normalize tld to a set of ids/strings
+            var tldArr = Array.isArray(tld) ? tld : (typeof tld === 'string' ? (function(){ try { return JSON.parse(tld); } catch(e){ return tld.split(/[,\s]+/); } })() : []);
+            var tldSet = {}; (tldArr || []).forEach(function(x){ var id = (x && (x.employeeId || x.associateId || x.id)) || x; if (id != null) tldSet[String(id)] = 1; });
+            console.log('[Hydra TLD] count=' + Object.keys(tldSet).length);
+            fetchClockedInAssociates().then(function(rows){
+                var ci = (rows||[]).map(function(a){ var ass=a.associate||{}; return { id: String(a.employeeId||a.associateId||ass.employeeId||ass.associateId||''), name: ass.fullName||'?' }; });
+                var inTld = ci.filter(function(c){ return tldSet[c.id]; });
+                var notInTld = ci.filter(function(c){ return !tldSet[c.id]; });
+                console.log('[Hydra TLD] clockedIn=' + ci.length + ' inTLD=' + inTld.length + ' NOTinTLD=' + notInTld.length);
+                console.log('[Hydra TLD] clocked-in NOT in TLD (' + notInTld.length + '):\n' + notInTld.map(function(c){ return c.name + ' [' + c.id + ']'; }).sort().join('\n'));
+            });
+        });
+    };
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
