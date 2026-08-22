@@ -15155,6 +15155,46 @@ if (k === 'eta') {
         } });
     };
 
+    // DEBUG: join clockedInAssociates with getStaffingAssignments and print,
+    // per clocked-in associate, their assignment segment(s) -- so we can see
+    // what segment PAs/HR/Safety/indirects sit in and which clocked-in people
+    // have NO assignment at all. Run hydraDebugClockedInSegments().
+    unsafeWindow.hydraDebugClockedInSegments = function() {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        Promise.all([fetchClockedInAssociates(), fetchStaffingAssignments()]).then(function(res) {
+            var ci = res[0] || [];
+            var asg = res[1] || [];
+            // Map associateId/employeeId -> list of segment labels.
+            var segMap = (typeof processSegmentNames !== 'undefined' && processSegmentNames) ? processSegmentNames : {};
+            var byId = {};
+            asg.forEach(function(a) {
+                var id = String(a.associateId || (a.associate && a.associate.associateId) || '');
+                if (!id) return;
+                var segId = a.processSegmentId || '';
+                var segName = (segMap && segMap[segId]) || segId || a.workstationId || '(assigned,unknownseg)';
+                (byId[id] = byId[id] || []).push(segName);
+            });
+            var lines = ci.map(function(a) {
+                var ass = a.associate || {};
+                var id = String(a.associateId || ass.associateId || '');
+                var eid = a.employeeId || ass.employeeId || '';
+                var segs = byId[id];
+                return (ass.fullName || '?') + ' [' + eid + ']  =>  ' + (segs ? segs.join(' | ') : '*** NO ASSIGNMENT ***');
+            }).sort();
+            var noAsg = lines.filter(function(l){ return /NO ASSIGNMENT/.test(l); });
+            console.log('[Hydra ClockedIn+Seg] clockedIn=' + ci.length + ' assignments=' + asg.length + ' clockedIn-with-NO-assignment=' + noAsg.length);
+            console.log('[Hydra ClockedIn+Seg] full join:\n' + lines.join('\n'));
+            // Segment tally across clocked-in people
+            var tally = {};
+            ci.forEach(function(a){
+                var id = String(a.associateId || (a.associate&&a.associate.associateId) || '');
+                var segs = byId[id] || ['(NO ASSIGNMENT)'];
+                segs.forEach(function(s){ tally[s] = (tally[s]||0)+1; });
+            });
+            console.log('[Hydra ClockedIn+Seg] segment tally:\n' + Object.keys(tally).sort().map(function(k){ return k + ': ' + tally[k]; }).join('\n'));
+        }).catch(function(e){ console.warn('[Hydra ClockedIn+Seg] failed', e); });
+    };
+
     function fetchStaffingAssignments() {
         var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
         // Ensure the segment-name map is available before assignments resolve,
