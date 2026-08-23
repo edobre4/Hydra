@@ -14305,6 +14305,23 @@ if (k === 'eta') {
                 chip.id = 'hydra-fgproj-chip';
                 chip.style.cssText = 'position:absolute;z-index:5;background:rgba(10,15,24,0.95);border:1px solid #fbbf24;border-radius:6px;padding:4px 10px;font-size:12px;color:#fbbf24;font-weight:700;display:flex;align-items:center;gap:10px;pointer-events:auto';
                 var sp = document.createElement('span'); sp.id = 'hydra-fgproj-chip-text'; chip.appendChild(sp);
+                var lbl = document.createElement('span');
+                lbl.textContent = 'all @';
+                lbl.style.cssText = 'font-weight:500;color:#fbbf24;opacity:0.8';
+                chip.appendChild(lbl);
+                var ri = document.createElement('input');
+                ri.type = 'number'; ri.min = '0'; ri.id = 'hydra-fgproj-chip-rate';
+                ri.title = 'Set every projected bucket to this rate';
+                ri.style.cssText = 'width:70px;background:#0a0f18;border:1px solid #fbbf24;border-radius:4px;color:#fbbf24;font-size:12px;font-weight:700;padding:1px 4px';
+                function _applyAll() {
+                    var v = parseFloat(ri.value);
+                    if (isNaN(v) || v < 0) return;
+                    for (var k = 0; k < _fgProj.rates.length; k++) _fgProj.rates[k] = v / rateFactor;
+                    drawProjectionLayer();
+                }
+                ri.addEventListener('change', _applyAll);
+                ri.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') { _applyAll(); ri.blur(); } ev.stopPropagation(); });
+                chip.appendChild(ri);
                 var xb = document.createElement('button');
                 xb.textContent = '\u2715';
                 xb.title = 'Clear projection';
@@ -14322,6 +14339,12 @@ if (k === 'eta') {
             var endT = (typeof msToLocal === 'function') ? String(msToLocal(d.times[endIdx])).replace(/^.*?(\d{1,2}:\d{2}).*$/, '$1') : '';
             document.getElementById('hydra-fgproj-chip-text').textContent =
                 'Projected @ ' + endT + ': ' + Math.round(cum).toLocaleString() + ' (\u0394 ' + (dv >= 0 ? '+' : '') + dv.toLocaleString() + ' vs tgt)';
+            var _ri = document.getElementById('hydra-fgproj-chip-rate');
+            if (_ri && document.activeElement !== _ri) {
+                var _uniform = _fgProj.rates.every(function(rv) { return Math.abs(rv - _fgProj.rates[0]) < 0.5; });
+                if (_uniform) { _ri.value = Math.round(_fgProj.rates[0] * rateFactor); _ri.placeholder = ''; }
+                else { _ri.value = ''; _ri.placeholder = 'mixed'; }
+            }
             chip.style.left = (canvas.offsetLeft + 8) + 'px';
             chip.style.top = (canvas.offsetTop + 8) + 'px';
         }
