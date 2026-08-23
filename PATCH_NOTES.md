@@ -1,5 +1,17 @@
 # Hydra Patch Notes
 
+## v3.80 — 2026-08-23
+
+### Flow Graph
+- **What-if projection.** The last Total data point has an amber handle:
+  drag it rightward to extend the chart into future buckets at the
+  current rate (dashed line). Edit any projected bucket by dragging its
+  handle vertically or double-clicking for exact entry, or type into the
+  chip's "all @" input to set one rate for the whole line. The chip
+  shows projected cumulative volume at the projection end vs target,
+  with a clear (\u2715) button. Rate-mode aware (5m/hr); resets
+  automatically when new data arrives.
+
 ## v3.79 — 2026-08-23
 
 ### Inbound
