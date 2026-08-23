@@ -158,6 +158,7 @@
         fgCardWSFilter:      'WS',
         fgCardReceivedFilter:'DD1',
         fgCardStagedFilter:  '',
+        manifestOverrides:   null,
         flowGraphShifts:     null,
         autoFitZoom:         false
     };
@@ -3639,6 +3640,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             flowGraphCtnEnabled: flowGraphCtnEnabled, flowGraphCtnTarget: flowGraphCtnTarget,
             fgCardWSBuffer: fgCardWSBuffer, fgCardReceived: fgCardReceived, fgCardStaged: fgCardStaged, fgCardWIP: fgCardWIP,
                 fgCardWSFilter: fgCardWSFilter, fgCardReceivedFilter: fgCardReceivedFilter, fgCardStagedFilter: fgCardStagedFilter,
+                manifestOverrides: MANIFEST_OVERRIDES,
             sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
             sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
             acWsMode: acWsMode,
@@ -3807,6 +3809,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof s.fgCardWSFilter === 'string') fgCardWSFilter = s.fgCardWSFilter;
         if (typeof s.fgCardReceivedFilter === 'string') fgCardReceivedFilter = s.fgCardReceivedFilter;
         if (typeof s.fgCardStagedFilter === 'string') fgCardStagedFilter = s.fgCardStagedFilter;
+        if (Array.isArray(s.manifestOverrides)) { MANIFEST_OVERRIDES = s.manifestOverrides.filter(function(o){ return o && typeof o.route === 'string' && o.route; }); }
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4564,6 +4567,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                 flowGraphCtnEnabled: flowGraphCtnEnabled, flowGraphCtnTarget: flowGraphCtnTarget,
                 fgCardWSBuffer: fgCardWSBuffer, fgCardReceived: fgCardReceived, fgCardStaged: fgCardStaged, fgCardWIP: fgCardWIP,
                 fgCardWSFilter: fgCardWSFilter, fgCardReceivedFilter: fgCardReceivedFilter, fgCardStagedFilter: fgCardStagedFilter,
+                manifestOverrides: MANIFEST_OVERRIDES,
                 sdtChaseFloorFilter: sdtChaseFloorFilter, sdtChaseStagedFilter: sdtChaseStagedFilter, sdtChaseRecvFilter: sdtChaseRecvFilter,
                 sdtChaseStatusFilter: sdtChaseStatusFilter, sdtChaseRailSort: sdtChaseRailSort,
                 acWsMode: acWsMode,
@@ -4765,6 +4769,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (typeof s.fgCardWSFilter === 'string') fgCardWSFilter = s.fgCardWSFilter;
             if (typeof s.fgCardReceivedFilter === 'string') fgCardReceivedFilter = s.fgCardReceivedFilter;
             if (typeof s.fgCardStagedFilter === 'string') fgCardStagedFilter = s.fgCardStagedFilter;
+        if (Array.isArray(s.manifestOverrides)) { MANIFEST_OVERRIDES = s.manifestOverrides.filter(function(o){ return o && typeof o.route === 'string' && o.route; }); }
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -5512,6 +5517,25 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                             '<div id="hydra-sorttimes-rows"></div>' +
                         '</div>' +
                     '</div>' +
+                    '<!-- Manifest Overrides Section -->' +
+                    '<div class="hydra-settings-section collapsed" id="hydra-section-manifestoverrides">' +
+                        '<div class="hydra-settings-section-title">Manifest Overrides</div>' +
+                        '<div class="hydra-settings-section-content">' +
+                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin-bottom:6px">Replace the manifest sortable volume for matching inbound routes with an expectation built from 30 days of ACTUAL processed volume (Vista). Applies until the trailer starts unloading; overridden cells show in magenta with a \u2020. Route matches as a case-insensitive substring of the raw inbound route (e.g. SWA_US_MAERSKM3).</div>' +
+                            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+                                '<input type="text" id="hydra-mo-route" placeholder="route substring, e.g. SWA_US_MAERSKM3" style="width:260px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">' +
+                                '<button id="hydra-mo-load" style="font-size:12px;padding:4px 10px;cursor:pointer;border:1px solid var(--h-ib-accent,#4fc3f7);background:transparent;color:var(--h-ib-accent,#4fc3f7);border-radius:4px">Load 30-day history</button>' +
+                            '</div>' +
+                            '<div id="hydra-mo-history" style="font-size:12px;margin-bottom:6px"></div>' +
+                            '<div id="hydra-mo-actions" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+                                '<button id="hydra-mo-usedow" style="font-size:12px;padding:4px 10px;cursor:pointer;border:1px solid #34d399;background:transparent;color:#34d399;border-radius:4px">Use per-day medians</button>' +
+                                '<span style="color:var(--h-muted2,#7a8a9a);font-size:11px">or fixed:</span>' +
+                                '<input type="number" id="hydra-mo-fixed" min="1" step="1" placeholder="pkgs" style="width:80px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">' +
+                                '<button id="hydra-mo-usefixed" style="font-size:12px;padding:4px 10px;cursor:pointer;border:1px solid #34d399;background:transparent;color:#34d399;border-radius:4px">Add fixed override</button>' +
+                            '</div>' +
+                            '<div id="hydra-mo-list"></div>' +
+                        '</div>' +
+                    '</div>' +
                     '<!-- CPT Windows Section -->' +
                     '<div class="hydra-settings-section collapsed" id="hydra-section-cpt">' +
                         '<div class="hydra-settings-section-title">CPT Windows</div>' +
@@ -5961,6 +5985,82 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         return chains.reduce(function(p, fn) { return p.then(fn); }, Promise.resolve()).then(function() { return out; });
     }
 
+    // Manifest override lookup: first override whose route substring matches
+    // the RAW inbound route (case-insensitive). Returns the day-of-week value
+    // (from the load's SAT local date) if set, else the fixed value, else null.
+    function manifestOverrideFor(rawRoute, satMs) {
+        if (!rawRoute || !MANIFEST_OVERRIDES.length) return null;
+        var R = String(rawRoute).toUpperCase();
+        for (var i = 0; i < MANIFEST_OVERRIDES.length; i++) {
+            var o = MANIFEST_OVERRIDES[i];
+            if (!o || !o.route || R.indexOf(String(o.route).toUpperCase()) === -1) continue;
+            if (o.dow && satMs) {
+                var dw = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(satMs).getDay()];
+                var v = o.dow[dw];
+                if (v != null && v !== '' && !isNaN(+v)) return Math.round(+v);
+            }
+            if (o.fixed != null && !isNaN(+o.fixed)) return Math.round(+o.fixed);
+            return null; // matched route but no value for this day
+        }
+        return null;
+    }
+
+    // 30-day actuals history for a route substring: enumerates the last 31
+    // days of inbound loads (Vista getInboundLoadsIds), keeps COMPLETED loads
+    // whose RAW route contains the substring, then pulls per-load actual
+    // processed counts (ibGetPackageCounts). Returns { loads:[{vrid,dow,actual}],
+    // perDow:{Mon:{n,med},...} } where med = median actual PER TRAILER.
+    function moFetchHistory(routeSub) {
+        var node = (document.getElementById('hydra-node-input').value || DEFAULT_NODE).toUpperCase();
+        var R = String(routeSub).toUpperCase();
+        return fetchToken().then(function() {
+            var seen = {};
+            var chain = Promise.resolve();
+            for (var d = 0; d < 31; d++) {
+                (function(dd) {
+                    chain = chain.then(function() {
+                        var ms = Date.now() - dd * 86400000;
+                        var jsonObj = JSON.stringify({ nodeId: node, searchTime: ms, entity: 'getInboundLoadIds', cpts: [], processingTime: ms, testmode: false, sortPlanDuration: 1440, metricsData: false });
+                        var body = 'anti-csrftoken-a2z=' + encodeToken(csrfToken) + '&jsonObj=' + encodeURIComponent(jsonObj);
+                        setStatus('Override history: day ' + (dd + 1) + '/31...');
+                        return gmFetch('https://trans-logistics.amazon.com/sortcenter/vista/controller/getInboundLoadsIds', 'POST', body).then(function(data) {
+                            var map = (data && data.ret && data.ret.getInboundLoadIdsOutput && data.ret.getInboundLoadIdsOutput.timeBasedLoadIdsMap) || {};
+                            Object.keys(map).forEach(function(k) {
+                                (map[k] || []).forEach(function(l) {
+                                    if (l && l.status === 'COMPLETED' && String(l.inboundRoute || '').toUpperCase().indexOf(R) !== -1) seen[l.loadId] = l;
+                                });
+                            });
+                        }).catch(function() {});
+                    });
+                })(d);
+            }
+            return chain.then(function() {
+                var loads = Object.keys(seen).map(function(k) { return seen[k]; });
+                if (!loads.length) return { loads: [], perDow: {} };
+                setStatus('Override history: pulling counts for ' + loads.length + ' trailers...');
+                return ibGetPackageCounts(node, loads.map(function(l) { return { loadId: l.loadId }; })).then(function(details) {
+                    var byId = {}; details.forEach(function(det) { byId[det.loadId] = det; });
+                    var out = [];
+                    loads.forEach(function(l) {
+                        var det = byId[l.loadId]; if (!det) return;
+                        var v = det.processedCounts; var items = v ? (Array.isArray(v) ? v : [v]) : [];
+                        var actual = 0; items.forEach(function(c) { if (c && c.flowUnitsMap) actual += Number(c.flowUnitsMap.COUNT) || 0; });
+                        var ts = l.aat || l.sat; if (!ts) return;
+                        var dw = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(ts).getDay()];
+                        out.push({ vrid: l.displayId, route: l.inboundRoute, dow: dw, actual: Math.round(actual), ts: ts });
+                    });
+                    var perDow = {};
+                    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach(function(dw) {
+                        var vals = out.filter(function(r) { return r.dow === dw; }).map(function(r) { return r.actual; }).sort(function(a, b) { return a - b; });
+                        if (vals.length) perDow[dw] = { n: vals.length, med: vals[Math.floor(vals.length / 2)] };
+                    });
+                    setStatus('Override history loaded: ' + out.length + ' trailers');
+                    return { loads: out, perDow: perDow };
+                });
+            });
+        });
+    }
+
     // Step 3a: summarise package detail into counts
     function ibSummarizePackages(detail, cptStart, cptEnd) {
         var total = 0, remaining = 0, crossdock = 0, nc = 0, cptCount = 0, ncCpt = 0;
@@ -6402,6 +6502,18 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
 
                     var sortable = Math.max(0, pkg.remaining - pkg.crossdock);
 
+                    // Manifest override: if the raw inbound route matches a
+                    // configured override, replace the manifest-derived sortable
+                    // with the historical expectation -- but ONLY while the load
+                    // hasn't started unloading (once unloading, real scan counts
+                    // beat any prediction). Keeps the manifest value for the
+                    // tooltip via sortableManifest.
+                    var _moVal = manifestOverrideFor(rr, l.sat || l.aat);
+                    var _moApplied = false;
+                    if (_moVal != null && l.status !== 'COMPLETED' && l.status !== 'UNLOADING_IN_PROGRESS' && !l.actualUnloadStartTime) {
+                        _moApplied = true;
+                    }
+
                     // ETA: populated later by applyIbRttEtas after Relay batch resolves.
                     // Initial build has etaMs=0; progressive patch fills it in.
                     var etaMsVal = 0;
@@ -6431,7 +6543,9 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                         route:         route,
                         total:         pkg.total,
                         remaining:     pkg.remaining,
-                        sortable:      sortable,
+                        sortable:      _moApplied ? _moVal : sortable,
+                        sortableManifest: sortable,
+                        sortableOverridden: _moApplied,
                         crossdock:     pkg.crossdock,
                         cpt:           pkg.cptCount,
                         nextCpt:       pkg.nextCptCount || 0,
@@ -9585,6 +9699,11 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // Per-card location filters (substring match on container location/chute).
     // WS Buffer -> "WS", Received -> "DD1", Staged -> "" (match anything).
     var fgCardWSFilter = 'WS', fgCardReceivedFilter = 'DD1', fgCardStagedFilter = '';
+    // Manifest overrides: per-route expected SORTABLE volume from 30-day
+    // actuals (Vista processedCounts), replacing the (unreliable) manifest
+    // number on matching pre-unload trailers.
+    // [{ route:'SWA_US_MAERSKM3', fixed: 1500|null, dow: {Mon:1412,...}|null }]
+    var MANIFEST_OVERRIDES = [];
 
     // Single source of truth for the chart's toggleable series (the "metrics"
     // the user sees). `dataKey` maps to fgComputeSeries() output. `defaultOn`
@@ -13184,6 +13303,9 @@ if (k === 'eta') {
                         moveBadgeHtml = ' <span class="hydra-loc-move-badge" title="Click to move">\u21BB</span>';
                     }
                     return '<td' + tdCls + tdTitle + extraAttrs + '>' + doorVal + warnHtml + moveBadgeHtml + '</td>';
+                }
+                if (k === 'sortable' && r.sortableOverridden) {
+                    return '<td style="color:#e879f9;font-style:italic;font-weight:600" title="Manifest override (30-day actuals). Manifest says: ' + (r.sortableManifest || 0).toLocaleString() + '">' + (r.sortable || 0).toLocaleString() + '\u2020</td>';
                 }
                 if (typeof r[k] === 'number') return r[k] === 0 ? '<td style="color:var(--h-dim2, #3a4a5a)">0</td>' : '<td>' + r[k].toLocaleString() + '</td>';
                 return '<td>' + (r[k] || '—') + '</td>';
@@ -20744,6 +20866,73 @@ if (k === 'eta') {
                 }
                 if (sIn) sIn.addEventListener('change', commit);
                 if (eIn) eIn.addEventListener('change', commit);
+            });
+        })();
+
+        // Manifest Overrides: history loader + override list management.
+        (function() {
+            var routeIn = document.getElementById('hydra-mo-route');
+            var loadBtn = document.getElementById('hydra-mo-load');
+            var histDiv = document.getElementById('hydra-mo-history');
+            var actions = document.getElementById('hydra-mo-actions');
+            var listDiv = document.getElementById('hydra-mo-list');
+            if (!routeIn || !loadBtn || !histDiv || !actions || !listDiv) return;
+            var lastHist = null;
+            var DWS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            function renderList() {
+                if (!MANIFEST_OVERRIDES.length) { listDiv.innerHTML = '<div style="color:var(--h-muted2,#7a8a9a);font-size:11px">No overrides configured.</div>'; return; }
+                listDiv.innerHTML = MANIFEST_OVERRIDES.map(function(o, i) {
+                    var desc = o.dow ? DWS.map(function(d) { return d + ' ' + (o.dow[d] != null ? o.dow[d] : '\u2014'); }).join(' \u00b7 ') : ('fixed ' + o.fixed);
+                    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:3px">' +
+                        '<button data-mo-del="' + i + '" style="cursor:pointer;border:1px solid #ef5350;background:transparent;color:#ef5350;border-radius:4px;font-size:11px;padding:1px 6px">\u2715</button>' +
+                        '<b style="color:#e879f9">' + o.route + '</b>' +
+                        '<span style="color:var(--h-muted,#aab4c0)">' + desc + '</span></div>';
+                }).join('');
+                listDiv.querySelectorAll('[data-mo-del]').forEach(function(b) {
+                    b.addEventListener('click', function() {
+                        MANIFEST_OVERRIDES.splice(Number(this.dataset.moDel), 1);
+                        try { saveAllSettings(); } catch (e) {}
+                        renderList();
+                    });
+                });
+            }
+            renderList();
+            loadBtn.addEventListener('click', function() {
+                var sub = (routeIn.value || '').trim();
+                if (!sub) { histDiv.innerHTML = '<span style="color:#ef5350">Enter a route substring first.</span>'; return; }
+                histDiv.innerHTML = 'Loading 30 days of loads for "' + sub + '"\u2026 (~31 requests, can take a minute)';
+                actions.style.display = 'none';
+                moFetchHistory(sub).then(function(h) {
+                    lastHist = h;
+                    if (!h.loads.length) { histDiv.innerHTML = '<span style="color:#ef5350">No completed loads matching "' + sub + '" in the last 30 days.</span>'; return; }
+                    var tbl = '<table style="border-collapse:collapse;font-size:12px"><tr><td style="padding:2px 8px"></td>' + DWS.map(function(d) { return '<td style="padding:2px 8px;font-weight:700">' + d + '</td>'; }).join('') + '</tr>';
+                    tbl += '<tr><td style="padding:2px 8px;color:var(--h-muted,#aab4c0)">median/trailer</td>' + DWS.map(function(d) { var p = h.perDow[d]; return '<td style="padding:2px 8px;color:#34d399;font-weight:700">' + (p ? p.med.toLocaleString() : '\u2014') + '</td>'; }).join('') + '</tr>';
+                    tbl += '<tr><td style="padding:2px 8px;color:var(--h-muted,#aab4c0)">trailers (30d)</td>' + DWS.map(function(d) { var p = h.perDow[d]; return '<td style="padding:2px 8px;color:var(--h-muted2,#7a8a9a)">' + (p ? p.n : '\u2014') + '</td>'; }).join('') + '</tr></table>';
+                    var all = h.loads.map(function(r) { return r.actual; }).sort(function(a, b) { return a - b; });
+                    tbl += '<div style="color:var(--h-muted2,#7a8a9a);font-size:11px;margin-top:4px">' + h.loads.length + ' completed trailers \u00b7 overall median ' + all[Math.floor(all.length / 2)].toLocaleString() + '/trailer \u00b7 range ' + all[0].toLocaleString() + '\u2013' + all[all.length - 1].toLocaleString() + '</div>';
+                    histDiv.innerHTML = tbl;
+                    actions.style.display = 'flex';
+                }).catch(function(e) { histDiv.innerHTML = '<span style="color:#ef5350">History fetch failed: ' + ((e && e.message) || e) + '</span>'; });
+            });
+            document.getElementById('hydra-mo-usedow').addEventListener('click', function() {
+                if (!lastHist) return;
+                var sub = (routeIn.value || '').trim(); if (!sub) return;
+                var dow = {}; Object.keys(lastHist.perDow).forEach(function(d) { dow[d] = lastHist.perDow[d].med; });
+                MANIFEST_OVERRIDES = MANIFEST_OVERRIDES.filter(function(o) { return o.route.toUpperCase() !== sub.toUpperCase(); });
+                MANIFEST_OVERRIDES.push({ route: sub, dow: dow, fixed: null });
+                try { saveAllSettings(); } catch (e) {}
+                renderList();
+                setStatus('Manifest override saved for ' + sub + ' \u2014 refresh Inbound to apply');
+            });
+            document.getElementById('hydra-mo-usefixed').addEventListener('click', function() {
+                var sub = (routeIn.value || '').trim();
+                var v = parseInt(document.getElementById('hydra-mo-fixed').value, 10);
+                if (!sub || isNaN(v) || v <= 0) return;
+                MANIFEST_OVERRIDES = MANIFEST_OVERRIDES.filter(function(o) { return o.route.toUpperCase() !== sub.toUpperCase(); });
+                MANIFEST_OVERRIDES.push({ route: sub, dow: null, fixed: v });
+                try { saveAllSettings(); } catch (e) {}
+                renderList();
+                setStatus('Manifest override saved for ' + sub + ' \u2014 refresh Inbound to apply');
             });
         })();
 
