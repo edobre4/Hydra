@@ -1,5 +1,13 @@
 # Hydra Patch Notes
 
+## v3.77 — 2026-08-23
+
+### Inbound
+- Manifest override status rule hardened to an explicit allow-list:
+  applies to SCHEDULED / IN_TRANSIT / LOAD_ARRIVED / READY_FOR_UNLOAD;
+  UNLOADING_IN_PROGRESS, UNLOADING_PAUSED, and COMPLETED always show real
+  scan-derived counts.
+
 ## v3.76 — 2026-08-23
 
 ### Inbound
