@@ -98,6 +98,7 @@
 
     const STORAGE_KEYS = {
         settings: 'hydra_settings_v1',
+        manifestOverrides: 'hydra_manifest_overrides_v1',
         cptWindows: 'hydra_cpt_windows_v1',
         ibColumns: 'hydra_ib_cols_v1',
         obColumns: 'hydra_ob_cols_v1',
@@ -3809,7 +3810,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
         if (typeof s.fgCardWSFilter === 'string') fgCardWSFilter = s.fgCardWSFilter;
         if (typeof s.fgCardReceivedFilter === 'string') fgCardReceivedFilter = s.fgCardReceivedFilter;
         if (typeof s.fgCardStagedFilter === 'string') fgCardStagedFilter = s.fgCardStagedFilter;
-        if (Array.isArray(s.manifestOverrides)) { MANIFEST_OVERRIDES = s.manifestOverrides.filter(function(o){ return o && typeof o.route === 'string' && o.route; }); }
+        if (Array.isArray(s.manifestOverrides) && s.manifestOverrides.length && !localStorage.getItem(STORAGE_KEYS.manifestOverrides)) { MANIFEST_OVERRIDES = s.manifestOverrides.filter(function(o){ return o && typeof o.route === 'string' && o.route; }); saveManifestOverrides(); }
         if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
         if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
         if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -4769,7 +4770,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
             if (typeof s.fgCardWSFilter === 'string') fgCardWSFilter = s.fgCardWSFilter;
             if (typeof s.fgCardReceivedFilter === 'string') fgCardReceivedFilter = s.fgCardReceivedFilter;
             if (typeof s.fgCardStagedFilter === 'string') fgCardStagedFilter = s.fgCardStagedFilter;
-        if (Array.isArray(s.manifestOverrides)) { MANIFEST_OVERRIDES = s.manifestOverrides.filter(function(o){ return o && typeof o.route === 'string' && o.route; }); }
+        if (Array.isArray(s.manifestOverrides) && s.manifestOverrides.length && !localStorage.getItem(STORAGE_KEYS.manifestOverrides)) { MANIFEST_OVERRIDES = s.manifestOverrides.filter(function(o){ return o && typeof o.route === 'string' && o.route; }); saveManifestOverrides(); }
             if (Array.isArray(s.flowGraphShifts) && s.flowGraphShifts.length) { FG_SHIFTS = s.flowGraphShifts.filter(function(x){ return x && x.id && typeof x.start==='string' && typeof x.end==='string'; }); }
             if (typeof s.sdtChaseFloorFilter === 'string') sdtChaseFloorFilter = s.sdtChaseFloorFilter;
             if (typeof s.sdtChaseStagedFilter === 'string') sdtChaseStagedFilter = s.sdtChaseStagedFilter;
@@ -9709,6 +9710,23 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
     // number on matching pre-unload trailers.
     // [{ route:'SWA_US_MAERSKM3', fixed: 1500|null, dow: {Mon:1412,...}|null }]
     var MANIFEST_OVERRIDES = [];
+    // Overrides persist in their OWN localStorage key (not the main settings
+    // blob): the blob is last-writer-wins, so a tab still running an older
+    // Hydra version (no manifestOverrides key) would silently wipe them on
+    // its next save. A dedicated key is untouched by old versions.
+    function saveManifestOverrides() {
+        try { localStorage.setItem(STORAGE_KEYS.manifestOverrides, JSON.stringify(MANIFEST_OVERRIDES)); } catch (e) {}
+    }
+    function loadManifestOverrides() {
+        try {
+            var raw = localStorage.getItem(STORAGE_KEYS.manifestOverrides);
+            if (raw) {
+                var arr = JSON.parse(raw);
+                if (Array.isArray(arr)) MANIFEST_OVERRIDES = arr.filter(function(o){ return o && typeof o.route === 'string' && o.route; });
+            }
+        } catch (e) {}
+    }
+    loadManifestOverrides();
 
     // Single source of truth for the chart's toggleable series (the "metrics"
     // the user sees). `dataKey` maps to fgComputeSeries() output. `defaultOn`
@@ -20896,6 +20914,7 @@ if (k === 'eta') {
                 listDiv.querySelectorAll('[data-mo-del]').forEach(function(b) {
                     b.addEventListener('click', function() {
                         MANIFEST_OVERRIDES.splice(Number(this.dataset.moDel), 1);
+                        saveManifestOverrides();
                         try { saveAllSettings(); } catch (e) {}
                         renderList();
                     });
@@ -20925,6 +20944,7 @@ if (k === 'eta') {
                 var dow = {}; Object.keys(lastHist.perDow).forEach(function(d) { dow[d] = lastHist.perDow[d].med; });
                 MANIFEST_OVERRIDES = MANIFEST_OVERRIDES.filter(function(o) { return o.route.toUpperCase() !== sub.toUpperCase(); });
                 MANIFEST_OVERRIDES.push({ route: sub, dow: dow, fixed: null });
+                saveManifestOverrides();
                 try { saveAllSettings(); } catch (e) {}
                 renderList();
                 setStatus('Manifest override saved for ' + sub + ' \u2014 refresh Inbound to apply');
@@ -20935,6 +20955,7 @@ if (k === 'eta') {
                 if (!sub || isNaN(v) || v <= 0) return;
                 MANIFEST_OVERRIDES = MANIFEST_OVERRIDES.filter(function(o) { return o.route.toUpperCase() !== sub.toUpperCase(); });
                 MANIFEST_OVERRIDES.push({ route: sub, dow: null, fixed: v });
+                saveManifestOverrides();
                 try { saveAllSettings(); } catch (e) {}
                 renderList();
                 setStatus('Manifest override saved for ' + sub + ' \u2014 refresh Inbound to apply');
