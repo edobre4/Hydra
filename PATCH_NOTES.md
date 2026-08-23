@@ -1,5 +1,22 @@
 # Hydra Patch Notes
 
+## v3.76 — 2026-08-23
+
+### Inbound
+- **Manifest Overrides** (Settings ▸ Manifest Overrides): replace the
+  manifest sortable volume for chronically mis-manifested inbound routes
+  (e.g. SWA_US_* shipper lanes) with an expectation built from 30 days of
+  ACTUAL processed volume. Enter a route substring, load the 30-day
+  history (per-day-of-week median actual per trailer + trailer counts),
+  then save the per-DOW medians or a fixed value. Matching trailers show
+  the override instead of the manifest (magenta †, tooltip shows the
+  manifest figure) until unloading starts — then real scans take over.
+  Totals and arrival projections use the override automatically.
+  Overrides persist and are managed from the same section.
+
+### Misc
+- @author now credits eddobrev + dylbecke (header and version badge).
+
 ## v3.75 — 2026-08-22
 
 ### Flow Graph
