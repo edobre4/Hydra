@@ -1,5 +1,12 @@
 # Hydra Patch Notes
 
+## v3.78 — 2026-08-23
+
+### Inbound
+- Overridden Sortable cells show the plain number (no † suffix) with a
+  stronger magenta highlight; the manifest figure stays in the hover
+  tooltip. CSV exports now carry just the number.
+
 ## v3.77 — 2026-08-23
 
 ### Inbound
