@@ -1,5 +1,15 @@
 # Hydra Patch Notes
 
+## v3.79 — 2026-08-23
+
+### Inbound
+- **Manifest overrides now survive version updates.** They previously
+  lived only in the main settings blob, which an older-version tab could
+  rewrite without the overrides key during a rollout. Overrides now
+  persist in a dedicated localStorage key untouched by old versions,
+  with one-time migration of any values still in the blob. Re-add any
+  overrides lost to the old bug after updating.
+
 ## v3.78 — 2026-08-23
 
 ### Inbound
