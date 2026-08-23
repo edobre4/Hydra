@@ -5521,7 +5521,7 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     '<div class="hydra-settings-section collapsed" id="hydra-section-manifestoverrides">' +
                         '<div class="hydra-settings-section-title">Manifest Overrides</div>' +
                         '<div class="hydra-settings-section-content">' +
-                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin-bottom:6px">Replace the manifest sortable volume for matching inbound routes with an expectation built from 30 days of ACTUAL processed volume (Vista). Applies until the trailer starts unloading; overridden cells show in magenta with a \u2020. Route matches as a case-insensitive substring of the raw inbound route (e.g. SWA_US_MAERSKM3).</div>' +
+                            '<div style="color:var(--h-muted2, #7a8a9a);font-size:11px;margin-bottom:6px">Replace the manifest sortable volume for matching inbound routes with an expectation built from 30 days of ACTUAL processed volume (Vista). Applies until the trailer starts unloading; overridden cells are highlighted in magenta (hover shows the manifest figure). Route matches as a case-insensitive substring of the raw inbound route (e.g. SWA_US_MAERSKM3).</div>' +
                             '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
                                 '<input type="text" id="hydra-mo-route" placeholder="route substring, e.g. SWA_US_MAERSKM3" style="width:260px;background:var(--h-bg2,#16202c);border:1px solid var(--h-border2,#3a4a5c);border-radius:4px;color:var(--h-text,#e8eaf0);padding:4px 8px;font-size:12px">' +
                                 '<button id="hydra-mo-load" style="font-size:12px;padding:4px 10px;cursor:pointer;border:1px solid var(--h-ib-accent,#4fc3f7);background:transparent;color:var(--h-ib-accent,#4fc3f7);border-radius:4px">Load 30-day history</button>' +
@@ -13310,7 +13310,7 @@ if (k === 'eta') {
                     return '<td' + tdCls + tdTitle + extraAttrs + '>' + doorVal + warnHtml + moveBadgeHtml + '</td>';
                 }
                 if (k === 'sortable' && r.sortableOverridden) {
-                    return '<td style="color:#e879f9;font-style:italic;font-weight:600" title="Manifest override (30-day actuals). Manifest says: ' + (r.sortableManifest || 0).toLocaleString() + '">' + (r.sortable || 0).toLocaleString() + '\u2020</td>';
+                    return '<td style="color:#e879f9;font-weight:700;background:rgba(232,121,249,0.12)" title="Manifest override (30-day actuals). Manifest says: ' + (r.sortableManifest || 0).toLocaleString() + '">' + (r.sortable || 0).toLocaleString() + '</td>';
                 }
                 if (typeof r[k] === 'number') return r[k] === 0 ? '<td style="color:var(--h-dim2, #3a4a5a)">0</td>' : '<td>' + r[k].toLocaleString() + '</td>';
                 return '<td>' + (r[k] || '—') + '</td>';
