@@ -13547,6 +13547,11 @@ if (k === 'eta') {
     // can avoid destroying an open control; user actions leave it false.
     var _fgBackgroundRender = false;
     var _fgResizeObs = null; // ResizeObserver on the table wrap; repaints chart when it settles/resizes
+    // What-if projection: drag the last Total point rightward to extend the
+    // chart at the same rate; drag projected handles vertically (or dblclick
+    // for exact entry) to edit per-bucket rates. rates are RAW per-5-min.
+    var _fgProj = { rates: [], anchorIdx: -1 };
+    var _fgProjDrag = null; // {mode:'extend'|'edit', k}
 
     // Live headcount snapshot (from WATT clockedInAssociates) for the
     // current-TPH readout. This is a CURRENT count only (WATT has no history),
@@ -14285,9 +14290,74 @@ if (k === 'eta') {
         ctx.save(); ctx.translate(12, pad.top + gh / 2); ctx.rotate(-Math.PI / 2);
         ctx.fillText(flowGraphRateMode === 'hr' ? 'Scans / hr' : 'Scans / 5 min', 0, 0); ctx.restore();
 
+        // ---- Projection layer (what-if extension of the Total line) ----
+        // Reset a stale projection when new data shifts the anchor bucket.
+        if (_fgProj.rates.length && _fgProj.anchorIdx !== lastDataIdx) _fgProj = { rates: [], anchorIdx: -1 };
+        var _projSe = null;
+        series.forEach(function(se) { if (se.key === 'total' && !_fgHidden.total) _projSe = se; });
+        if (!_projSe) series.forEach(function(se) { if (!_projSe && se.key !== 'target' && se.key !== 'ncTarget' && !_fgHidden[se.key]) _projSe = se; });
+        var _projMaxN = n - 1 - lastDataIdx; // future buckets available in the window
+        function _projChip() {
+            var chip = document.getElementById('hydra-fgproj-chip');
+            if (!_fgProj.rates.length) { if (chip) chip.remove(); return; }
+            if (!chip) {
+                chip = document.createElement('div');
+                chip.id = 'hydra-fgproj-chip';
+                chip.style.cssText = 'position:absolute;z-index:5;background:rgba(10,15,24,0.95);border:1px solid #fbbf24;border-radius:6px;padding:4px 10px;font-size:12px;color:#fbbf24;font-weight:700;display:flex;align-items:center;gap:10px;pointer-events:auto';
+                var sp = document.createElement('span'); sp.id = 'hydra-fgproj-chip-text'; chip.appendChild(sp);
+                var xb = document.createElement('button');
+                xb.textContent = '\u2715';
+                xb.title = 'Clear projection';
+                xb.style.cssText = 'background:none;border:1px solid #fbbf24;color:#fbbf24;border-radius:4px;cursor:pointer;font-size:10px;padding:0 5px';
+                xb.addEventListener('click', function() { _fgProj = { rates: [], anchorIdx: -1 }; drawProjectionLayer(); });
+                chip.appendChild(xb);
+                wrap.appendChild(chip);
+            }
+            var endIdx = lastDataIdx + _fgProj.rates.length;
+            var cum = 0;
+            for (var ci = 0; ci <= lastDataIdx && ci < _projSe.data.length; ci++) cum += (_projSe.data[ci] || 0);
+            _fgProj.rates.forEach(function(rv) { cum += rv; });
+            var tgtCum = flowGraphTarget * (endIdx + 1);
+            var dv = Math.round(cum) - tgtCum;
+            var endT = (typeof msToLocal === 'function') ? String(msToLocal(d.times[endIdx])).replace(/^.*?(\d{1,2}:\d{2}).*$/, '$1') : '';
+            document.getElementById('hydra-fgproj-chip-text').textContent =
+                'Projected @ ' + endT + ': ' + Math.round(cum).toLocaleString() + ' (\u0394 ' + (dv >= 0 ? '+' : '') + dv.toLocaleString() + ' vs tgt)';
+            chip.style.left = (canvas.offsetLeft + 8) + 'px';
+            chip.style.top = (canvas.offsetTop + 8) + 'px';
+        }
+        var cleanBase = ctx.getImageData(0, 0, cw, ch);
+        var baseImage = cleanBase;
+        function drawProjectionLayer() {
+            ctx.putImageData(cleanBase, 0, 0);
+            if (_projSe && lastDataIdx >= 0) {
+                var ax = xAt(lastDataIdx), ay = yAt((_projSe.data[lastDataIdx] || 0) * rateFactor);
+                // Anchor handle: always drawn so the feature is discoverable.
+                ctx.beginPath(); ctx.arc(ax, ay, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(251,191,36,0.25)'; ctx.fill();
+                ctx.lineWidth = 2; ctx.strokeStyle = '#fbbf24'; ctx.stroke();
+                if (_fgProj.rates.length) {
+                    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+                    ctx.beginPath(); ctx.moveTo(ax, ay);
+                    _fgProj.rates.forEach(function(rv, k) {
+                        ctx.lineTo(xAt(lastDataIdx + 1 + k), yAt(rv * rateFactor));
+                    });
+                    ctx.stroke(); ctx.setLineDash([]);
+                    _fgProj.rates.forEach(function(rv, k) {
+                        var hx = xAt(lastDataIdx + 1 + k), hy = yAt(rv * rateFactor);
+                        ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+                        ctx.fillStyle = '#0a0f18'; ctx.fill();
+                        ctx.lineWidth = 2; ctx.strokeStyle = '#fbbf24'; ctx.stroke();
+                    });
+                }
+            }
+            baseImage = ctx.getImageData(0, 0, cw, ch);
+            _projChip();
+        }
+        drawProjectionLayer();
+
         // ---- Hover crosshair + tooltip ----
-        var baseImage = ctx.getImageData(0, 0, cw, ch);
         canvas.addEventListener('mousemove', function(e) {
+            if (_fgProjDrag) return; // projection drag repaints its own layer
             var rect = canvas.getBoundingClientRect();
             var scaleX = canvas.width / rect.width;
             var mx = (e.clientX - rect.left) * scaleX;
@@ -14334,7 +14404,94 @@ if (k === 'eta') {
             });
             ctx.restore();
         });
-        canvas.addEventListener('mouseleave', function() { ctx.putImageData(baseImage, 0, 0); });
+        canvas.addEventListener('mouseleave', function() { if (!_fgProjDrag) ctx.putImageData(baseImage, 0, 0); });
+
+        // ---- Projection interactions ----
+        function _mxy(e) {
+            var rect = canvas.getBoundingClientRect();
+            return { x: (e.clientX - rect.left) * (canvas.width / rect.width),
+                     y: (e.clientY - rect.top) * (canvas.height / rect.height) };
+        }
+        function _idxAtX(mx) {
+            var idx = Math.round(((mx - pad.left) / gw) * (n - 1));
+            return Math.max(0, Math.min(n - 1, idx));
+        }
+        function _rawValAtY(my) {
+            var v = ((pad.top + gh - my) / gh) * maxVal; // rate-scaled
+            return Math.max(0, v) / rateFactor;          // store raw per-5min
+        }
+        function _hitAnchor(p) {
+            if (!_projSe || lastDataIdx < 0) return false;
+            var ax = xAt(lastDataIdx), ay = yAt((_projSe.data[lastDataIdx] || 0) * rateFactor);
+            return Math.abs(p.x - ax) < 10 && Math.abs(p.y - ay) < 12;
+        }
+        function _hitHandle(p) {
+            for (var k = 0; k < _fgProj.rates.length; k++) {
+                var hx = xAt(lastDataIdx + 1 + k), hy = yAt(_fgProj.rates[k] * rateFactor);
+                if (Math.abs(p.x - hx) < 8 && Math.abs(p.y - hy) < 12) return k;
+            }
+            return -1;
+        }
+        canvas.addEventListener('mousedown', function(e) {
+            if (!_projSe || lastDataIdx < 0 || _projMaxN <= 0) return;
+            var p = _mxy(e);
+            var hk = _hitHandle(p);
+            if (hk >= 0) { _fgProjDrag = { mode: 'edit', k: hk }; e.preventDefault(); return; }
+            if (_hitAnchor(p)) { _fgProjDrag = { mode: 'extend' }; e.preventDefault(); }
+        });
+        canvas.addEventListener('dblclick', function(e) {
+            var p = _mxy(e);
+            var hk = _hitHandle(p);
+            if (hk < 0) return;
+            // Exact-entry overlay input at the handle position.
+            var rect = canvas.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+            var inp = document.createElement('input');
+            inp.type = 'number'; inp.min = '0';
+            inp.value = Math.round(_fgProj.rates[hk] * rateFactor);
+            inp.style.cssText = 'position:absolute;z-index:6;width:72px;background:#0a0f18;border:1px solid #fbbf24;border-radius:4px;color:#fbbf24;font-size:12px;font-weight:700;padding:2px 4px';
+            inp.style.left = (rect.left - wr.left + (xAt(lastDataIdx + 1 + hk) / (canvas.width / rect.width)) - 36) + 'px';
+            inp.style.top = (rect.top - wr.top + (yAt(_fgProj.rates[hk] * rateFactor) / (canvas.height / rect.height)) - 28) + 'px';
+            wrap.appendChild(inp);
+            inp.focus(); inp.select();
+            function commit(save) {
+                if (save) {
+                    var v = parseFloat(inp.value);
+                    if (!isNaN(v) && v >= 0) _fgProj.rates[hk] = v / rateFactor;
+                }
+                inp.remove();
+                drawProjectionLayer();
+            }
+            inp.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter') commit(true);
+                else if (ev.key === 'Escape') commit(false);
+                ev.stopPropagation();
+            });
+            inp.addEventListener('blur', function() { commit(true); });
+        });
+        canvas.addEventListener('mousemove', function(e) {
+            var p = _mxy(e);
+            if (_fgProjDrag) {
+                if (_fgProjDrag.mode === 'extend') {
+                    var nProj = Math.max(0, Math.min(_projMaxN, _idxAtX(p.x) - lastDataIdx));
+                    var lastVal = (_projSe.data[lastDataIdx] || 0);
+                    var old = _fgProj.rates;
+                    var rates = [];
+                    for (var k = 0; k < nProj; k++) rates.push(k < old.length ? old[k] : lastVal);
+                    _fgProj = { rates: rates, anchorIdx: lastDataIdx };
+                } else {
+                    _fgProj.rates[_fgProjDrag.k] = _rawValAtY(p.y);
+                }
+                drawProjectionLayer();
+                e.preventDefault();
+                return;
+            }
+            // Cursor affordance
+            canvas.style.cursor = _hitAnchor(p) ? 'grab' : (_hitHandle(p) >= 0 ? 'ns-resize' : '');
+        });
+        if (!window._fgProjMouseupBound) {
+            window._fgProjMouseupBound = true;
+            window.addEventListener('mouseup', function() { _fgProjDrag = null; });
+        }
     }
 
 
