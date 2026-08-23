@@ -6510,7 +6510,12 @@ var hydraTheme = (function(){ try { return localStorage.getItem('hydra_theme') |
                     // tooltip via sortableManifest.
                     var _moVal = manifestOverrideFor(rr, l.sat || l.aat);
                     var _moApplied = false;
-                    if (_moVal != null && l.status !== 'COMPLETED' && l.status !== 'UNLOADING_IN_PROGRESS' && !l.actualUnloadStartTime) {
+                    // Explicit allow-list: override only while nothing has been
+                    // unloaded yet (scheduled/in-transit/arrived/ready). Once
+                    // unloading is in progress, paused, or done, real scan
+                    // counts win.
+                    var _MO_STATUSES = { SCHEDULED: 1, IN_TRANSIT: 1, LOAD_ARRIVED: 1, READY_FOR_UNLOAD: 1 };
+                    if (_moVal != null && _MO_STATUSES[l.status] && !l.actualUnloadStartTime) {
                         _moApplied = true;
                     }
 
