@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Hydra
-// @version      3.80
+// @version      3.88
 // @description  NASC Ops Chase Tool
 // @author       eddobrev, dylbecke
 // @updateURL    https://axzile.corp.amazon.com/-/carthamus/download_script/hydra.user.js
@@ -10,25 +10,8 @@
 // @match        https://trans-logistics.amazon.com/ssp/dock/hrz/ob*
 // @match        https://trans-logistics.amazon.com/ssp/dock/ob*
 // @match        https://na.prod.command-center.robotics.amazon.dev/*
-// @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAw==
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @connect      trans-logistics.amazon.com
-// @connect      ii51s3lexd.execute-api.us-east-1.amazonaws.com
-// @connect      execute-api.us-east-1.amazonaws.com
-// @connect      sesamegateservice-na-ext.amazon.com
-// @connect      na-prod.api.dps-visibility.sorttech.amazon.dev
-// @connect      stem-na.corp.amazon.com
-// @connect      ds-l013ue9b--7077.us-east-1.prod.proxy.devspaces.amazon.dev
-// @connect      pflixviz.huron.ats.amazon.dev
-// @connect      na.prod.wattwebsite.sorttech.amazon.dev
-// @connect      vh4qdrfwc5awhjsbjqlfeuqwv4.appsync-api.us-east-1.amazonaws.com
-// @connect      gss-command-center-prod-na-federate.auth.us-east-1.amazoncognito.com
-// @connect      idp.federate.amazon.com
-// @connect      na.prod.command-center.robotics.amazon.dev
-// @connect      midway-auth.amazon.com
-// @connect      monitorportal.amazon.com
-// @connect      fclm-portal.amazon.com
 // @connect      *
 // ==/UserScript==
